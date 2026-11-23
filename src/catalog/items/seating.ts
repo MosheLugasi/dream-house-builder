@@ -1352,6 +1352,25 @@ const daybed: FurnitureDef = {
     }),
 };
 
+/** Wrap a built object in a group shifted along Z (re-centres asymmetric chairs on their footprint). */
+function shiftZ(o: THREE.Object3D, dz: number): THREE.Object3D {
+  const g = new THREE.Group();
+  o.position.z += dz;
+  g.add(o);
+  return g;
+}
+
+/** Plan symbol clipped to the footprint and shifted along Z (matches `shiftZ`). */
+function symShift(ctx: Ctx2D, w: number, d: number, dz: number, fn: () => void): void {
+  sym(ctx, () => {
+    ctx.beginPath();
+    ctx.rect(-w / 2, -d / 2, w, d);
+    ctx.clip();
+    ctx.translate(0, dz);
+    fn();
+  });
+}
+
 /* ================================================================== tub / barrel / swivel chairs */
 
 interface TubSpec {
@@ -1373,7 +1392,7 @@ interface TubSpec {
 
 function tubDims(s: TubSpec): { w: number; d: number; dz: number } {
   const a = s.wrap / 2;
-  const zmax = Math.max(s.rs, -s.R * Math.cos(a) + 0.02);
+  const zmax = Math.max(s.rs, s.R - 0.03, -s.R * Math.cos(a) + 0.02);
   const w = a >= Math.PI / 2 ? 2 * s.R : 2 * s.R * Math.sin(a);
   return { w: +w.toFixed(3), d: +(s.R + zmax).toFixed(3), dz: -(zmax - s.R) / 2 };
 }
@@ -1492,9 +1511,9 @@ const shellLounge: FurnitureDef = {
   category: 'living',
   group: 'כסאות נוח',
   tags: ['כורסת מעצבים', 'עור', 'דיקט', 'מסתובבת', 'מיד-סנצ׳ורי', 'טרקלין'],
-  size: { w: 0.84, d: 0.86, h: 0.86 },
+  size: { w: 0.84, d: 0.84, h: 0.88 },
   colors: [slot('fabric', 'עור', '#1f1c1b'), slot('wood', 'מעטפת עץ', '#5a3423'), slot('legs', 'בסיס', '#2a2b2e')],
-  seats: [{ x: 0, z: 0.08, height: 0.42, facing: 0, kind: 'sit' }],
+  seats: [{ x: 0, z: 0.14, height: 0.42, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const lea = M.leather(c.fabric);
@@ -1529,10 +1548,10 @@ const shellLounge: FurnitureDef = {
       const a = k.rbox(0.075, 0.045, 0.32, 0.018, lea, sx * 0.375, 0.56, 0.02, 2);
       a.rotation.x = 0.06;
     }
-    return k.g;
+    return shiftZ(k.g, 0.067);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    symShift(ctx, 0.84, 0.84, 0.067, () => {
       D.circle(ctx, 0, 0.02, 0.36, null, INK_SOFT, LINE_THIN);
       D.rr(ctx, 0, 0.06, 0.62, 0.58, 0.14, tint(c.wood, 0.35));
       D.rr(ctx, 0, 0.06, 0.54, 0.5, 0.1, tint(c.fabric, 0.45), INK_SOFT, LINE_THIN);
@@ -1654,7 +1673,7 @@ const butterfly: FurnitureDef = {
         ],
         r,
         met,
-        { seg: 40, radial: 6 },
+        { seg: 40, radial: 6, tension: 0.2 },
       );
       // corner pockets
       k.sphere(0.018, lea, sx * 0.4, 0.55, FT - 0.005, 1, 1, 1, 8);
@@ -1680,9 +1699,9 @@ const eggChair: FurnitureDef = {
   category: 'living',
   group: 'כסאות נוח',
   tags: ['ביצה', 'פוד', 'מסתובבת', 'מעצבים', 'רטרו'],
-  size: { w: 0.86, d: 0.82, h: 1.1 },
+  size: { w: 0.86, d: 0.76, h: 1.1 },
   colors: [slot('shell', 'מעטפת', '#f2f0ea'), slot('fabric', 'ריפוד', '#c0392b'), slot('legs', 'בסיס', '#c9ccce')],
-  seats: [{ x: 0, z: 0.08, height: 0.45, facing: 0, kind: 'sit' }],
+  seats: [{ x: 0, z: 0.1, height: 0.45, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const shellM = M.lacquer(c.shell);
@@ -1709,12 +1728,12 @@ const eggChair: FurnitureDef = {
     k.cyl(0.04, 0.25, met, 0, 0.02, 0, 0.04, 14);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      k.beam([0, 0.035, 0], [Math.sin(a) * 0.36, 0.012, Math.cos(a) * 0.36], 0.05, 0.022, met, 0.006);
+      k.beam([0, 0.035, 0], [Math.sin(a) * 0.36, 0.022, Math.cos(a) * 0.36], 0.05, 0.022, met, 0.006);
     }
-    return k.g;
+    return shiftZ(k.g, 0.04);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    symShift(ctx, 0.86, 0.76, 0.04, () => {
       D.ellipse(ctx, 0, 0, 0.43, 0.41, tint(c.shell, 0.1));
       D.ellipse(ctx, 0, 0, 0.39, 0.37, tint(c.fabric, 0.45), INK_SOFT, LINE_THIN);
       D.circle(ctx, 0, 0.03, 0.29, tint(c.fabric, 0.55), INK_SOFT, LINE_THIN);
@@ -1732,7 +1751,7 @@ const papasan: FurnitureDef = {
   category: 'living',
   group: 'כסאות נוח',
   tags: ['פפסן', 'ראטן', 'קש', 'בוהו', 'קערה', 'כרית'],
-  size: { w: 1.14, d: 1.12, h: 0.84 },
+  size: { w: 1.14, d: 1.1, h: 0.86 },
   colors: [slot('frame', 'ראטן', '#b8925f'), slot('fabric', 'כרית', '#c96b4a')],
   seats: [{ x: 0, z: 0.1, height: 0.45, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
@@ -1757,11 +1776,11 @@ const papasan: FurnitureDef = {
       const r = ((R - 0.02) * i) / 8;
       inner.push([r, 0.34 * Math.pow(r / R, 2)]);
     }
-    bowl.lathe([...prof, ...inner], wick, 0, 0, 0, 30);
+    bowl.lathe([...prof, ...inner], wick, 0, 0, 0, 24);
     bowl.ring(R - 0.005, 0.022, cane, 0, 0.33, 0, 32);
     // radial ribs under the bowl
-    for (let i = 0; i < 10; i++) {
-      const a = (i / 10) * Math.PI * 2;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
       const pts: V3[] = [];
       for (let j = 0; j <= 4; j++) {
         const r = 0.08 + ((R - 0.08) * j) / 4;
@@ -1781,15 +1800,15 @@ const papasan: FurnitureDef = {
       const r = (Rc * i) / 7;
       cp.push([r, 0.34 * Math.pow(r / R, 2) + 0.13 - 0.02 * Math.exp(-r * r * 60) + 0.02 * Math.sin(r * 18) * 0.3]);
     }
-    bowl.lathe(cp, fab, 0, 0, 0, 30);
+    bowl.lathe(cp, fab, 0, 0, 0, 24);
     bowl.sphere(0.018, M.fabric(darken(c.fabric, 0.2), 12), 0, 0.12, 0, 1, 0.5, 1, 8);
     bowl.g.rotation.x = -0.26;
     k.add(bowl.g, 0, 0.3, 0.0);
-    return k.g;
+    return shiftZ(k.g, 0.085);
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
-      D.ellipse(ctx, 0, 0, 0.57, 0.56, tint(c.frame, 0.35));
+      D.ellipse(ctx, 0, 0, 0.566, 0.545, tint(c.frame, 0.35));
       D.ellipse(ctx, 0, 0.02, 0.5, 0.48, tint(c.fabric, 0.45), INK_SOFT, LINE_THIN);
       D.circle(ctx, 0, 0.05, 0.02, tint(c.fabric, 0.1), null);
     }),
@@ -1803,9 +1822,9 @@ const scandiLounge: FurnitureDef = {
   category: 'living',
   group: 'כסאות נוח',
   tags: ['סקנדינבי', 'עץ', 'טיק', 'נורדי', 'מיד-סנצ׳ורי'],
-  size: { w: 0.74, d: 0.84, h: 0.82 },
+  size: { w: 0.74, d: 0.84, h: 0.86 },
   colors: [slot('fabric', 'ריפוד', '#7c8a6e'), slot('wood', 'עץ', PAL.teak)],
-  seats: [{ x: 0, z: 0.06, height: 0.42, facing: 0, kind: 'sit' }],
+  seats: [{ x: 0, z: 0.1, height: 0.42, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.wood(c.wood, 0.45);
@@ -1814,8 +1833,8 @@ const scandiLounge: FurnitureDef = {
     for (const sx of [-1, 1]) {
       const x = sx * (w / 2 - 0.05);
       // front leg, raked back leg, side rail and the wide floating arm
-      k.beam([x + sx * 0.012, 0, 0.34], [x, 0.57, 0.3], 0.042, 0.042, wood, 0.008);
-      k.beam([x + sx * 0.012, 0, -0.38], [x, 0.57, -0.2], 0.042, 0.042, wood, 0.008);
+      k.beam([x + sx * 0.012, 0.004, 0.34], [x, 0.57, 0.3], 0.042, 0.042, wood, 0.008);
+      k.beam([x + sx * 0.012, 0.004, -0.38], [x, 0.57, -0.2], 0.042, 0.042, wood, 0.008);
       k.beam([x, 0.26, 0.3], [x, 0.26, -0.27], 0.03, 0.05, wood, 0.006);
       k.rbox(0.085, 0.024, 0.76, 0.011, wood, sx * (w / 2 - 0.0425), 0.57, -0.01, 2);
     }
@@ -1830,10 +1849,10 @@ const scandiLounge: FurnitureDef = {
     seat.g.rotation.x = -0.07;
     k.add(seat.g, 0, 0.285, 0.02);
     backPad(k, 0.54, 0.5, 0.12, lean, fab, 0, 0.36, -0.235, { crown: 0.03, r: 0.05, step: 0.15, wrinkle: 0.003, seed: 4, tBot: 1.1, tTop: 0.9 });
-    return k.g;
+    return shiftZ(k.g, 0.045);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    symShift(ctx, 0.74, 0.84, 0.045, () => {
       D.box(ctx, -0.3, -0.29, 0.3, 0.31, 0.05, tint(c.fabric, 0.45));
       D.box(ctx, -0.27, -0.42, 0.27, -0.2, 0.04, tint(c.fabric, 0.35), INK_SOFT, LINE_THIN);
       for (const sx of [-1, 1]) D.box(ctx, sx * 0.37, -0.39, sx * 0.285, 0.37, 0.02, tint(c.wood, 0.3));
@@ -1962,8 +1981,8 @@ const hangingEgg: FurnitureDef = {
       thMax: 2.55,
       thick: 0.03,
       open: (th) => (th < 0.8 || th > 2.45 ? 0 : 1.35 * Math.pow(Math.sin((Math.PI * (th - 0.8)) / 1.65), 0.5)),
-      rows: 18,
-      cols: 26,
+      rows: 16,
+      cols: 22,
     });
     p.geo(sh.outer, wick, 0, cy, 0);
     p.geo(sh.inner, wick, 0, cy, 0);

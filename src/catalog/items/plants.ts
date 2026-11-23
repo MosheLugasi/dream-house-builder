@@ -231,7 +231,7 @@ const oliveTree: FurnitureDef = {
       const b = k.geo(blobGeo(0.07, 1, ci + 3, 0.38, 2.6), crown[ci % 2], cp[0], cp[1] + 0.02, cp[2]);
       b.scale.set(1.2, 0.85, 1.05);
       b.rotation.y = ci;
-      for (let i = 0; i < 27; i++) {
+      for (let i = 0; i < 25; i++) {
         const a = r() * Math.PI * 2;
         const el = (r() - 0.4) * 2.2;
         const d = out(a, el);
@@ -469,8 +469,8 @@ const cactusBarrel: FurnitureDef = {
 function echeveria(k: Kit, x: number, y: number, z: number, color: string, seed: number, scale = 1): void {
   const r = rng(seed);
   const rings = [
-    { n: 9, len: 0.05, pitch: 0.12, col: mix(color, '#c98a92', 0.3) },
-    { n: 7, len: 0.042, pitch: 0.45, col: color },
+    { n: 8, len: 0.05, pitch: 0.12, col: mix(color, '#c98a92', 0.3) },
+    { n: 6, len: 0.042, pitch: 0.45, col: color },
     { n: 5, len: 0.032, pitch: 0.85, col: lighten(color, 0.1) },
   ];
   rings.forEach((ring, ri) => {
@@ -500,9 +500,9 @@ const succulentTrio: FurnitureDef = {
     const pot2 = mix(c.pot, '#3d4a52', 0.6);
     const s2 = planter(k, { style: 'cylinder', r: 0.058, h: 0.085, mat: M.ceramic(pot2), x: 0, top: 'soil', seg: 18 });
     const hg = fleshGeo(0.075, 0.02, 0.009, { widest: 0.2, blunt: 0.5 });
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 11; i++) {
       const a = i * GOLDEN;
-      const t = i / 12;
+      const t = i / 10;
       leafAt(k, hg, M.foliage(i % 2 ? '#30523a' : '#3c6146'), [Math.cos(a) * 0.01, s2 - 0.004, Math.sin(a) * 0.01], out(a, 1.25 - t * 0.6), UP, 1.05 - t * 0.35);
     }
     // 3. jade plant in an egg pot
@@ -662,7 +662,7 @@ const pothosHanging: FurnitureDef = {
     const leaves = [M.leaf(c.leaves), M.leaf(mix(c.leaves, '#d8cf6a', 0.32)), M.leaf(darken(c.leaves, 0.12)), M.leaf(mix(c.leaves, '#c7c46a', 0.18))];
     const lg = bladeGeo(0.085, 0.066, { shape: heartShape, slant: 0.25, rows: 4, cols: 2, fold: 0.14, droop: 0.12 });
     const stem = M.leaf(mix(c.leaves, '#a8b85a', 0.4));
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 5; i++) {
       const a = i * GOLDEN + 0.2;
       const ca = Math.cos(a);
       const sa = Math.sin(a);
@@ -755,7 +755,7 @@ const trailingShelf: FurnitureDef = {
       leafAt(k, lg, mats[i % 4], [px + Math.cos(a) * 0.025, soil + 0.02, pz + Math.sin(a) * 0.025], out(a, 0.5 + r() * 0.4), jitterUp(r, 0.6), 0.95);
     }
     // the lowest leaf tip defines the bottom of the item
-    const box = new THREE.Box3().setFromObject(k.g);
+    const box = new THREE.Box3().setFromObject(k.g, true);
     for (const ch of k.g.children) ch.position.y -= box.min.y;
     return k.g;
   },

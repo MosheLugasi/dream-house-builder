@@ -828,7 +828,7 @@ const tallVase: FurnitureDef = {
   category: CAT,
   group: G_DECOR,
   tags: ['אגרטל', 'קרמיקה', 'זית', 'ענפים', 'גבוה'],
-  size: { w: 0.36, d: 0.26, h: 0.86 },
+  size: { w: 0.34, d: 0.24, h: 0.86 },
   colors: [slot('vase', 'זיגוג', '#2f4a55'), slot('leaves', 'עלים', '#7d8b5a')],
   build: ({ colors: c }) => {
     const k = new Kit();
@@ -881,7 +881,7 @@ const tallVase: FurnitureDef = {
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
-      D.foliage(ctx, 0, 0, 0.15, tint(c.leaves, 0.45) + 'cc', 6, 3, INK_SOFT);
+      D.foliage(ctx, 0, 0, 0.118, tint(c.leaves, 0.45) + 'cc', 6, 3, INK_SOFT);
       circ(ctx, 0, 0, 0.11, tint(c.vase, 0.4));
       circ(ctx, 0, 0, 0.045, tint(c.vase, 0.1));
     }),

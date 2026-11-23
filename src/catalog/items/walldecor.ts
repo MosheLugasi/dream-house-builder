@@ -7,7 +7,7 @@ import { slot } from './_parts';
 
 /** Shift a built group vertically so its lowest point rests at y = 0. */
 function settle(g: THREE.Group): THREE.Group {
-  const box = new THREE.Box3().setFromObject(g);
+  const box = new THREE.Box3().setFromObject(g, true);
   for (const ch of g.children) ch.position.y -= box.min.y;
   return g;
 }
@@ -812,7 +812,7 @@ const mirrorRattan: FurnitureDef = {
   category: 'decor',
   group: 'מראות',
   tags: ['מראה', 'ראטן', 'קש', 'בוהו', 'פרח', 'טבעי', 'עגולה'],
-  size: { w: RT.r * 2, d: RT.d, h: RT.r * 2 },
+  size: { w: RT.r * 2, d: RT.d, h: 0.69 },
   mount: 'wall',
   elevation: elev(RT.r * 2, 1.5),
   colors: [slot('frame', 'ראטן', '#c9a675')],
@@ -837,7 +837,7 @@ const mirrorRattan: FurnitureDef = {
       g.rotateZ(a);
       k.geo(g, i % 2 ? cane : cane2, Math.cos(a) * pr, cy + Math.sin(a) * pr, zb + 0.008);
     }
-    return k.g;
+    return settle(k.g);
   },
   draw2d: (ctx, c) => sym(ctx, () => D.rr(ctx, 0, 0, RT.r * 2, RT.d, 0.004, tint(c.frame, 0.2), undefined, 0.008)),
 };

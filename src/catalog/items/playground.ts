@@ -683,7 +683,7 @@ const eggChair: FurnitureDef = {
 
 /* ================================================================== rockers */
 
-const HORSE = { w: 0.38, d: 1.02, h: 0.84 };
+const HORSE = { w: 0.34, d: 1.08, h: 0.87 };
 
 const rockingHorse: FurnitureDef = {
   id: 'play-rocking-horse',
@@ -723,7 +723,7 @@ const rockingHorse: FurnitureDef = {
       for (const sz of [-1, 1]) p.rod([sx * 0.14, 0.07, sz * 0.32], [sx * 0.07, legTop + 0.06, sz * 0.17], 0.024, body, 0.03, 10);
     }
     // body
-    p.sphere(0.15, body, 0, 0.5, -0.02, 0.85, 0.75, 1.75, 20);
+    p.sphere(0.15, body, 0, 0.5, -0.02, 0.85, 0.75, 1.75, 16);
     // neck + head silhouette with bevel
     const h = new THREE.Shape();
     h.moveTo(0.06, 0.58);
@@ -736,7 +736,7 @@ const rockingHorse: FurnitureDef = {
     h.quadraticCurveTo(0.27, 0.48, 0.22, 0.42);
     h.lineTo(0.1, 0.44);
     h.closePath();
-    p.geo(profileX(h, 0.1, 0.03, 8), body, 0, 0, 0);
+    p.geo(profileX(h, 0.1, 0.03, 6), body, 0, 0, 0);
     // ears
     for (const sx of [-1, 1]) p.rod([sx * 0.022, 0.815, 0.29], [sx * 0.03, 0.838, 0.27], 0.012, body, 0.004, 6);
     // eyes + nostrils
@@ -1526,7 +1526,7 @@ const fountain: FurnitureDef = {
 
 /* ================================================================== fire & grill */
 
-const FIRE = { w: 2.9, d: 2.9 };
+const FIRE = { w: 2.32, d: 2.32 };
 const FIRE_SEAT_R = 1.18;
 const FIRE_SEATS: SeatAnchor[] = [0, 1, 2, 3].map((i) => {
   const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
@@ -1541,7 +1541,7 @@ const firePit: FurnitureDef = {
   category: 'outdoor',
   group: G_FIRE,
   tags: ['מדורה', 'בור אש', 'אבנים', 'קמפינג', 'ערב'],
-  size: { w: FIRE.w, d: FIRE.d, h: 0.46 },
+  size: { w: FIRE.w, d: FIRE.d, h: 0.44 },
   colors: [slot('stone', 'אבנים', '#9c958a'), slot('seat', 'אבני ישיבה', '#b5ab9c')],
   seats: FIRE_SEATS,
   actions: [{ kind: 'fire', label: 'להדליק מדורה', at: { x: 0, y: 0.12, z: 0 } }],
@@ -1555,7 +1555,7 @@ const firePit: FurnitureDef = {
       for (let i = 0; i < n; i++) {
         const a = ((i + course * 0.5) / n) * Math.PI * 2;
         const g = blobGeo(0.12, 1, i * 7 + course * 31 + 3, 0.22, 2.2);
-        const m = k.geo(g, M.stone(i % 3 === 0 ? darken(c.stone, 0.1) : c.stone, 0.9), Math.cos(a) * 0.5, 0.08 + course * 0.13, Math.sin(a) * 0.5);
+        const m = k.geo(g, M.stone(i % 3 === 0 ? darken(c.stone, 0.1) : c.stone, 0.9), Math.cos(a) * 0.5, 0.1 + course * 0.13, Math.sin(a) * 0.5);
         m.scale.set(1.15, 0.62, 0.95);
         m.rotation.y = -a;
       }
@@ -1577,11 +1577,11 @@ const firePit: FurnitureDef = {
       const g = blobGeo(0.28, 1, 50 + i * 13, 0.12, 1.4);
       const pos = g.getAttribute('position') as THREE.BufferAttribute;
       for (let j = 0; j < pos.count; j++) {
-        if (pos.getY(j) > 0.12) pos.setY(j, 0.12 + (pos.getY(j) - 0.12) * 0.12);
-        if (pos.getY(j) < -0.2) pos.setY(j, -0.2);
+        if (pos.getY(j) > 0.15) pos.setY(j, 0.15 + (pos.getY(j) - 0.15) * 0.1);
+        if (pos.getY(j) < -0.24) pos.setY(j, -0.24);
       }
       g.computeVertexNormals();
-      const m = k.geo(g, M.stone(c.seat, 0.85), s.x, 0.2, s.z);
+      const m = k.geo(g, M.stone(c.seat, 0.85), s.x, 0.255, s.z);
       m.scale.set(1.1, 1.05, 0.95);
       m.rotation.y = i * 0.8;
     });
@@ -1600,7 +1600,7 @@ const firePit: FurnitureDef = {
     }),
 };
 
-const KETTLE = { w: 0.84, d: 0.62, h: 0.92 };
+const KETTLE = { w: 0.98, d: 0.66, h: 0.95 };
 
 const kettleBbq: FurnitureDef = {
   id: 'bbq-kettle',
@@ -1610,17 +1610,17 @@ const kettleBbq: FurnitureDef = {
   tags: ['גריל', 'מנגל', 'פחמים', 'על האש', 'ברביקיו'],
   size: KETTLE,
   colors: [slot('enamel', 'אמייל', '#1f2022'), slot('handle', 'ידיות', '#2b2c2f')],
-  actions: [{ kind: 'cook', label: 'לצלות', at: { x: -0.06, y: 0.72, z: 0 } }],
+  actions: [{ kind: 'cook', label: 'לצלות', at: { x: -0.16, y: 0.72, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const enamel = M.lacquer(c.enamel);
     const steel = M.steel();
-    const cx = -0.06;
+    const cx = -0.16;
     const rimY = 0.7;
     const R = 0.285;
     // bowl
-    k.lathe(smoothArc(R, 0.24, 10), enamel, cx, rimY - 0.24, 0, 28);
-    k.lathe(smoothArc(R - 0.008, 0.232, 10).map(([r, y]) => [r, y + 0.01] as [number, number]).reverse(), M.matte('#2a2726'), cx, rimY - 0.24, 0, 28);
+    k.lathe(smoothArc(R, 0.24, 10), enamel, cx, rimY - 0.24, 0, 20);
+    k.lathe(smoothArc(R - 0.008, 0.232, 10).map(([r, y]) => [r, y + 0.01] as [number, number]).reverse(), M.matte('#2a2726'), cx, rimY - 0.24, 0, 20);
     k.ring(R, 0.006, enamel, cx, rimY, 0, 32);
     // charcoal glow below the grate
     k.disc(R - 0.08, 0.04, M.glow('#ff5a1a', 0.9, '#2a1a12'), cx, rimY - 0.14, 0, 18);
@@ -1645,7 +1645,7 @@ const kettleBbq: FurnitureDef = {
     legs.forEach((a, i) => {
       const top: V3 = [cx + Math.cos(a) * 0.17, rimY - 0.2, Math.sin(a) * 0.17];
       const bot: V3 = [cx + Math.cos(a) * 0.29, 0.05, Math.sin(a) * 0.29];
-      k.rod(top, [bot[0], i < 2 ? 0.08 : 0.0, bot[2]], 0.012, steel, 0.012, 8);
+      k.rod(top, [bot[0], i < 2 ? 0.08 : 0.02, bot[2]], 0.012, steel, 0.012, 8);
       if (i < 2) {
         zcyl(k, 0.075, 0.03, M.rubber(), bot[0], 0.075, bot[2] + (bot[2] > 0 ? 0.02 : -0.02), 16);
         zcyl(k, 0.035, 0.032, M.plastic('#3a3c40'), bot[0], 0.075, bot[2] + (bot[2] > 0 ? 0.02 : -0.02), 10);
@@ -1656,8 +1656,8 @@ const kettleBbq: FurnitureDef = {
     // lid hanging on the side hook
     k.rbox(0.03, 0.18, 0.06, 0.006, steel, cx + R + 0.03, rimY - 0.12, 0, 1);
     const lid = new Kit();
-    lid.lathe(smoothArc(R + 0.005, 0.22, 10), enamel, 0, 0, 0, 28);
-    lid.lathe(smoothArc(R - 0.003, 0.212, 8).reverse(), M.matte('#2a2726'), 0, 0, 0, 28);
+    lid.lathe(smoothArc(R + 0.005, 0.22, 10), enamel, 0, 0, 0, 20);
+    lid.lathe(smoothArc(R - 0.003, 0.212, 8).reverse(), M.matte('#2a2726'), 0, 0, 0, 20);
     lid.cyl(0.05, 0.012, M.brushed('#b9bcbf'), 0, 0.215, 0, 0.05, 14);
     lid.rbox(0.14, 0.022, 0.025, 0.008, M.wood(c.handle), 0, 0.28, 0, 1);
     for (const dx of [-0.05, 0.05]) lid.rod([dx, 0.22, 0], [dx, 0.285, 0], 0.005, steel, 0.005, 4);
@@ -1667,7 +1667,7 @@ const kettleBbq: FurnitureDef = {
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
-      const cx = -0.06;
+      const cx = -0.16;
       D.circle(ctx, cx, 0, 0.285, tint(c.enamel, 0.55));
       for (let i = -6; i <= 6; i += 2) D.line(ctx, cx - Math.sqrt(0.265 ** 2 - (i * 0.04) ** 2), i * 0.04, cx + Math.sqrt(0.265 ** 2 - (i * 0.04) ** 2), i * 0.04, INK_SOFT, 0.005);
       D.rr(ctx, cx + 0.38, 0, 0.12, 0.56, 0.05, tint(c.enamel, 0.45));
@@ -1685,7 +1685,7 @@ function smoothArc(R: number, h: number, n: number): Array<[number, number]> {
   return out;
 }
 
-const OVEN = { w: 1.2, d: 1.2, h: 1.82 };
+const OVEN = { w: 1.2, d: 1.2, h: 1.77 };
 
 const pizzaOven: FurnitureDef = {
   id: 'fire-pizza-oven',
@@ -1750,7 +1750,7 @@ const pizzaOven: FurnitureDef = {
     }
     // mouth: dark interior + floor, embers + logs at the back
     k.box(0.4, 0.42, 0.01, M.matte('#120d0b'), 0, fy, 0.3);
-    k.box(0.4, 0.01, 0.35, M.matte('#2a2320'), 0, fy, 0.45);
+    k.box(0.4, 0.01, 0.28, M.matte('#2a2320'), 0, fy, 0.43);
     k.sphere(0.07, M.glow('#ff6a1a', 1.5, '#3a1a0a'), 0, fy + 0.02, 0.36, 2, 0.5, 1, 10);
     for (const sx of [-1, 1]) k.rod([sx * 0.12, fy + 0.03, 0.33], [sx * 0.02, fy + 0.08, 0.4], 0.025, bark, 0.025, 8);
     // chimney on the vault

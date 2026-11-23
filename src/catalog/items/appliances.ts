@@ -604,7 +604,7 @@ const frenchFridge: FurnitureDef = (() => {
         smallBottle(p, cx + 0.02, 0.556, -0.04, 0.17, 0.03, M.plastic('#f6f6f2'), M.plastic('#c0392b'));
         // long bar handle near the centre seam
         const hx = -s * (dW - 0.05);
-        barHandle(p, [hx, 0.15, doorT + 0.03], [hx, dh - 0.15, doorT + 0.03], doorT, M.chrome(), 0.011);
+        barHandle(p, [hx, 0.15, doorT + 0.024], [hx, dh - 0.15, doorT + 0.024], doorT, M.chrome(), 0.011);
         if (s < 0) {
           // ice & water dispenser niche
           p.rbox(0.2, 0.32, 0.006, 0.02, M.screen('#141518'), cx, 0.32, doorT + 0.001, 1);
@@ -618,7 +618,7 @@ const frenchFridge: FurnitureDef = (() => {
       // freezer drawer
       const dr = k.part('drawer', 0, 0, 0, { open: 0.45 });
       dr.rbox(w - 0.004, split - 0.068, doorT, 0.012, steel, 0, 0.065, cz + doorT / 2, 2);
-      barHandle(dr, [-0.3, split - 0.1, fz + 0.03], [0.3, split - 0.1, fz + 0.03], fz, M.chrome(), 0.011);
+      barHandle(dr, [-0.3, split - 0.1, fz + 0.024], [0.3, split - 0.1, fz + 0.024], fz, M.chrome(), 0.011);
       const bk = M.metal('#d7d9db', 0.4, 0.6);
       dr.box(w - 0.1, 0.006, 0.5, bk, 0, 0.1, cz - 0.27);
       for (const s of [-1, 1]) dr.box(0.006, 0.32, 0.5, bk, s * (w / 2 - 0.05), 0.1, cz - 0.27);
@@ -631,9 +631,6 @@ const frenchFridge: FurnitureDef = (() => {
       sym(ctx, () => {
         drawTall(ctx, w, d, tint(c.body, 0.5));
         D.line(ctx, 0, d / 2 - 0.07, 0, d / 2, INK_SOFT);
-        ctx.setLineDash([0.03, 0.025]);
-        D.arc(ctx, -w / 2, d / 2 - 0.07, w / 2 - 0.02, 0.15, Math.PI / 2 - 0.15, INK_SOFT);
-        D.arc(ctx, w / 2, d / 2 - 0.07, w / 2 - 0.02, Math.PI / 2 + 0.15, Math.PI - 0.15, INK_SOFT);
       }),
   };
 })();
@@ -949,7 +946,7 @@ const rangeCooker: FurnitureDef = (() => {
         potX,
         py,
         potZ,
-        28,
+        20,
       );
       sLathe(
         k,
@@ -964,7 +961,7 @@ const rangeCooker: FurnitureDef = (() => {
         potX,
         py + 0.13,
         potZ,
-        24,
+        18,
         10,
       );
       k.sphere(0.014, black, potX, py + 0.162, potZ, 1, 0.6, 1, 10);
@@ -983,7 +980,7 @@ const rangeCooker: FurnitureDef = (() => {
         0.21,
         py,
         0.1,
-        28,
+        20,
       );
       k.rod([0.325, py + 0.035, 0.1], [0.44, py + 0.06, 0.1], 0.009, M.wood(PAL.walnut, 0.4), 0.008, 8);
       // control panel with knobs
@@ -1209,7 +1206,7 @@ const freestandingTub: FurnitureDef = (() => {
     category: 'bathroom' as const,
     group: G_TUBS,
     tags: ['אמבטיה', 'עומדת', 'מודרני', 'אובלי', 'ברז רצפה', 'ספא'],
-    size: { w: 1.8, d: 0.75, h: 1.0 },
+    size: { w: 1.8, d: 0.75, h: 0.95 },
     colors: [slot('tub', 'אמבט', '#f7f6f2'), slot('metal', 'ברז', '#2a2b2e')],
     seats: [{ x: cx + 0.1, z: 0, height: 0.18, facing: -Math.PI / 2, kind: 'lie' }],
     actions: [{ kind: 'water', at: spout }],

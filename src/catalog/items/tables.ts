@@ -810,7 +810,7 @@ const liveEdgeTable: FurnitureDef = {
   category: 'dining',
   group: G_DIN,
   tags: ['לייב אדג\'', 'עץ מלא', 'אגוז', 'רגלי סיכה', 'תעשייתי', 'סלאב'],
-  size: { w: 2.0, d: 0.95, h: DH },
+  size: { w: 2.0, d: 0.88, h: DH },
   colors: [slot('top', 'עץ', '#6a4630'), slot('legs', 'רגליים', '#24252a')],
   build: ({ colors: c }) => {
     const k = new Kit();
