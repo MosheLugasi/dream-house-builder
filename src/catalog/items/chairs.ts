@@ -717,31 +717,44 @@ const SHELL: ShellSpec = {
   pow: 2.4,
 };
 
-const SHELL_ARM: ShellSpec = {
-  path: [
-    [0.24, 0.42],
-    [0.215, 0.445],
-    [0.1, 0.452],
-    [-0.02, 0.447],
-    [-0.12, 0.455],
-    [-0.19, 0.5],
-    [-0.225, 0.6],
-    [-0.245, 0.7],
-    [-0.255, 0.76],
+/**
+ * Armchair shell as a polar "bowl": u runs around the seat (0.5 = back centre, 0 / 1 = front centre),
+ * v from the seat centre (0) out to the rim (1). The rim height varies around: high at the back,
+ * arm height at the sides, a soft lip at the front.
+ */
+function bowlFn(o: { zc: number; seatY: number; rx: number; rz: number; rim: Tab; lean: number; s0?: number }): (u: number, v: number) => V3 {
+  const s0 = o.s0 ?? 0.72;
+  return (u, v) => {
+    const th = (u * 2 - 1) * Math.PI;
+    const a = Math.abs(th);
+    const h = lerpTab(o.rim, a);
+    const w = v > s0 ? (v - s0) / (1 - s0) : 0;
+    const R = v <= s0 ? v : s0 + (v - s0) * (1 - 0.45 * w);
+    let y = o.seatY - 0.012 * (1 - Math.min(1, v / s0) ** 2) + h * Math.pow(w, 1.6);
+    const front = Math.max(0, -Math.cos(th));
+    const f = Math.min(1, Math.max(0, (v - 0.7) / 0.3));
+    y -= 0.022 * Math.pow(front, 4) * f * f * (3 - 2 * f);
+    const back = Math.max(0, Math.cos(th));
+    const x = R * o.rx * Math.sin(th);
+    const z = o.zc - R * o.rz * Math.cos(th) - o.lean * (y - o.seatY) * back;
+    return [x, y, z];
+  };
+}
+
+const ARM_BOWL = bowlFn({
+  zc: 0.035,
+  seatY: 0.45,
+  rx: 0.315,
+  rz: 0.3,
+  lean: 0.12,
+  rim: [
+    [0, 0.33],
+    [1.2, 0.21],
+    [2.0, 0.17],
+    [2.5, 0.03],
+    [Math.PI, 0.0],
   ],
-  hw: [
-    [0, 0.235],
-    [0.5, 0.27],
-    [1, 0.23],
-  ],
-  curl: [
-    [0, 0.012],
-    [0.45, 0.19],
-    [1, 0.07],
-  ],
-  pow: 2.6,
-  wrap: 0.08,
-};
+});
 
 const STACK: ShellSpec = {
   path: [
@@ -787,8 +800,8 @@ function wireBase(k: Kit, m: Mat, mounts: V3[], feet: V3[], ringY = 0.2): void {
   }
 }
 
-function shellChair(o: { spec: ShellSpec; base: 'dowel' | 'wire' | 'metal4' | 'plastic'; pad?: Uph }): Fam {
-  const fn = shellFn(o.spec);
+function shellChair(o: { spec?: ShellSpec; bowl?: (u: number, v: number) => V3; base: 'dowel' | 'wire' | 'metal4' | 'plastic'; pad?: Uph }): Fam {
+  const fn = o.bowl ?? shellFn(o.spec as ShellSpec);
   const sh = o.pad ? 0.475 : 0.46;
   const under = (u: number, v: number, d = 0.012): V3 => {
     const p = fn(u, v);
@@ -797,7 +810,8 @@ function shellChair(o: { spec: ShellSpec; base: 'dowel' | 'wire' | 'metal4' | 'p
   const build = (c: C): THREE.Object3D => {
     const k = new Kit();
     const shM = M.plastic(c.shell);
-    sheet(k, fn, 16, 26, 0.011, shM);
+    if (o.bowl) sheet(k, fn, 36, 12, 0.011, shM);
+    else sheet(k, fn, 16, 26, 0.011, shM);
     if (o.pad) sheet(k, offsetFn(fn, 0.017, 0.05, 0.95, 0.03, 0.97), 12, 22, pillowT(0.022, 0.3), uphM(o.pad, c.seat));
     if (o.base === 'plastic') {
       // integrated, splayed stacking legs + a hand slot in the back
@@ -861,13 +875,20 @@ function shellChair(o: { spec: ShellSpec; base: 'dowel' | 'wire' | 'metal4' | 'p
     // outline of the shell seen from above
     const pts: Array<[number, number]> = [];
     const N = 24;
-    for (let j = 0; j <= N; j++) {
-      const p = fn(1, j / N);
-      pts.push([p[0], p[2]]);
-    }
-    for (let j = N; j >= 0; j--) {
-      const p = fn(0, j / N);
-      pts.push([p[0], p[2]]);
+    if (o.bowl) {
+      for (let i = 0; i < 36; i++) {
+        const p = fn(i / 36, 1);
+        pts.push([p[0], p[2]]);
+      }
+    } else {
+      for (let j = 0; j <= N; j++) {
+        const p = fn(1, j / N);
+        pts.push([p[0], p[2]]);
+      }
+      for (let j = N; j >= 0; j--) {
+        const p = fn(0, j / N);
+        pts.push([p[0], p[2]]);
+      }
     }
     if (o.base !== 'plastic') pDots(ctx, [[-0.215, 0.215], [0.215, 0.215], [0.205, -0.205], [-0.205, -0.205]], 0.013, tint(c.base ?? '#444444', 0.2));
     pPoly(ctx, pts, tint(c.shell, 0.35));
@@ -878,7 +899,7 @@ function shellChair(o: { spec: ShellSpec; base: 'dowel' | 'wire' | 'metal4' | 'p
       pPoly(ctx, q, tint(c.seat, 0.35), INK_SOFT, LINE_THIN);
     }
     const back: Array<[number, number]> = [];
-    for (let i = 0; i <= 10; i++) back.push([fn(i / 10, 0.62)[0], fn(i / 10, 0.62)[2]]);
+    for (let i = 0; i <= 10; i++) back.push(o.bowl ? [fn(0.2 + i * 0.06, 0.72)[0], fn(0.2 + i * 0.06, 0.72)[2]] : [fn(i / 10, 0.62)[0], fn(i / 10, 0.62)[2]]);
     ctx.beginPath();
     back.forEach(([x, z], i) => (i ? ctx.lineTo(x, z) : ctx.moveTo(x, z)));
     ctx.lineWidth = LINE_THIN;
@@ -916,7 +937,7 @@ function ghostChair(): Fam {
     });
   const build = (c: C): THREE.Object3D => {
     const k = new Kit();
-    const gl = M.glass(c.frame, 0.55);
+    const gl = M.glass(c.frame, 0.6);
     pad(k, GHOST_SEAT, 0.034, gl, 0, sh - 0.034, 0, { rTop: 0.012, rBot: 0.006, crown: -0.004, rings: 3 });
     for (const s of [-1, 1]) {
       squareLeg(k, [s * 0.208, 0, 0.215], [s * 0.192, sh - 0.03, 0.17], 0.01, 0.016, gl);
@@ -2017,7 +2038,8 @@ function officeChair(o: OfficeOpts): Fam {
     k.sphere(0.012, blk, 0.2, yMech + 0.012, 0.11, 1.4, 0.8, 1, 6);
     const leatherLook = o.back === 'exec' || o.back === 'conf' || o.back === 'gaming' || o.saddle;
     const um = leatherLook ? M.leather(c.seat) : M.fabric(c.seat);
-    k.box(0.4, 0.016, 0.38, blk, 0, yMech + 0.046, 0.02);
+    if (o.saddle) k.box(0.24, 0.016, 0.24, blk, 0, yMech + 0.046, 0);
+    else k.box(0.4, 0.016, 0.38, blk, 0, yMech + 0.046, 0.02);
     if (o.saddle) {
       pad(k, SADDLE, 0.08, um, 0, yMech + 0.06, 0, { rTop: 0.03, rBot: 0.012, crown: -0.014, rings: 6, top: (x, z) => 0.02 * (z / 0.17) ** 2 - 0.03 * (x / 0.2) ** 2 + 0.012 });
     } else if (o.back === 'gaming') {
@@ -2337,15 +2359,15 @@ const office = (id: string, name: string, tags: string[], colors: ColorSlot[], f
   item(id, name, 'office', G_OFFICE, ['כיסא משרדי', 'כיסא עבודה', ...tags], colors, fam, size, dz);
 
 const DINING_CHAIRS: FurnitureDef[] = [
-  dining('chair-windsor-bow', 'כיסא וינדזור עם גב קשת', ['וינדזור', 'חישורים', 'עץ מלא', 'כפרי', 'קלאסי'], [WOOD('#b98d5f'), SEAT('#b98d5f')], windsor({ n: 9 }), [0.5, 0.5, 0.97], 0.019),
-  dining('chair-windsor-comb', 'כורסת וינדזור עם גב מסרק', ['וינדזור', 'חישורים', 'ידיות', 'צבוע', 'כפרי'], [FRAME('#26272a'), SEAT('#6e4a32')], windsor({ comb: true, n: 7, paint: true }), [0.56, 0.53, 1.08], 0.034),
+  dining('chair-windsor-bow', 'כיסא וינדזור עם גב קשת', ['וינדזור', 'חישורים', 'עץ מלא', 'כפרי', 'קלאסי'], [WOOD('#b98d5f'), SEAT('#b98d5f')], windsor({ n: 9 }), [0.5, 0.5, 0.97], 0.018),
+  dining('chair-windsor-comb', 'כורסת וינדזור עם גב מסרק', ['וינדזור', 'חישורים', 'ידיות', 'צבוע', 'כפרי'], [FRAME('#26272a'), SEAT('#6e4a32')], windsor({ comb: true, n: 7, paint: true }), [0.56, 0.53, 1.08], 0.035),
   dining(
     'chair-ladder-back',
     'כיסא גב סולם',
     ['גב סולם', 'רגליים מחורטות', 'עץ אגוז', 'קלאסי'],
     [WOOD(PAL.walnut), UPH('#c9b99a')],
     woodChair({ leg: 'turned', back: { kind: 'ladder', n: 4 }, seat: 'pad', finial: true, top: 1.0, stretch: 'box', R: 0.6 }),
-    [0.44, 0.5, 1], 0.006,
+    [0.44, 0.5, 1], 0.005,
   ),
   dining(
     'chair-farmhouse-rush',
@@ -2353,7 +2375,7 @@ const DINING_CHAIRS: FurnitureDef[] = [
     ['קש', 'קלוע', 'גב סולם', 'צבוע לבן', 'פרובנס', 'כפרי'],
     [FRAME('#efebe3'), SEAT('#b99a5b')],
     woodChair({ leg: 'turned', back: { kind: 'ladder', n: 3 }, seat: 'rush', finial: true, paint: true, top: 0.98, stretch: 'farm', R: 0.6 }),
-    [0.43, 0.49, 0.98], 0.007,
+    [0.43, 0.49, 0.98], 0.006,
   ),
   dining(
     'chair-cross-back',
@@ -2364,8 +2386,8 @@ const DINING_CHAIRS: FurnitureDef[] = [
     [0.43, 0.5, 0.87], 0.014,
   ),
   dining('chair-y-back', 'כיסא גב Y עם מושב קלוע', ['גב Y', 'חבל נייר', 'קלוע', 'סקנדינבי', 'אלון'], [WOOD('#c8a06c'), SEAT('#d8c49a', 'קליעה')], hoopChair('wishbone'), [0.56, 0.54, 0.73], 0.045),
-  dining('chair-bentwood', 'כיסא קפה מעץ מכופף', ['עץ מכופף', 'בית קפה', 'וינאי', 'קנים', 'ביסטרו'], [WOOD('#3b2a20'), SEAT('#d4b483', 'קליעת קנים')], bentwood({ cane: true }), [0.44, 0.51, 0.9], 0.017),
-  dining('chair-bentwood-arm', 'כורסת ביסטרו מעץ מכופף', ['עץ מכופף', 'בית קפה', 'ידיות', 'ביסטרו'], [WOOD('#8a5a3a'), SEAT('#8a5a3a')], bentwood({ arms: true }), [0.5, 0.51, 0.9], 0.017),
+  dining('chair-bentwood', 'כיסא קפה מעץ מכופף', ['עץ מכופף', 'בית קפה', 'וינאי', 'קנים', 'ביסטרו'], [WOOD('#3b2a20'), SEAT('#d4b483', 'קליעת קנים')], bentwood({ cane: true }), [0.44, 0.51, 0.9], 0.016),
+  dining('chair-bentwood-arm', 'כורסת ביסטרו מעץ מכופף', ['עץ מכופף', 'בית קפה', 'ידיות', 'ביסטרו'], [WOOD('#8a5a3a'), SEAT('#8a5a3a')], bentwood({ arms: true }), [0.5, 0.51, 0.9], 0.016),
   dining(
     'chair-cane-back',
     'כיסא עם גב קנים',
@@ -2374,8 +2396,8 @@ const DINING_CHAIRS: FurnitureDef[] = [
     woodChair({ leg: 'taper', back: { kind: 'cane' }, seat: 'uph', uph: 'linen', top: 0.84, stretch: 'none', R: 0.45 }),
     [0.44, 0.51, 0.85], 0.015,
   ),
-  dining('chair-parsons', 'כיסא פרסונס מרופד', ['פרסונס', 'מרופד', 'פשתן', 'קלאסי'], [WOOD('#5b4232'), UPH('#d8d0c2')], parsons({ uph: 'linen' }), [0.48, 0.6, 0.89], 0.019),
-  dining('chair-parsons-skirt', 'כיסא מרופד עם חצאית', ['מרופד', 'חצאית', 'כיסוי בד', 'רומנטי'], [WOOD('#5b4232'), UPH('#e9e4da')], parsons({ uph: 'fabric', skirt: true }), [0.48, 0.6, 0.89], 0.018),
+  dining('chair-parsons', 'כיסא פרסונס מרופד', ['פרסונס', 'מרופד', 'פשתן', 'קלאסי'], [WOOD('#5b4232'), UPH('#d8d0c2')], parsons({ uph: 'linen' }), [0.48, 0.6, 0.89], 0.02),
+  dining('chair-parsons-skirt', 'כיסא מרופד עם חצאית', ['מרופד', 'חצאית', 'כיסוי בד', 'רומנטי'], [WOOD('#5b4232'), UPH('#d6cdbd')], parsons({ uph: 'fabric', skirt: true }), [0.48, 0.6, 0.89], 0.019),
   dining(
     'chair-channel-velvet',
     'כיסא קטיפה עם תפרים אנכיים',
@@ -2386,7 +2408,7 @@ const DINING_CHAIRS: FurnitureDef[] = [
   ),
   dining('chair-shell-dowel', 'כיסא מעטפת על רגלי עץ', ['מעטפת', 'פלסטיק', 'מודרני', 'רגלי עץ', 'אמצע המאה'], [slot('shell', 'מעטפת', '#f2efe8'), slot('base', 'רגליים', '#d9b98c')], shellChair({ spec: SHELL, base: 'dowel' }), [0.47, 0.51, 0.81], 0.01),
   dining('chair-shell-wire', 'כיסא מעטפת על בסיס תיל', ['מעטפת', 'פלסטיק', 'תיל', 'מתכת', 'מודרני'], [slot('shell', 'מעטפת', '#2c2d30'), slot('base', 'בסיס', '#d9dcdf')], shellChair({ spec: SHELL, base: 'wire' }), [0.47, 0.51, 0.81], 0.01),
-  dining('chair-shell-arm', 'כורסת מעטפת על רגלי עץ', ['מעטפת', 'ידיות', 'פלסטיק', 'אמצע המאה'], [slot('shell', 'מעטפת', '#d6a544'), slot('base', 'רגליים', PAL.walnut)], shellChair({ spec: SHELL_ARM, base: 'dowel' }), [0.52, 0.52, 0.78], 0.004),
+  dining('chair-shell-arm', 'כורסת מעטפת על רגלי עץ', ['מעטפת', 'ידיות', 'פלסטיק', 'אמצע המאה'], [slot('shell', 'מעטפת', '#d6a544'), slot('base', 'רגליים', PAL.walnut)], shellChair({ bowl: ARM_BOWL, base: 'dowel' }), [0.57, 0.57, 0.79], -0.012),
   dining(
     'chair-shell-pad',
     'כיסא מעטפת מרופד',
@@ -2395,22 +2417,22 @@ const DINING_CHAIRS: FurnitureDef[] = [
     shellChair({ spec: SHELL, base: 'metal4', pad: 'fabric' }),
     [0.47, 0.51, 0.81], 0.01,
   ),
-  dining('chair-plastic-stack', 'כיסא פלסטיק נערם', ['פלסטיק', 'נערם', 'חוץ', 'צבעוני'], [slot('shell', 'צבע', '#c8463c')], shellChair({ spec: STACK, base: 'plastic' }), [0.46, 0.5, 0.85], -0.015),
-  dining('chair-metal-cafe', 'כיסא מתכת תעשייתי', ['מתכת', 'תעשייתי', 'בית קפה', 'לופט'], [FRAME('#2f4f5f', 'צבע')], metalCafe({ sh: 0.46, back: 'tall' }), [0.51, 0.59, 0.81], 0.04),
-  dining('chair-ghost', 'כיסא שקוף בסגנון לואי', ['שקוף', 'אקריליק', 'פוליקרבונט', 'רוח', 'מודרני'], [FRAME('#e4eef0', 'גוון')], ghostChair(), [0.44, 0.49, 0.93], 0.019),
+  dining('chair-plastic-stack', 'כיסא פלסטיק נערם', ['פלסטיק', 'נערם', 'חוץ', 'צבעוני'], [slot('shell', 'צבע', '#c8463c')], shellChair({ spec: STACK, base: 'plastic' }), [0.46, 0.5, 0.85], -0.016),
+  dining('chair-metal-cafe', 'כיסא מתכת תעשייתי', ['מתכת', 'תעשייתי', 'בית קפה', 'לופט'], [FRAME('#2f4f5f', 'צבע')], metalCafe({ sh: 0.46, back: 'tall' }), [0.51, 0.59, 0.81], 0.039),
+  dining('chair-ghost', 'כיסא שקוף בסגנון לואי', ['שקוף', 'אקריליק', 'פוליקרבונט', 'רוח', 'מודרני'], [FRAME('#b9d2da', 'גוון')], ghostChair(), [0.44, 0.49, 0.93], 0.018),
   dining('chair-wire-mesh', 'כיסא רשת תיל', ['תיל', 'רשת', 'מתכת', 'כרום', 'אמצע המאה'], [FRAME('#cfd3d6', 'תיל'), SEAT('#3b3f45', 'כרית')], wireChair(), [0.49, 0.5, 0.82]),
   dining('chair-sling-leather', 'כיסא עור ערסל', ['עור', 'ערסל', 'מתכת שחורה', 'מינימליסטי'], [UPH('#8b5a3c')], slingChair(), [0.48, 0.52, 0.85], 0.042),
-  dining('chair-scandi-round', 'כורסת אוכל סקנדינבית עם גב מעוגל', ['סקנדינבי', 'ידיות', 'חישורים', 'מרופד', 'עץ טיק'], [WOOD('#c79d6b'), UPH('#b7b2a8')], hoopChair('round'), [0.52, 0.5, 0.73], 0.018),
+  dining('chair-scandi-round', 'כורסת אוכל סקנדינבית עם גב מעוגל', ['סקנדינבי', 'ידיות', 'חישורים', 'מרופד', 'עץ טיק'], [WOOD('#c79d6b'), UPH('#b7b2a8')], hoopChair('round'), [0.52, 0.5, 0.73], 0.017),
   dining('chair-folding', 'כיסא עץ מתקפל', ['מתקפל', 'עץ אשור', 'אירוח', 'קל'], [WOOD('#b88a5a'), SEAT('#c69c6d', 'שלבים')], foldingChair(), [0.46, 0.45, 0.85], 0.007),
   dining('chair-director', 'כיסא במאי', ['במאי', 'קנבס', 'מתקפל', 'ידיות'], [WOOD('#6b4a33'), SEAT('#e3dccb', 'בד קנבס')], directorChair(), [0.58, 0.56, 0.9]),
-  dining('chair-school', 'כיסא בית ספר', ['בית ספר', 'דיקט', 'צינור מתכת', 'רטרו'], [FRAME('#3f6b8a'), SEAT('#d9bf93', 'דיקט')], schoolChair(), [0.44, 0.53, 0.81], 0.029),
+  dining('chair-school', 'כיסא בית ספר', ['בית ספר', 'דיקט', 'צינור מתכת', 'רטרו'], [FRAME('#3f6b8a'), SEAT('#d9bf93', 'דיקט')], schoolChair(), [0.44, 0.53, 0.81], 0.03),
   dining(
     'chair-carver',
     'כורסת קארבר עם גב חישורים',
     ['קארבר', 'ידיות', 'חישורים', 'רגליים מחורטות', 'ראש שולחן'],
     [WOOD('#6e4b33')],
     woodChair({ sw: 0.54, swb: 0.48, leg: 'turned', back: { kind: 'spindle', n: 6 }, seat: 'wood', arms: true, top: 1.0, finial: true, stretch: 'box', R: 0.6 }),
-    [0.54, 0.53, 1], 0.009,
+    [0.54, 0.53, 1], 0.008,
   ),
   dining('chair-cantilever-cane', 'כיסא צינור מרחף עם קליעת קנים', ['מרחף', 'כרום', 'קנים', 'באוהאוס', 'קלאסי'], [WOOD('#2d221c'), SEAT('#d6bc8f', 'קליעת קנים')], cantilever({ fill: 'cane' }), [0.49, 0.55, 0.84]),
   dining('chair-cantilever-leather', 'כיסא צינור מרחף מעור', ['מרחף', 'כרום', 'עור', 'באוהאוס'], [UPH('#5a3a2a')], cantilever({ fill: 'leather' }), [0.48, 0.55, 0.84]),
@@ -2444,7 +2466,7 @@ const DINING_CHAIRS: FurnitureDef[] = [
     ['מישן', 'אלון', 'עור', 'שלבים', 'קלאסי'],
     [WOOD('#5a3b26'), UPH('#6b3f2a')],
     woodChair({ leg: 'square', back: { kind: 'vslat', n: 5 }, seat: 'pad', uph: 'leather', top: 0.95, rake: 0.05, stretch: 'box', R: 0.9, lr: 0.019 }),
-    [0.44, 0.48, 0.96], -0.003,
+    [0.44, 0.48, 0.96], -0.004,
   ),
   dining(
     'chair-upholstered-frame',
@@ -2452,7 +2474,7 @@ const DINING_CHAIRS: FurnitureDef[] = [
     ['מרופד', 'קטיפה', 'מסמרים', 'מסגרת עץ', 'יוקרתי'],
     [WOOD('#3f2e24'), UPH('#7a8ca0')],
     woodChair({ leg: 'taper', back: { kind: 'uph' }, seat: 'uph', uph: 'velvet', top: 0.9, stretch: 'none', nails: true, R: 0.6 }),
-    [0.44, 0.51, 0.91], 0.009,
+    [0.44, 0.51, 0.91], 0.008,
   ),
   dining('chair-bench-wood', 'ספסל אוכל מעץ', ['ספסל', 'עץ מלא', 'פינת אוכל', 'כפרי'], [WOOD('#a77c52')], bench({ w: 1.4 }), [1.4, 0.36, 0.46]),
   dining('chair-bench-upholstered', 'ספסל אוכל מרופד', ['ספסל', 'מרופד', 'פשתן', 'רגליים מחורטות'], [WOOD('#3d2c22'), UPH('#9aa08a')], bench({ w: 1.3, uph: 'linen' }), [1.3, 0.36, 0.47]),
@@ -2466,25 +2488,25 @@ const STOOLS: FurnitureDef[] = [
   stoolItem('stool-counter-metal-back', 'שרפרף דלפק מתכת עם גב', ['מתכת', 'תעשייתי', 'גב נמוך', 'גובה דלפק'], [FRAME('#4a6b5a', 'צבע')], metalCafe({ sh: 0.65, back: 'low' }), [0.55, 0.61, 0.81], 0.03),
   stoolItem('stool-counter-rattan', 'שרפרף דלפק מראטן', ['ראטן', 'קלוע', 'גב', 'בוהו', 'גובה דלפק'], [WOOD('#8c6a45'), SEAT('#c19a64', 'קליעה')], stool({ sh: 0.65, seat: 'rattan', base: 'wood4', back: 'rattan', foot: 'bars' }), [0.46, 0.52, 0.91], 0.032),
   stoolItem('stool-counter-tufted', 'שרפרף דלפק מעור עם כפתורים', ['עור', 'כפתורים', 'כרום', 'גובה דלפק'], [UPH('#3a2c26')], stool({ sh: 0.65, seat: 'tufted', base: 'square', foot: 'bars', uph: 'leather' }), [0.39, 0.39, 0.66]),
-  stoolItem('stool-bar-gaslift', 'כיסא בר בוכנה מתכוונן', ['בוכנה', 'מתכוונן', 'מסתובב', 'כרום', 'גובה בר'], [UPH('#d9d3c7')], stool({ sh: 0.75, seat: 'bucket', base: 'pedestal', uph: 'leather' }), [0.44, 0.45, 1.03], 0.004),
+  stoolItem('stool-bar-gaslift', 'כיסא בר בוכנה מתכוונן', ['בוכנה', 'מתכוונן', 'מסתובב', 'כרום', 'גובה בר'], [UPH('#2b2b2e')], stool({ sh: 0.75, seat: 'bucket', base: 'pedestal', uph: 'leather' }), [0.44, 0.45, 1.03], 0.003),
   stoolItem('stool-step', 'שרפרף מדרגה מעץ', ['מדרגה', 'שרפרף', 'עץ', 'מטבח'], [WOOD('#d8c3a0'), SEAT('#d8c3a0', 'מדרכים')], stepStool(), [0.4, 0.36, 0.51]),
   stoolItem('stool-milking', 'שרפרף חליבה תלת-רגלי', ['שלוש רגליים', 'נמוך', 'עץ', 'כפרי'], [WOOD('#8a5a3a'), SEAT('#a06a42')], milkingStool(), [0.32, 0.34, 0.31], -0.012),
   stoolItem('stool-counter-ring', 'שרפרף דלפק עם טבעת רגליים', ['עור', 'טבעת', 'מתכת שחורה', 'גובה דלפק'], [UPH('#8b5a3c'), FRAME('#222326')], stool({ sh: 0.65, seat: 'cushion', base: 'metal4', foot: 'ring', uph: 'leather' }), [0.5, 0.5, 0.65]),
   stoolItem('stool-bar-spindle', 'כיסא בר וינדזור עם גב חישורים', ['וינדזור', 'חישורים', 'אוכף', 'גובה בר'], [WOOD('#c8a06c'), SEAT('#c8a06c')], stool({ sh: 0.75, seat: 'saddle', base: 'wood4', turnedLegs: true, foot: 'h', back: 'spindle' }), [0.47, 0.53, 1.04], 0.029),
   stoolItem('stool-counter-velvet', 'שרפרף דלפק קטיפה עם גב עגול', ['קטיפה', 'פליז', 'גב עגול', 'יוקרתי', 'גובה דלפק'], [UPH('#c27b6a')], stool({ sh: 0.65, seat: 'cushion', base: 'brass4', foot: 'ring', back: 'tub', uph: 'velvet' }), [0.5, 0.5, 0.9]),
-  stoolItem('stool-bar-tractor', 'כיסא בר מושב טרקטור', ['טרקטור', 'מתכת', 'תעשייתי', 'רטרו', 'גובה בר'], [SEAT('#b8322a')], stool({ sh: 0.75, seat: 'tractor', base: 'tripod' }), [0.43, 0.42, 0.8], -0.037),
+  stoolItem('stool-bar-tractor', 'כיסא בר מושב טרקטור', ['טרקטור', 'מתכת', 'תעשייתי', 'רטרו', 'גובה בר'], [SEAT('#b8322a')], stool({ sh: 0.75, seat: 'tractor', base: 'tripod' }), [0.43, 0.42, 0.8], -0.038),
 ];
 
 const OFFICE_CHAIRS: FurnitureDef[] = [
   office('office-chair-mesh', 'כיסא ארגונומי רשת עם משענת ראש', ['ארגונומי', 'רשת', 'משענת ראש', 'גלגלים'], [UPH('#2b2d31'), slot('mesh', 'רשת', '#3a3d42')], officeChair({ back: 'mesh', arms: 'T', base: 'black', head: true }), [0.63, 0.75, 1.31], 0.054),
-  office('office-chair-executive', 'כיסא מנהלים מעור', ['מנהלים', 'עור', 'גב גבוה', 'כרום'], [UPH('#3b2a22')], officeChair({ back: 'exec', arms: 'loop', base: 'chrome' }), [0.65, 0.74, 1.23], 0.05),
+  office('office-chair-executive', 'כיסא מנהלים מעור', ['מנהלים', 'עור', 'גב גבוה', 'כרום'], [UPH('#3b2a22')], officeChair({ back: 'exec', arms: 'loop', base: 'chrome' }), [0.65, 0.74, 1.23], 0.051),
   office('office-chair-task', 'כיסא עבודה פשוט', ['פשוט', 'בד', 'גלגלים', 'ללא ידיות'], [UPH('#46617a')], officeChair({ back: 'task', arms: 'none', base: 'black' }), [0.62, 0.69, 1], 0.024),
   office('office-chair-gaming', 'כיסא גיימינג', ['גיימינג', 'מירוץ', 'דו-גוני', 'כריות'], [UPH('#1d1e21'), slot('accent', 'צבע הדגשה', '#c0282d')], officeChair({ back: 'gaming', arms: 'gaming', base: 'black' }), [0.66, 0.75, 1.36], 0.056),
   office('office-chair-drafting', 'כיסא שרטוט גבוה', ['שרטוט', 'גבוה', 'טבעת רגליים', 'דלפק'], [UPH('#5b5f66')], officeChair({ back: 'task', arms: 'none', base: 'black', ring: true, sh: 0.7 }), [0.62, 0.69, 1.22], 0.024),
   office('office-chair-kneeling', 'כיסא ברכיים ארגונומי', ['ארגונומי', 'ברכיים', 'עץ', 'נדנוד'], [WOOD('#c9a777'), UPH('#8a8f96')], kneelingChair(), [0.43, 0.64, 0.61], -0.021),
   office('office-chair-ball', 'כיסא כדור פיזיו', ['כדור', 'פיזיו', 'ארגונומי', 'גלגלים'], [slot('ball', 'כדור', '#8ea5b7'), FRAME('#2a2b2e')], ballChair(), [0.53, 0.64, 0.82], 0.058),
-  office('office-chair-visitor', 'כיסא אורח לחדר ישיבות', ['אורח', 'ישיבות', 'עור', 'כרום', 'ידיות'], [UPH('#24252a')], visitorChair(), [0.57, 0.6, 0.89], 0.039),
-  office('office-chair-conference', 'כיסא ישיבות מסתובב', ['ישיבות', 'מסתובב', 'עור', 'אלומיניום'], [UPH('#e7e2d9')], officeChair({ back: 'conf', arms: 'loop', base: 'alu', casters: false }), [0.65, 0.71, 1.01], 0.023),
+  office('office-chair-visitor', 'כיסא אורח לחדר ישיבות', ['אורח', 'ישיבות', 'עור', 'כרום', 'ידיות'], [UPH('#24252a')], visitorChair(), [0.57, 0.6, 0.89], 0.038),
+  office('office-chair-conference', 'כיסא ישיבות מסתובב', ['ישיבות', 'מסתובב', 'עור', 'אלומיניום'], [UPH('#bfb2a0')], officeChair({ back: 'conf', arms: 'loop', base: 'alu', casters: false }), [0.65, 0.71, 1.01], 0.023),
   office('office-chair-saddle', 'כיסא אוכף ארגונומי', ['אוכף', 'ארגונומי', 'גלגלים', 'ללא גב'], [UPH('#2f2f31')], officeChair({ back: 'none', arms: 'none', base: 'black', saddle: true, sh: 0.62 }), [0.62, 0.59, 0.65], -0.027),
 ];
 

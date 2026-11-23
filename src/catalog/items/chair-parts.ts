@@ -291,6 +291,10 @@ export interface ShellSpec {
   pow?: number;
   /** pull the edges inwards in x while they curl (0..1) */
   wrap?: number;
+  /** lift the edges straight UP below v = up[0], along the back normal above v = up[1] (arm shells) */
+  up?: [number, number];
+  /** lower the side edges vertically, [v, amount] (rounds off the top corners of a back) */
+  drop?: Array<[number, number]>;
 }
 
 export function shellFn(s: ShellSpec): SheetFn {
@@ -303,7 +307,19 @@ export function shellFn(s: ShellSpec): SheetFn {
     const w = lerpTab(s.hw, v);
     const lift = (s.curl ? lerpTab(s.curl, v) : 0) * Math.pow(Math.abs(sx), s.pow ?? 2);
     const x = sx * (w - (s.wrap ?? 0) * lift);
-    return [x, c.y - t.x * lift, c.x + t.y * lift];
+    let ny = -t.x;
+    let nz = t.y;
+    if (s.up) {
+      const f = Math.min(1, Math.max(0, (v - s.up[0]) / (s.up[1] - s.up[0])));
+      const b = f * f * (3 - 2 * f);
+      ny = ny * b + (1 - b);
+      nz = nz * b;
+      const l = Math.hypot(ny, nz) || 1;
+      ny /= l;
+      nz /= l;
+    }
+    const drop = s.drop ? lerpTab(s.drop, v) * Math.pow(Math.abs(sx), 2) : 0;
+    return [x, c.y + ny * lift - drop, c.x + nz * lift];
   };
 }
 
