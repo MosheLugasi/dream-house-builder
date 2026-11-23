@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { CharacterLook as NewLook } from './characterTypes';
 
 export type HairStyle = 'short' | 'ponytail' | 'long' | 'bun' | 'curly' | 'bald';
 
@@ -134,7 +135,9 @@ export class Character {
   /** extra vertical offset applied by the controller (jumps, rides) */
   lift = 0;
 
-  constructor(look: CharacterLook = DEFAULT_LOOK) {
+  constructor(input: CharacterLook | NewLook = DEFAULT_LOOK) {
+    // INTERIM: the new avatar model maps onto the few colours this body knows
+    const look: CharacterLook = 'shirt' in input ? input : { ...DEFAULT_LOOK, skin: input.skin, hair: input.hair, shirt: input.top, pants: input.bottom, shoes: input.shoes, height: input.body === 'girl' || input.body === 'boy' ? 1.45 : 1.72 };
     this.root.add(this.body);
     this.setLook(look);
   }
@@ -149,8 +152,10 @@ export class Character {
   /** INTERIM */
   dispose(): void {}
 
-  setLook(look: CharacterLook): void {
-    if (!('shirt' in look)) return;
+  setLook(input: CharacterLook | NewLook): void {
+    // INTERIM: looks of the new avatar model are ignored until the realistic body lands
+    if (!('shirt' in input)) return;
+    const look = input;
     this.look = { ...DEFAULT_LOOK, ...look };
     for (const m of this.materials) m.dispose();
     for (const g of this.geometries) g.dispose();
