@@ -115,7 +115,7 @@ const climber: FurnitureDef = {
   category: 'outdoor',
   group: G_PLAY,
   tags: ['מתקן משחק', 'מגלשה', 'קיר טיפוס', 'מגדל', 'ארגז חול'],
-  size: { w: 2.04, d: 3.98, h: 2.62 },
+  size: { w: 2.0, d: 3.94, h: 2.6 },
   colors: [slot('wood', 'עץ', '#b98a5a'), slot('slide', 'מגלשה', '#2f8a4e'), slot('roof', 'גג בד', '#d9473a'), slot('holds', 'אחיזות', '#f0b52e')],
   actions: [{ kind: 'slide', path: pathAction(CLIMB_PATH) }],
   build: ({ colors: c }) => {
@@ -154,7 +154,6 @@ const climber: FurnitureDef = {
       panel.rotation.z = -sx * Math.atan2(ridgeY - eaveY, tx + 0.08);
       for (const z of [tz0, tz1]) k.beam([0, ridgeY - 0.05, z], [sx * (tx + 0.04), eaveY - 0.02, z], 0.045, 0.045, wood, 0.006);
     }
-    // stripes on the canvas
     // climbing wall at the back
     const wallTop: V3 = [0, P, tz0 - 0.02];
     const wallBot: V3 = [0, 0, tz0 - 0.62];
@@ -169,7 +168,7 @@ const climber: FurnitureDef = {
       wall.sphere(0.04, M.plastic(holdCols[i % 4]), hx, hy, 0.02, 1.2, 0.8, 0.6, 6);
     }
     for (const sx of [-1, 1]) wall.box(0.05, wl, 0.08, wood, sx * (tx - 0.05), 0, -0.04);
-    k.sub(wall, 0, wallBot[1], wallBot[2] + 0.03).rotation.x = ang;
+    k.sub(wall, 0, wallBot[1] + 0.012, wallBot[2] + 0.03).rotation.x = ang;
     // rope to help climbing
     k.tube([[-0.0, P + 0.5, tz0 + 0.02], [0, P + 0.1, tz0 - 0.15], [0.05, 0.5, tz0 - 0.45], [0.02, 0.05, tz0 - 0.6]], 0.012, M.matte('#d8c7a0'), { seg: 18, radial: 6 });
     // ladder on the right
@@ -316,7 +315,7 @@ interface SwingOpts {
 function swingFrame(o: SwingOpts): FurnitureDef {
   const n = o.seats.length;
   const pitch = 0.82;
-  const w = n * pitch + 0.5;
+  const w = +(n * pitch + 0.5).toFixed(3);
   const top = 2.05;
   const spread = 0.88;
   const xs = o.seats.map((_, i) => (i - (n - 1) / 2) * pitch);
@@ -656,17 +655,10 @@ const eggChair: FurnitureDef = {
     const innerUp = new THREE.LatheGeometry(upper.map((v) => new THREE.Vector2(Math.max(0.001, v.x - 0.03), v.y)).reverse(), 20, gap / 2, Math.PI * 2 - gap);
     for (const g of [outerLow, outerUp, innerLow, innerUp]) p.geo(g, wick, 0, y0, 0);
     // rim along the opening
-    const rim: V3[] = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12;
-      const pr = upper[Math.min(upper.length - 1, Math.floor(t * (upper.length - 1)))];
-      void pr;
-    }
     for (const s of [-1, 1]) {
       const pts: V3[] = upper.map((v) => [Math.sin(s * (gap / 2)) * (v.x - 0.015), y0 + v.y, Math.cos(gap / 2) * (v.x - 0.015)] as V3);
       p.tube(pts, 0.018, M.wicker(darken(c.wicker, 0.15)), { seg: 16, radial: 6 });
     }
-    void rim;
     // cushions
     p.pillow(0.62, 0.12, 0.56, M.linen(c.cushion), 0, y0 + 0.12, 0.02);
     p.pillow(0.5, 0.5, 0.14, M.linen(c.cushion), 0, y0 + 0.28, -0.25);
@@ -989,7 +981,6 @@ const playhouse: FurnitureDef = {
       const y = 0.08 + i * 0.12;
       if (y > eave + 0.05) break;
       for (const sx of [-1, 1]) k.box(0.002, 0.004, bd - 0.08, lineM, sx * (bw / 2 + 0.001), y, (z0 + zF) / 2);
-      k.box(0.12 * 0, 0.004, 0.002, lineM, 0, y, zF + 0.001);
       if (!(y < dH + 0.08)) k.box(bw - 0.04, 0.004, 0.002, lineM, 0, y, zF + 0.001);
       else {
         k.box(0.06, 0.004, 0.002, lineM, -bw / 2 + 0.05, y, zF + 0.001);
@@ -1670,7 +1661,7 @@ const kettleBbq: FurnitureDef = {
       const cx = -0.16;
       D.circle(ctx, cx, 0, 0.285, tint(c.enamel, 0.55));
       for (let i = -6; i <= 6; i += 2) D.line(ctx, cx - Math.sqrt(0.265 ** 2 - (i * 0.04) ** 2), i * 0.04, cx + Math.sqrt(0.265 ** 2 - (i * 0.04) ** 2), i * 0.04, INK_SOFT, 0.005);
-      D.rr(ctx, cx + 0.38, 0, 0.12, 0.56, 0.05, tint(c.enamel, 0.45));
+      D.rr(ctx, cx + 0.5, 0, 0.28, 0.56, 0.08, tint(c.enamel, 0.45));
       for (const s of [-1, 1]) D.rr(ctx, cx, s * 0.32, 0.1, 0.02, 0.005, tint(c.handle, 0.3), undefined, LINE_THIN);
     }),
 };

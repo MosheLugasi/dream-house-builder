@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import type { FurnitureDef, SeatAnchor } from '../types';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, arcPanelGeo, darken, extrudeZ, latheGeo, lighten, noise3, smoothProfile, sym, tint, type Ctx2D, type V3 } from '../kit';
+import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, arcPanelGeo, darken, extrudeZ, latheGeo, noise3, smoothProfile, sym, tint, type Ctx2D, type V3 } from '../kit';
 import { slot } from './_parts';
 import {
   type ArmKind,
@@ -734,7 +734,7 @@ const SOFAS: SofaItem[] = [
     id: 'sofa-chesterfield-velvet',
     name: "ספת צ'סטרפילד מקטיפה",
     tags: ["צ'סטרפילד", 'קטיפה', 'קפיטונאז׳', 'כפתורים', 'יוקרתי'],
-    spec: sp({ w: 2.2, d: 0.94, arm: 'scroll', armW: 0.24, armH: 0.74, backH: 0.74, back: 'tufted', backT: 0.2, seat: 'split', cushT: 0.15, base: 'brass', legH: 0.12, mat: 'velvet', pillows: 0, bolsters: true, tuftRows: 3, seed: 5 }),
+    spec: sp({ w: 2.2, d: 0.94, arm: 'scroll', armW: 0.24, armH: 0.74, backH: 0.74, back: 'tufted', backT: 0.2, seat: 'split', cushT: 0.15, base: 'brass', legH: 0.12, mat: 'velvet', pillows: 0, tuftRows: 3, seed: 5 }),
     fabric: '#24574a',
     legs: PAL.darkWood,
     accent: '#c9a35a',
@@ -2181,7 +2181,7 @@ function beanDef(id: string, name: string, tags: string[], kind: 'pear' | 'loung
 const BEANS: FurnitureDef[] = [
   beanDef('lounge-beanbag-pear', 'פוף ישיבה (בין-באג) טיפה', ['פוף', 'בין באג', 'טיפה', 'נוער', 'רך'], 'pear', { w: 0.78, d: 0.74, h: 0.88 }, 'fabric', '#c2553f', 0.4),
   beanDef('lounge-beanbag-lounger', 'פוף שכיבה ענק', ['פוף', 'בין באג', 'שכיבה', 'ענק', 'קטיפה'], 'lounger', { w: 1.3, d: 1.5, h: 0.58 }, 'velvet', '#8a7a68', 0.32),
-  beanDef('lounge-beanbag-chair', 'פוף כורסה סרוג', ['פוף', 'סרוג', 'כורסה', 'בין באג', 'נורדי'], 'chair', { w: 0.86, d: 0.82, h: 0.7 }, 'boucle', '#5a6b7d', 0.36),
+  beanDef('lounge-beanbag-chair', 'פוף כורסה מבוקלה', ['פוף', 'בוקלה', 'כורסה', 'בין באג', 'רך'], 'chair', { w: 0.86, d: 0.82, h: 0.7 }, 'boucle', '#5a6b7d', 0.36),
 ];
 
 /* ================================================================== ottomans, poufs & benches */
