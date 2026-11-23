@@ -22,6 +22,7 @@ const bunkBed: FurnitureDef = {
     { x: 0, z: 0.05, height: BUNK_HIGH + 0.26, facing: 0, kind: 'lie' },
     { x: 0.3, z: 0.3, height: BUNK_LOW + 0.22, facing: Math.PI / 2, kind: 'sit' },
   ],
+  actions: [{ kind: 'sleep' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const m = M.paint(c.frame, 0.45);

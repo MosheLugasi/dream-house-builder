@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Engine } from '../render3d/Engine';
 import { useStore } from '../store/store';
-import { WalkHud } from './GameHud';
 import { Icon } from './icons';
+import { TimeOfDayChips, WalkHUD } from './WalkHUD';
 
 const clock = (h: number) => `${String(Math.floor(h) % 24).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
 
@@ -39,8 +39,8 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
   const mode = useStore((s) => s.mode);
   const view = useStore((s) => s.view);
   const hint = useStore((s) => s.hint);
+  const [engine, setEngine] = useState<Engine | null>(null);
   const setView = useStore((s) => s.setView);
-  const setMode = useStore((s) => s.setMode);
   const scope = useStore((s) => s.scope);
 
   // create the engine the first time the 3D view is shown
@@ -53,6 +53,7 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
         if (disposed || !hostRef.current) return;
         const engine = new Engine(hostRef.current);
         engineRef.current = engine;
+        setEngine(engine);
         (window as unknown as { __engine?: Engine }).__engine = engine;
         ro = new ResizeObserver(([entry]) => engine.resize(entry.contentRect.width, entry.contentRect.height));
         ro.observe(hostRef.current);
@@ -105,6 +106,7 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
               </label>
             </>
           )}
+          <TimeOfDayChips />
           <label className={`chip toggle ${view.quality === 'high' ? 'on' : ''}`}>
             <input
               type="checkbox"
@@ -117,34 +119,8 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
       )}
       {mode === 'walk' && (
         <>
-          <div className="walk-help">
-            <div>
-              <kbd>W</kbd>
-              <kbd>A</kbd>
-              <kbd>S</kbd>
-              <kbd>D</kbd> או חיצים – הליכה
-            </div>
-            <div>
-              <kbd>Shift</kbd> – ריצה · גרירת עכבר – מבט · גלגלת – מרחק
-            </div>
-            <div>
-              <kbd>E</kbd> – לשבת / לרכוב / להתגלש · <kbd>F</kbd> – להפעיל (אור, ברז, טלוויזיה, ליטוף)
-            </div>
-            <div>
-              <kbd>רווח</kbd> – קפיצה · <kbd>G</kbd> – נפנוף · <kbd>V</kbd> – מבט מהעיניים
-            </div>
-          </div>
-          <div className="view-controls">
-            <label className={`chip toggle ${view.firstPerson ? 'on' : ''}`}>
-              <input type="checkbox" checked={view.firstPerson} onChange={(e) => setView({ firstPerson: e.target.checked })} />
-              מבט מהעיניים
-            </label>
-            <button className="chip" onClick={() => setMode('view3d')}>
-              סיום הסיור
-            </button>
-          </div>
+          <WalkHUD engine={engine} onAvatar={onAvatar} />
           {hint && <div className="walk-hint">{hint}</div>}
-          <WalkHud onAvatar={onAvatar} />
         </>
       )}
     </div>

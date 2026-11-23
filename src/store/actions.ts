@@ -343,7 +343,7 @@ const TRUNK_ONLY = /tree|palm|lamp|flagpole|sign|traffic-light|patio-table|baske
 export function collisionFootprint(def: FurnitureDef): { w: number; d: number } | null {
   if (def.walkable || def.mount === 'ceiling' || def.mount === 'wall') return null;
   // things you walk onto, kick around, or that move by themselves
-  if (def.bounce || def.ball || def.pet || def.id === 'football-goal') return null;
+  if (def.pet || def.id === 'football-goal' || def.id === 'goal-soccer' || def.actions?.some((a) => a.kind === 'ball' || a.kind === 'pet')) return null;
   if (TRUNK_ONLY.test(def.id)) return { w: 0.4, d: 0.4 };
   return { w: def.size.w, d: def.size.d };
 }

@@ -74,8 +74,7 @@ const sinkCabinet: FurnitureDef = {
   category: 'kitchen',
   size: { w: SINK_W, d: BASE_D, h: 1.2 },
   colors: KITCHEN_COLORS,
-  // gooseneck outlet (see `faucet`: base z = -0.225, h = 0.28, reach = 0.19) down to the bowl floor at y = 0.722
-  interact: [{ kind: 'water', x: 0, y: 1.068, z: -0.035, fall: 0.346, sound: 'tap' }],
+  actions: [{ kind: 'water', at: { x: 0, y: BASE_H + 0.17, z: 0.02 - 0.2 - 0.045 + 0.19 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     baseUnit(
@@ -137,8 +136,7 @@ const stove: FurnitureDef = {
   category: 'kitchen',
   size: { w: 0.6, d: BASE_D, h: 0.94 },
   colors: [slot('body', 'גוף', '#c9ccce'), slot('top', 'משטח', PAL.stone)],
-  // burner centers at cap height; the flame ring of a burner has a radius of about 0.42 × its zone radius
-  interact: [{ kind: 'flame', points: BURNERS.map(([x, z]) => ({ x, y: BURNER_Y, z })) }],
+  actions: [{ kind: 'cook', at: { x: -0.135, y: BASE_H + 0.12, z: 0.11 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.6;
@@ -211,7 +209,6 @@ const dishwasher: FurnitureDef = {
   category: 'kitchen',
   size: { w: 0.6, d: BASE_D, h: BASE_H },
   colors: [slot('body', 'חזית', '#c9ccce'), slot('top', 'משטח', PAL.stone)],
-  interact: [{ kind: 'appliance', sound: 'washing' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.6;
@@ -242,6 +239,7 @@ const fridge: FurnitureDef = {
   category: 'kitchen',
   size: { w: 0.72, d: 0.7, h: 1.85 },
   colors: [slot('body', 'גוף', '#c5c8cb')],
+  actions: [{ kind: 'snack' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.72;

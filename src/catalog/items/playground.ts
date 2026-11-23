@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { FurnitureDef, RideRuntime } from '../types';
 import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, darken, extrudeZ, lighten, roundedRectShape, sym, tint, type V3 } from '../kit';
-import { BALLS } from './_balls';
 import { slot } from './_parts';
 import { Rocker, Spinner, Teeter, bakedPart, partKey, push01, seatNode, substeps } from './_ride';
 import { axisCyl, canvasMat, coilGeo, extrudeX, faceGeo, netMat, planarUV, polyShape, speckleMat, sweepYZ } from './_street_shared';
@@ -63,7 +62,8 @@ const slide: FurnitureDef = {
   category: 'playground',
   size: { w: SL.w, d: SL.d, h: SL.h },
   colors: [slot('slide', 'מגלשה', '#f2b824'), slot('frame', 'מסגרת', '#2f6fb7'), slot('panel', 'לוחות', '#e0483e')],
-  slide: SLIDE_ROUTE,
+  // from the top of the chute to its end; the climb is animated by the runtime
+  actions: [{ kind: 'slide', path: SLIDE_ROUTE.path.slice(SLIDE_ROUTE.slideFrom) }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { deckY, z0, z1, px } = SL;
@@ -1205,7 +1205,7 @@ const drinkingFountain: FurnitureDef = {
   size: { w: 0.46, d: 0.46, h: 1.04 },
   colors: [slot('body', 'גוף', '#4f8f86')],
   // bubbler nozzle tip, falling into the bowl below it
-  interact: [{ kind: 'water', x: 0, y: 1.012, z: DF_Z - 0.058, fall: 0.116, sound: 'tap' }],
+  actions: [{ kind: 'water', at: { x: 0, y: 1.012, z: DF_Z - 0.058 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const body = M.metal(c.body, 0.5, 0.4);
@@ -1286,5 +1286,4 @@ export const PLAYGROUND: FurnitureDef[] = [
   pingPong,
   rubberMat,
   drinkingFountain,
-  ...BALLS,
 ];

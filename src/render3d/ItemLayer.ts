@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { getFurniture, resolveColors } from '../catalog';
 import type { FurnitureItem } from '../model/types';
 
+/** Notified when placed items appear, move or disappear (interactive behaviours hook in here). */
+export interface ItemEvents {
+  add(entry: ItemEntry): void;
+  move(entry: ItemEntry): void;
+  remove(id: string): void;
+}
+export const itemEvents: { current: ItemEvents | null } = { current: null };
+
 export interface ItemContext {
   /** ceiling height of the level (ceiling-mounted items hang from it) */
   levelHeight: number;
@@ -54,7 +62,10 @@ export class ItemLayer {
       if (entry && entry.item === item && entry.key === key) continue;
       changed = true;
       if (!entry || entry.key !== key) {
-        if (entry) this.group.remove(entry.holder);
+        if (entry) {
+          this.group.remove(entry.holder);
+          itemEvents.current?.remove(item.id);
+        }
         const holder = makeItemHolder(item, ctx);
         if (!holder) {
           this.entries.delete(item.id);
@@ -64,15 +75,20 @@ export class ItemLayer {
         this.group.add(holder);
         entry = { item, holder, key };
         this.entries.set(item.id, entry);
+        entry.holder.position.set(item.x, item.elevation, item.y);
+        entry.holder.rotation.y = -item.rotation;
+        itemEvents.current?.add(entry);
       }
       entry.item = item;
       entry.holder.position.set(item.x, item.elevation, item.y);
       entry.holder.rotation.y = -item.rotation;
+      itemEvents.current?.move(entry);
     }
     for (const [id, entry] of this.entries) {
       if (!seen.has(id)) {
         this.group.remove(entry.holder);
         this.entries.delete(id);
+        itemEvents.current?.remove(id);
         changed = true;
       }
     }
@@ -80,7 +96,10 @@ export class ItemLayer {
   }
 
   clear(): void {
-    for (const entry of this.entries.values()) this.group.remove(entry.holder);
+    for (const [id, entry] of this.entries) {
+      this.group.remove(entry.holder);
+      itemEvents.current?.remove(id);
+    }
     this.entries.clear();
   }
 }

@@ -233,8 +233,7 @@ const tvConsole: FurnitureDef = {
   category: 'living',
   size: { w: 1.8, d: 0.42, h: 1.32 },
   colors: [slot('wood', 'גוף', PAL.oak), slot('fronts', 'חזיתות', PAL.white)],
-  // picture = the glass (1.214 × 0.694, front face at z = -0.0195), 1.5 mm in front of it
-  interact: [{ kind: 'screen', x: 0, y: 0.955, z: -0.018, w: 1.21, h: 0.69, ry: 0 }],
+  actions: [{ kind: 'tv' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.wood(c.wood);
@@ -265,7 +264,7 @@ const tvConsole: FurnitureDef = {
     k.rbox(0.42, 0.012, 0.2, 0.004, blk, 0, 0.52, -0.02, 1);
     k.box(0.09, 0.09, 0.03, blk, 0, 0.53, -0.05);
     k.rbox(tw, th, 0.028, 0.008, blk, 0, ty, -0.035, 1);
-    k.box(tw - 0.016, th - 0.016, 0.002, M.screen(), 0, ty + 0.008, -0.0205);
+    k.part('screen').box(tw - 0.016, th - 0.016, 0.002, M.screen(), 0, ty + 0.008, -0.0205);
     k.rbox(tw * 0.5, th * 0.5, 0.03, 0.01, blk, 0, ty + 0.1, -0.06, 1);
     return k.g;
   },
@@ -288,6 +287,7 @@ const bookshelf: FurnitureDef = {
   category: 'living',
   size: { w: 0.9, d: 0.32, h: 1.9 },
   colors: [slot('wood', 'עץ', PAL.oak), slot('back', 'גב', PAL.white)],
+  actions: [{ kind: 'read' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.wood(c.wood);

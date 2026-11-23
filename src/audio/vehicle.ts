@@ -32,8 +32,8 @@ function wobble(p: Patch, target: GainNode, cutoff: number, depth: number): void
 function engine(g: Graph, kind: 'car' | 'bus', out: AudioNode): Model {
   const bus = kind === 'bus';
   const C = bus
-    ? { idle: 19, top: 66, lp0: 300, lpT: 620, lpR: 260, sub: 0.4, hp: 60, gears: [5, 10.5], tyre: 420, body: 300, level: 0.22, clatter: 0.5 }
-    : { idle: 27, top: 98, lp0: 380, lpT: 720, lpR: 420, sub: 0.25, hp: 80, gears: [6.5, 13.5], tyre: 640, body: 430, level: 0.24, clatter: 0.12 };
+    ? { idle: 19, top: 66, lp0: 420, lpT: 620, lpR: 260, sub: 0.4, hp: 60, gears: [5, 10.5], tyre: 420, body: 300, level: 0.22, clatter: 0.6 }
+    : { idle: 27, top: 98, lp0: 520, lpT: 720, lpR: 420, sub: 0.25, hp: 80, gears: [6.5, 13.5], tyre: 640, body: 430, level: 0.24, clatter: 0.22 };
   const p = new Patch(g);
   const master = p.gain(0);
   master.connect(out);

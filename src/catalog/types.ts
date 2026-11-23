@@ -21,13 +21,16 @@ export type FurnitureCategory =
   | 'kids'
   | 'lighting'
   | 'decor'
+  | 'accessories'
+  | 'entertainment'
+  | 'sports'
+  | 'pets'
   | 'outdoor'
   | 'structure'
   | 'playground'
   | 'street'
   | 'public'
-  | 'vehicle'
-  | 'pet';
+  | 'vehicle';
 
 export interface ColorSlot {
   /** key used in the `colors` record passed to build/draw2d */
@@ -58,6 +61,87 @@ export interface LightSpec {
   /** candela-ish intensity for a THREE.PointLight */
   intensity: number;
   distance: number;
+}
+
+/**
+ * Interactive behaviours an item offers in walk mode (see docs/catalog-authoring.md).
+ *
+ * Animated pieces are marked as PARTS: an Object3D whose `userData.part` is one of the names
+ * below (use `Kit.part(...)`). Parts survive baking as separate groups named `part:<name>`, with
+ * their own transform, so the runtime can rotate / move / hide them per placed instance.
+ */
+export type ActionKind =
+  /** toggle `light`; parts 'glow' (emissive meshes dim when off) */
+  | 'light'
+  /** TV / monitor: part 'screen' = flat mesh facing +Z that shows animated channels */
+  | 'tv'
+  /** desk computer / laptop: part 'screen'; the character types */
+  | 'computer'
+  /** radio / record player / jukebox / speakers: parts 'spin' (turns around local Y), 'pulse' (scales to the beat) */
+  | 'music'
+  /** keyboard instruments (sit at seats[0]) */
+  | 'piano'
+  | 'guitar'
+  | 'drums'
+  /** ceiling / standing fan: part 'rotor' spins around local Y (use `axis` for others) */
+  | 'fan'
+  /** fireplace, fire pit, candles: flames at `at` */
+  | 'fire'
+  /** sink, shower, bathtub, fountain, garden hose: water stream from `at` */
+  | 'water'
+  /** stove, oven, BBQ: steam / smoke at `at`, the character cooks standing in front */
+  | 'cook'
+  /** fridge, fruit bowl, coffee machine, kettle, snack bar: the character eats / drinks */
+  | 'snack'
+  /** wardrobes, cabinets, fridges: parts 'door' (rotate about local Y, `userData.open` radians) / 'drawer' (slide +Z, `userData.open` meters) */
+  | 'open'
+  /** beds: lie down and sleep (fast-forward day/night); needs a 'lie' seat */
+  | 'sleep'
+  /** bookshelves / books: take a book and read */
+  | 'read'
+  /** treadmill (run), exercise bike (pedal), rowing machine (row): parts 'spin' turn around local X */
+  | 'run'
+  | 'pedal'
+  | 'row'
+  /** weights, punching bag, yoga mat */
+  | 'workout'
+  /** trampoline */
+  | 'bounce'
+  /** swings & hammocks: part 'swing' pivots at its origin around local X; character rides at seats[0] */
+  | 'swing'
+  /** rocking chair / rocking horse: part 'rock' pivots at its origin (on the floor) around local X */
+  | 'rock'
+  /** playground slide: `path` = local points from the top of the slide to its end */
+  | 'slide'
+  /** the item itself becomes a kickable ball in walk mode */
+  | 'ball'
+  /** basketball hoop: ring centre at `at` */
+  | 'hoop'
+  /** dart board: board centre at `at` (board faces +Z) */
+  | 'darts'
+  /** arcade cabinet / game console: part 'screen' */
+  | 'game'
+  /** dogs, cats...: parts 'body', 'head', 'tail', 'leg0'..'leg3' (pivots at hips / shoulders) */
+  | 'pet'
+  /** aquarium: every child of part 'fish' swims around inside `area` */
+  | 'fish'
+  /** wall / table clocks: parts 'hour', 'minute' (and 'second'), pivot at the dial centre, turning around local Z */
+  | 'clock'
+  /** pool / ping-pong / foosball / board games: the character plays a round */
+  | 'play';
+
+export interface ActionSpec {
+  kind: ActionKind;
+  /** optional Hebrew button label overriding the default for the kind */
+  label?: string;
+  /** local anchor: effect origin (spout, flame, ring...) */
+  at?: { x: number; y: number; z: number };
+  /** local polyline (slides) */
+  path?: Array<{ x: number; y: number; z: number }>;
+  /** local box the effect lives in (aquarium water volume): min/max corners */
+  area?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+  /** free-form variant, e.g. pet species 'dog' | 'cat', music style, fire size */
+  variant?: string;
 }
 
 export interface BuildContext {
@@ -104,26 +188,6 @@ export interface VehicleSpec {
 }
 
 /**
- * Things the character can switch on / use in walk mode (E key). Positions are in the item's local
- * frame (meters, origin at the footprint center on the floor, front = +Z).
- */
-export type InteractSpec =
-  /** a lamp: toggles the item's `light` */
-  | { kind: 'light' }
-  /** a TV / monitor: a glowing animated picture on a rectangle centered at (x, y, z); `ry` = yaw of its normal (0 = faces +Z) */
-  | { kind: 'screen'; x: number; y: number; z: number; w: number; h: number; ry?: number }
-  /** running water falling `fall` meters from the spout at (x, y, z) */
-  | { kind: 'water'; x: number; y: number; z: number; fall: number; sound: 'tap' | 'shower' }
-  /** gas burners on a stove: small flames at these points */
-  | { kind: 'flame'; points: { x: number; y: number; z: number }[] }
-  /** a keyboard instrument that is played (number keys) while sitting on its seat */
-  | { kind: 'instrument'; instrument: 'piano' }
-  /** a one-shot sound, e.g. flushing the toilet */
-  | { kind: 'sfx'; sound: 'flush' | 'bell' | 'squeak' }
-  /** an appliance that hums and shakes a little while on */
-  | { kind: 'appliance'; sound: 'washing' | 'fan' };
-
-/**
  * Moving play equipment (swing, carousel, seesaw, spring rider).
  * `build` must return an UN-BAKED object (`noBake: true`) with `object.userData.ride: RideRuntime`.
  */
@@ -145,31 +209,6 @@ export interface RideRuntime {
    * Returns true while the equipment is still moving.
    */
   update(dt: number, push: number, riders: number[]): boolean;
-}
-
-/** A slide: the character climbs the ladder and slides down along `path` (local points, y = feet/seat height). */
-export interface SlideSpec {
-  /** polyline: ladder bottom → platform → chute → landing point on the ground */
-  path: { x: number; y: number; z: number }[];
-  /** index in `path` where sliding (sitting, fast) starts; before it the character climbs */
-  slideFrom: number;
-}
-
-/** A trampoline: stepping on the mat (a disc of `radius` at height `surfaceY`) bounces the character. */
-export interface BounceSpec {
-  radius: number;
-  surfaceY: number;
-  /** how many times higher than a normal jump */
-  boost: number;
-}
-
-/** A ball that can be kicked around. The item's origin is the point where it touches the ground. */
-export interface BallSpec {
-  radius: number;
-  /** 0…1 restitution when bouncing off the ground and walls */
-  bounce: number;
-  /** kg-ish: heavier balls fly less far when kicked */
-  mass: number;
 }
 
 /**
@@ -215,14 +254,16 @@ export interface FurnitureDef {
   /** true for rugs etc.: the character can walk over it */
   walkable?: boolean;
   light?: LightSpec;
+  /** interactive behaviours in walk mode */
+  actions?: ActionSpec[];
+  /** Hebrew sub-group inside the category (e.g. "ספות", "כורסאות") used to organise the catalog */
+  group?: string;
+  /** extra Hebrew search words (materials, styles, synonyms) */
+  tags?: string[];
   stair?: StairSpec;
   vehicle?: VehicleSpec;
   /** what pressing E next to the item can switch on / off */
-  interact?: InteractSpec[];
   ride?: RideSpec;
-  slide?: SlideSpec;
-  bounce?: BounceSpec;
-  ball?: BallSpec;
   pet?: PetSpec;
   /**
    * true = hand out a freshly built, un-merged object on every `build` call (needed when parts move
@@ -245,11 +286,14 @@ export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
   kids: 'חדר ילדים',
   lighting: 'תאורה',
   decor: 'דקורציה',
+  accessories: 'אביזרים',
+  entertainment: 'בידור ומוזיקה',
+  sports: 'ספורט ומשחק',
+  pets: 'חיות מחמד',
   outdoor: 'חוץ וגינה',
   structure: 'מדרגות',
   playground: 'גן שעשועים',
   street: 'רחוב',
   public: 'מבני ציבור',
   vehicle: 'כלי רכב',
-  pet: 'חיות מחמד',
 };

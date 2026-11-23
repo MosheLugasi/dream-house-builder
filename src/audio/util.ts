@@ -132,6 +132,7 @@ export class Patch {
   readonly ac: BaseAudioContext;
   private nodes: AudioNode[] = [];
   private sources: AudioScheduledSourceNode[] = [];
+  private children: Patch[] = [];
   disposed = false;
   /** pitch factor applied to every oscillator / filter frequency created through this patch */
   p = 1;
@@ -200,6 +201,13 @@ export class Patch {
     return n;
   }
 
+  /** one-shot voices playing INTO this patch die with it (bird phrases, jingles, creaks) */
+  adopt<T extends Patch>(child: T): T {
+    if (this.children.length > 8) this.children = this.children.filter((c) => !c.disposed);
+    this.children.push(child);
+    return child;
+  }
+
   /** hook for subclasses; called before a source is started */
   protected begin(src: AudioScheduledSourceNode, _t0: number, _t1?: number): void {
     this.sources.push(src);
@@ -226,6 +234,8 @@ export class Patch {
     this.g.stats.nodes -= this.nodes.length;
     this.nodes = [];
     this.sources = [];
+    for (const c of this.children) c.dispose();
+    this.children = [];
   }
 }
 

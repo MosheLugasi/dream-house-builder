@@ -150,7 +150,7 @@ export function sampleProject(): Project {
   for (const x of [-47, -19, -4, 13, 27, 45, 57]) prop('tree-cypress', x, -1.2);
 
   // ---- things to play with ----
-  prop('ball-football', 51.5, 27);
+  prop('ball-soccer', 51.5, 27);
   prop('ball-basketball', -15, -28);
   prop('ball-beach', -38, -25);
   prop('trampoline', -46.5, -17.6);

@@ -118,8 +118,8 @@ export const RETRIEVER: Breed = {
     { z: -0.36, y: 0.44, up: 0.055, down: 0.07, w: 0.058, skin: { pelvis: 1 } },
     { z: -0.315, y: 0.438, up: 0.092, down: 0.108, w: 0.108, skin: { pelvis: 1 } },
     { z: -0.25, y: 0.435, up: 0.106, down: 0.116, w: 0.128, skin: { pelvis: 1 } },
-    { z: -0.13, y: 0.438, up: 0.104, down: 0.106, w: 0.098, skin: { pelvis: 0.3, spine: 0.7 } },
-    { z: 0.0, y: 0.425, up: 0.122, down: 0.132, w: 0.134, skin: { spine: 0.6, chest: 0.4 } },
+    { z: -0.13, y: 0.438, up: 0.104, down: 0.116, w: 0.1, skin: { pelvis: 0.3, spine: 0.7 } },
+    { z: 0.0, y: 0.425, up: 0.122, down: 0.138, w: 0.134, skin: { spine: 0.6, chest: 0.4 } },
     { z: 0.11, y: 0.415, up: 0.142, down: 0.152, w: 0.142, n: 2.1, skin: { chest: 1 } },
     { z: 0.2, y: 0.432, up: 0.13, down: 0.142, w: 0.13, skin: { chest: 1 } },
     { z: 0.258, y: 0.492, up: 0.108, down: 0.124, w: 0.106, skin: { chest: 0.5, neck1: 0.5 } },
@@ -148,7 +148,7 @@ export const RETRIEVER: Breed = {
     capEnd: 0.016,
   },
   jaw: { hinge: [0.062, -0.036], len: 0.148, w0: 0.044, w1: 0.032, up: 0.014, down: 0.018, tip: 0.011 },
-  eye: { a: 0.094, th: 0.93, r: 0.02, sink: 0.66, out: 0.45, pupil: [0.45, 0.45], iris: '#5a3413', irisR: 0.84 },
+  eye: { a: 0.094, th: 0.93, r: 0.023, sink: 0.75, out: 0.45, pupil: [0.45, 0.45], iris: '#5a3413', irisR: 0.84 },
   nose: { a: 0.228, c: 0.003, w: 0.023, h: 0.018, d: 0.016, color: '#1c1614' },
   ear: {
     path: [
@@ -163,10 +163,10 @@ export const RETRIEVER: Breed = {
     side: [0, 0, 1],
     pivot: [0.063, 0.068, 0.027],
   },
-  tail: { base: [-0.368, 0.468], len: 0.37, n: 5, r0: 0.032, r1: 0.012, feather: 0.024, pitch: [-0.95, -0.85, -0.7, -0.5, -0.3] },
+  tail: { base: [-0.368, 0.468], len: 0.37, n: 5, r0: 0.032, r1: 0.012, feather: 0.024, pitch: [-1.12, -1.02, -0.86, -0.66, -0.42] },
   collar: { k: 7.75, hw: 0.012, tag: 0.017 },
   whiskers: 0,
-  anim: { trotAt: 2.0, gallopAt: 3.7, sitPelvisY: 0.165, sitChestRaise: 0.012, liePelvisY: 0.125, lieChestY: 0.153 },
+  anim: { trotAt: 2.0, gallopAt: 3.7, sitPelvisY: 0.165, sitChestRaise: 0.012, liePelvisY: 0.125, lieChestY: 0.162 },
 };
 
 /* ------------------------------------------------------------------ cat */
@@ -207,7 +207,7 @@ export const CAT: Breed = {
     capEnd: 0.006,
   },
   jaw: { hinge: [0.046, -0.02], len: 0.046, w0: 0.019, w1: 0.012, up: 0.006, down: 0.008, tip: 0.005 },
-  eye: { a: 0.071, th: 0.72, r: 0.0145, sink: 0.7, out: 0.22, pupil: [0.26, 0.62], iris: '#b4b23a', irisR: 0.86 },
+  eye: { a: 0.071, th: 0.72, r: 0.017, sink: 0.78, out: 0.22, pupil: [0.26, 0.62], iris: '#b4b23a', irisR: 0.86 },
   nose: { a: 0.106, c: -0.004, w: 0.0062, h: 0.0048, d: 0.004, color: '#d98a86' },
   ear: {
     path: [
@@ -221,10 +221,10 @@ export const CAT: Breed = {
     side: [1, 0, 0.35],
     pivot: [0.032, 0.044, 0.022],
   },
-  tail: { base: [-0.19, 0.212], len: 0.29, n: 7, r0: 0.016, r1: 0.012, feather: 0, pitch: [-0.75, -0.8, -0.6, -0.3, 0.05, 0.4, 0.7] },
+  tail: { base: [-0.19, 0.212], len: 0.29, n: 7, r0: 0.016, r1: 0.012, feather: 0, pitch: [-0.95, -0.98, -0.75, -0.38, 0.04, 0.45, 0.8] },
   collar: { k: 7.6, hw: 0.005, tag: 0.007 },
   whiskers: 5,
-  anim: { trotAt: 1.7, gallopAt: 2.6, sitPelvisY: 0.081, sitChestRaise: 0.016, liePelvisY: 0.068, lieChestY: 0.071 },
+  anim: { trotAt: 1.7, gallopAt: 2.6, sitPelvisY: 0.081, sitChestRaise: 0.016, liePelvisY: 0.07, lieChestY: 0.075 },
 };
 
 /* ------------------------------------------------------------------ terrier (derived) */
@@ -286,7 +286,7 @@ export const TERRIER: Breed = {
     capEnd: hs(0.014),
   },
   jaw: { hinge: [hs(0.055), hs(-0.03)], len: hs(0.127), w0: hs(0.034), w1: hs(0.022), up: hs(0.012), down: hs(0.016), tip: hs(0.01) },
-  eye: { a: hs(0.088), th: 0.93, r: hs(0.02), sink: 0.68, out: 0.45, pupil: [0.45, 0.45], iris: '#3d2210', irisR: 0.84 },
+  eye: { a: hs(0.088), th: 0.93, r: hs(0.023), sink: 0.76, out: 0.45, pupil: [0.45, 0.45], iris: '#3d2210', irisR: 0.84 },
   nose: { a: hs(0.192), c: 0, w: hs(0.02), h: hs(0.016), d: hs(0.015), color: '#15110f' },
   ear: {
     // "button" ear: stands up, then folds forward
@@ -302,7 +302,7 @@ export const TERRIER: Breed = {
     pivot: [hs(0.042), hs(0.07), hs(0.014)],
   },
   tail: { base: [-0.365 * TK, 0.5 * TK], len: 0.12, n: 4, r0: 0.014, r1: 0.007, feather: 0, pitch: [0.8, 1.0, 1.12, 1.18] },
-  anim: { trotAt: 1.35, gallopAt: 2.7, sitPelvisY: 0.165 * TK, sitChestRaise: 0.008, liePelvisY: 0.112 * TK, lieChestY: 0.146 * TK },
+  anim: { trotAt: 1.35, gallopAt: 2.7, sitPelvisY: 0.165 * TK, sitChestRaise: 0.008, liePelvisY: 0.067, lieChestY: 0.09 },
 };
 
 export const BREEDS: Record<Breed['key'], Breed> = { retriever: RETRIEVER, terrier: TERRIER, cat: CAT };

@@ -33,14 +33,40 @@ import { Atmosphere } from './Atmosphere';
 import { BuildingView } from './BuildingView';
 import { buildSite, groundHeight, roadSet, SIDEWALK_HEIGHT } from './buildSite';
 import { updateEffects } from './effects';
-import { Interactions, type ItemRef } from './Interactions';
 import { ItemLayer, makeItemHolder, type ItemEntry } from './ItemLayer';
-import { Balls, Particles, Pets, Stars } from './Life';
+import { Particles, Stars } from './Life';
 import { Traffic } from './Traffic';
 import { randomLook } from '../game/looks';
 import { LightManager, type LampSource } from './LightManager';
-import type { RideRuntime } from '../catalog/types';
 import { emptyWorld, seatsOf, WalkController, type WalkWorld } from './WalkController';
+import { Interactions } from './Interactions';
+import { itemEvents } from './ItemLayer';
+import { sound } from '../audio/sound';
+import { useWalk } from '../store/walk';
+import type { Activity, CharacterLook } from './Character';
+
+/** Named moments of the day (the HUD buttons and the N key jump between them). */
+export const DAY_MOMENTS = { day: 14.5, sunset: 18.6, night: 21.5 } as const;
+export type TimeOfDay = keyof typeof DAY_MOMENTS;
+export function momentOf(hours: number): TimeOfDay {
+  return hours >= 20 || hours < 5.5 ? 'night' : hours >= 17.5 ? 'sunset' : 'day';
+}
+
+const EMOTES: Record<string, { activity: Activity; seconds: number; text: string }> = {
+  Digit1: { activity: 'wave', seconds: 2.5, text: '👋' },
+  Digit2: { activity: 'dance', seconds: 60, text: '💃' },
+  Digit3: { activity: 'clap', seconds: 2.5, text: '👏' },
+  Digit4: { activity: 'cheer', seconds: 2.5, text: '🙌' },
+  Digit5: { activity: 'stretch', seconds: 4, text: '🙆' },
+};
+
+interface FurnitureEntry {
+  item: FurnitureItem;
+  holder: THREE.Group;
+  colorsKey: string;
+}
+
+
 
 type Picked =
   | { kind: 'furniture'; entry: ItemEntry }
@@ -62,11 +88,10 @@ export class Engine {
   private storeTime = 14.5;
   private clockTimer = 0;
   private lampKey: unknown[] = [];
-  private interactions: Interactions;
+  readonly interactions: Interactions;
+  private photoPending = false;
   private particles = new Particles();
   private stars = new Stars(this.particles);
-  private balls = new Balls(this.particles);
-  private pets = new Pets(this.particles);
   private traffic = new Traffic();
   private unsubLook: () => void = () => {};
   private ground: THREE.Mesh;
@@ -97,7 +122,8 @@ export class Engine {
   private walkProject: unknown = null;
   private nearBuildings = new Set<string>();
   private nearTimer = 0;
-  private pendingSpawn: { start: Vec2; y: number } | null = null;
+  private pendingSpawn: { start: Vec2; y: number; yaw: number } | null = null;
+  private windowGlow = -1;
 
   constructor(private host: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -119,7 +145,6 @@ export class Engine {
     this.scene.add(this.lights.group, this.particles.group, this.stars.group, this.traffic.group);
     this.stars.group.visible = false;
     this.traffic.group.visible = false;
-    this.interactions = new Interactions(this.lights, () => this.atmosphere.night);
 
     // ground (the finish library adds its own large-scale variation, so plain tiling UVs in meters are enough)
     // (tessellated: depth is interpolated more precisely over small triangles than over two 900 m ones)
@@ -154,13 +179,39 @@ export class Engine {
       st.setView({ firstPerson: !st.view.firstPerson });
     };
     this.walk.onVehicleParked = (id, x, y, rotation) => updateProp(id, { x, y, rotation }, true);
-    this.walk.onSleep = () => this.sleep();
     this.walk.character.setLook(useProgress.getState().look);
     this.unsubLook = useProgress.subscribe((st, prev) => {
       if (st.look !== prev.look) this.walk.character.setLook(st.look);
     });
     this.walk.character.root.visible = false;
     this.scene.add(this.walk.character.root);
+    this.walk.onShortcut = (code) => this.shortcut(code);
+    this.interactions = new Interactions(this.scene);
+    // lamps are lit by the light manager: after dark by themselves, or when someone flips the switch
+    this.interactions.lamps = {
+      isOn: (id) => this.lights.isOn(id, this.atmosphere.night),
+      toggle: (id) => this.lights.toggle(id, this.atmosphere.night),
+    };
+    this.interactions.goalScored = (at) => {
+      this.particles.burst('confetti', at, 40);
+      audio.play('goal');
+      useProgress.getState().setFlash('⚽ גוווול!');
+    };
+    // sleeping skips to the other half of the day: to the morning at night, to the evening by day
+    this.interactions.onSleep = () => {
+      const morning = this.atmosphere.night > 0.5;
+      this.setTime(morning ? 7 : DAY_MOMENTS.night);
+      useWalk.getState().toast(morning ? '☀️ בוקר טוב!' : '🌙 לילה טוב…');
+    };
+    // every placed item (in any building, level or out on the street) registers its behaviours
+    itemEvents.current = {
+      add: (entry) => {
+        const def = getFurniture(entry.item.catalogId);
+        if (def) this.interactions.register(entry.item, def, entry.holder, (entry.holder.userData.body as THREE.Object3D) ?? entry.holder, null);
+      },
+      move: (entry) => this.interactions.updateItem(entry.item),
+      remove: (id) => this.interactions.unregister(id),
+    };
 
     const el = renderer.domElement;
     el.addEventListener('pointerdown', this.onPointerDown);
@@ -181,6 +232,7 @@ export class Engine {
     this.unsub();
     this.unsubLook();
     this.walk.disable();
+    if (itemEvents.current) itemEvents.current = null;
     const el = this.renderer.domElement;
     el.removeEventListener('pointerdown', this.onPointerDown);
     el.removeEventListener('pointermove', this.onPointerMove);
@@ -204,6 +256,7 @@ export class Engine {
     this.renderer.setSize(width, height);
     this.composer?.setSize(width, height);
     this.aoPass?.setSize(width, height);
+    this.interactions.particles.setViewport(height * this.renderer.getPixelRatio(), this.camera.fov);
   }
 
   private applyQuality(q: 'low' | 'high'): void {
@@ -285,10 +338,6 @@ export class Engine {
       const walk = this.walk;
       walk.night = this.atmosphere.night;
       walk.update(dt);
-      const ground = walk.world.groundAt;
-      this.interactions.update(dt, walk.pos, walk.y);
-      this.balls.update(Math.min(dt, 0.05), walk, ground);
-      this.pets.update(Math.min(dt, 0.05), walk);
       this.stars.update(dt, walk);
       this.traffic.update(dt, walk, () => audio.play('horn', { volume: 0.45 }));
       this.updateHeadlight();
@@ -304,9 +353,109 @@ export class Engine {
       this.camera.near = near;
       this.camera.updateProjectionMatrix();
     }
+    this.interactions.update(dt, this.mode === 'walk' ? this.walk.character.root.position : null);
     this.updateSun();
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
+    if (this.photoPending) {
+      this.photoPending = false;
+      this.savePhoto();
+    }
+  }
+  // ---- walk-mode extras ----------------------------------------------------------------------
+
+  /** run a walk-mode action button */
+  runChoice(id: string): void {
+    this.interactions.run(id);
+  }
+
+  instrumentKey(kind: 'piano' | 'guitar' | 'drums', code: string): void {
+    this.interactions.instrumentKey(kind, code);
+  }
+
+  emote(code: string): void {
+    const e = EMOTES[code];
+    if (!e || this.mode !== 'walk') return;
+    if (this.walk.occupation) return;
+    if (this.walk.character.getActivity() === e.activity) {
+      this.walk.endTimed();
+      return;
+    }
+    this.walk.playFor(e.activity, e.seconds);
+    if (e.activity === 'dance') {
+      const ps = this.interactions.particles;
+      let n = 0;
+      const timer = setInterval(() => {
+        if (this.walk.character.getActivity() !== 'dance' || ++n > 200) return clearInterval(timer);
+        if (Math.random() < 0.5) ps.emit('note', this.walk.character.headWorld().add(new THREE.Vector3(0, 0.3, 0)));
+      }, 300);
+    }
+    if (e.activity === 'clap') {
+      for (let i = 0; i < 5; i++) setTimeout(() => sound.sfx('clack', 0.5), 150 + i * 260);
+    }
+    if (e.activity === 'cheer') sound.sfx('cheer', 0.5);
+  }
+
+  jump(): void {
+    if (this.mode === 'walk') this.walk.jump();
+  }
+
+  callPets(): void {
+    this.interactions.callPets();
+  }
+
+  takePhoto(): void {
+    this.photoPending = true;
+    sound.sfx('shutter');
+    useProgress.getState().report('photo-taken');
+    useWalk.getState().set({ flash: Date.now() });
+  }
+
+  private savePhoto(): void {
+    try {
+      const url = this.renderer.domElement.toDataURL('image/png');
+      const a = document.createElement('a');
+      const d = new Date();
+      a.download = `בית-החלומות-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}-${d.getHours()}${d.getMinutes()}${d.getSeconds()}.png`;
+      a.href = url;
+      a.click();
+      useWalk.getState().toast('📸 התמונה נשמרה');
+    } catch (err) {
+      console.warn('photo failed', err);
+    }
+  }
+
+  setLook(look: CharacterLook): void {
+    this.walk.character.setLook(look);
+  }
+
+  private shortcut(code: string): boolean {
+    if (EMOTES[code]) {
+      this.emote(code);
+      return true;
+    }
+    const st = useStore.getState();
+    switch (code) {
+      case 'KeyC':
+        this.callPets();
+        return true;
+      case 'KeyP':
+        this.takePhoto();
+        return true;
+      case 'KeyN': {
+        const order: TimeOfDay[] = ['day', 'sunset', 'night'];
+        this.setTime(DAY_MOMENTS[order[(order.indexOf(momentOf(st.view.timeOfDay)) + 1) % order.length]]);
+        return true;
+      }
+      case 'KeyM': {
+        const m = !sound.isMuted();
+        sound.setMuted(m);
+        audio.muted = m;
+        useWalk.getState().set({ muted: m });
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Time of day: follows the store (slider) and runs on its own when the clock is switched on. */
@@ -331,11 +480,19 @@ export class Engine {
     const before = this.atmosphere.night;
     this.atmosphere.setTime(this.time);
     const night = this.atmosphere.night;
-    if (Math.abs(night - before) > 1e-4 || this.lampKey.length === 0) setWindowGlow(night);
+    if (before > 0.45 !== night > 0.45) this.interactions.refreshLights();
+    // lit windows glow for whoever looks at a house from outside; from inside the panes stay dark
+    const indoors = this.mode === 'walk' && this.walk.indoors;
+    const glow = this.windowGlow < 0 ? night : this.windowGlow + ((indoors ? 0 : night) - this.windowGlow) * Math.min(1, dt * 3);
+    if (Math.abs(glow - this.windowGlow) > 0.004 || (glow < 0.004 && this.windowGlow !== 0)) {
+      this.windowGlow = glow < 0.004 ? 0 : glow;
+      setWindowGlow(this.windowGlow);
+    }
     if (this.bloom) {
-      // by day the sky itself is far brighter than any lamp: keep the glow for the evening
+      // by day the sky itself is far brighter than any lamp: keep the glow for the evening,
+      // and keep it gentle in a lit room
       this.bloom.threshold = 4 - 2.9 * night;
-      this.bloom.strength = 0.03 + 0.25 * night;
+      this.bloom.strength = 0.03 + 0.25 * night * (indoors ? 0.3 : 1);
     }
   }
 
@@ -346,27 +503,9 @@ export class Engine {
     useStore.getState().setView({ timeOfDay: hours });
   }
 
-  /** Night falls on the sleeper and they wake up at seven in the morning. */
-  private sleep(): void {
-    const st = useStore.getState();
-    st.setSleeping(true);
-    setTimeout(() => this.setTime(7), 1400);
-    setTimeout(() => {
-      useStore.getState().setSleeping(false);
-      useProgress.getState().setFlash('☀ בוקר טוב!');
-    }, 2800);
-  }
-
   /** Stars found / placed in this neighborhood. */
   starCount(): { found: number; total: number } {
     return this.stars.count;
-  }
-
-  /** Render one frame and hand back a PNG of it (photo mode). */
-  capture(): string {
-    if (this.composer) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
-    return this.renderer.domElement.toDataURL('image/png');
   }
 
   /** Headlights of the vehicle being driven switch on after dark. */
@@ -561,10 +700,11 @@ export class Engine {
     if (walking && (changed || modeChanged || project !== this.walkProject)) {
       this.walkProject = project;
       this.walk.world = this.buildWalkWorld();
+      this.interactions.setWorld(this.walk.world);
       if (this.pendingSpawn) {
-        const { start, y } = this.pendingSpawn;
+        const { start, y, yaw } = this.pendingSpawn;
         this.pendingSpawn = null;
-        this.walk.teleport(start, Math.PI * 0.25, y);
+        this.walk.teleport(start, yaw, y);
       }
     }
     this.syncSelection();
@@ -618,9 +758,6 @@ export class Engine {
     world.groundAt = (x, y) => groundHeight(roads, x, y);
     world.surfaceAt = (x, y, feetY) => this.surfaceAt(x, y, feetY);
     world.occluders = [this.buildingsGroup];
-    const ballRefs: ItemRef[] = [];
-    const goalRefs: ItemRef[] = [];
-    const petRefs: { ref: ItemRef; home: Building | null }[] = [];
 
     const addItem = (
       f: FurnitureItem,
@@ -637,32 +774,13 @@ export class Engine {
       const c = Math.cos(rot);
       const s = Math.sin(rot);
       const tx = (q: Vec2): Vec2 => ({ x: p.x + q.x * c - q.y * s, y: p.y + q.x * s + q.y * c });
-      const body = holder?.userData.body as THREE.Object3D | undefined;
-
-      // seats (moving play equipment glues the rider to its own nodes)
-      const seats = seatsOf(def, f.id, p.x, p.y, rot, floorY, f.elevation);
-      const ride = body?.userData.ride as RideRuntime | undefined;
-      if (def.ride && ride) seats.forEach((seat, index) => (seat.ride = { runtime: ride, index, prompt: def.ride!.prompt }));
-      world.seats.push(...seats);
-
-      if (holder) {
-        const ref: ItemRef = { item: f, def, holder, pos: p, rotation: rot, floorY: floorY + f.elevation };
-        world.usables.push(...this.interactions.usablesFor(ref));
-        if (def.ball && !home) ballRefs.push(ref);
-        if (def.id === 'football-goal') goalRefs.push(ref);
-        if (def.pet) petRefs.push({ ref, home });
-      }
-      if (def.slide) {
-        world.slides.push({
-          points: def.slide.path.map((q) => {
-            const w = tx({ x: q.x, y: q.z });
-            return new THREE.Vector3(w.x, floorY + f.elevation + q.y, w.y);
-          }),
-          slideFrom: def.slide.slideFrom,
-        });
-      }
-      if (def.bounce) world.bouncers.push({ x: p.x, y: p.y, radius: def.bounce.radius, surfaceY: floorY + f.elevation + def.bounce.surfaceY, boost: def.bounce.boost });
-
+      void holder;
+      void home;
+      // swings / rocking things are ridden through their action, not as a plain seat
+      const ridden = def.ride || def.actions?.some((a) => a.kind === 'swing' || a.kind === 'rock');
+      if (!ridden) world.seats.push(...seatsOf(def, p.x, p.y, rot, floorY, f.elevation, f.id));
+      // pets walk around and balls roll: they are not fixed obstacles
+      if (def.actions?.some((a) => a.kind === 'pet' || a.kind === 'ball')) return;
       if (def.stair && rise !== null) {
         world.stairs.push({ x: p.x, y: p.y, rotation: rot, w: def.size.w, d: def.size.d, type: def.stair.type, y0: floorY, y1: floorY + rise });
         const bars = stairBarriers(def.stair.type, def.size.w, def.size.d);
@@ -712,9 +830,6 @@ export class Engine {
       const def = getFurniture(f.catalogId);
       if (def?.vehicle && entry) world.vehicles.push({ id: f.id, def, holder: entry.holder });
     }
-    this.balls.set(ballRefs, goalRefs);
-    this.pets.set(petRefs);
-    world.usables.push(...this.pets.usables);
     this.stars.build(project, world.groundAt);
     this.traffic.setRoads(project.site.roads, world.groundAt, randomLook);
     world.boxes.push(...this.traffic.boxes);
@@ -817,6 +932,7 @@ export class Engine {
       const b = currentBuilding(st.project);
       let start: Vec2;
       let y = 0;
+      let yaw = Math.PI * 0.25;
       if (st.scope === 'building') {
         // inside the building being edited: the selected room, or the largest room of the current level
         const graph = getGraph(this.level().walls);
@@ -825,17 +941,22 @@ export class Engine {
         start = toSite(b, local);
         y = room ? this.activeElevation() : 0;
       } else {
-        // out on the street: on the first road's sidewalk, or in front of the building
-        const road = st.project.site.roads[0];
+        // out in the neighborhood: in front of the current building, looking at it
         const lb = this.localBounds(b);
-        start = road ? { x: road[0] * ROAD_CELL + 1, y: road[1] * ROAD_CELL + 1 } : toSite(b, { x: (lb.minX + lb.maxX) / 2, y: lb.maxY + 4 });
+        const cx = (lb.minX + lb.maxX) / 2;
+        start = toSite(b, { x: cx, y: lb.maxY + 4 });
+        const centre = toSite(b, { x: cx, y: (lb.minY + lb.maxY) / 2 });
+        yaw = Math.atan2(start.x - centre.x, start.y - centre.y);
       }
       this.walk.pos = { ...start };
-      this.pendingSpawn = { start, y };
+      this.pendingSpawn = { start, y, yaw };
       this.updateNearBuildings();
       this.camera.fov = 62;
       this.camera.updateProjectionMatrix();
+      this.interactions.enterWalk(this.walk, this.walk.world);
+      this.interactions.particles.setViewport(this.height * this.renderer.getPixelRatio(), this.camera.fov);
     } else {
+      this.interactions.exitWalk();
       this.walk.disable();
       this.walk.character.root.visible = false;
       useStore.getState().setHint('');
@@ -1065,4 +1186,27 @@ export class Engine {
       useStore.getState().setTool({ type: 'select' });
     }
   };
+}
+
+/** a dome of stars, visible at night */
+function makeStars(): THREE.Points {
+  const n = 1400;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = Math.random();
+    const v = Math.random() * 0.9 + 0.08;
+    const th = u * Math.PI * 2;
+    const ph = Math.acos(1 - v);
+    const r = 400;
+    pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+    pos[i * 3 + 1] = r * Math.cos(ph);
+    pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.9, depthWrite: false });
+  const p = new THREE.Points(g, m);
+  p.visible = false;
+  p.renderOrder = -1;
+  return p;
 }

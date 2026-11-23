@@ -255,6 +255,7 @@ function row(group: string, name: string, r: Rendered, m: Metrics): Row {
   const fail: string[] = [];
   if (m.bad > 0) fail.push(`${m.bad} NaN/Inf samples`);
   if (m.peakDb < -70) fail.push('silent');
+  if (m.dc > 0.01) fail.push(`DC offset ${m.dc.toFixed(4)}`);
   return {
     group,
     name,
@@ -336,6 +337,10 @@ export const AMBIENCES: Record<string, Ambience> = {
   'rain-outdoor': { outdoor: 1, night: 0, rain: 0.8 },
   'rain-indoor': { outdoor: 0, night: 0, rain: 0.8 },
   'windy-day': { outdoor: 1, night: 0, wind: 0.8 },
+  // what the game currently sends from walk mode
+  'game-day': { outdoor: 1, night: 0, wind: 0.3 },
+  'game-night': { outdoor: 1, night: 1, wind: 0.3 },
+  'game-indoor': { outdoor: 0.12, night: 0, wind: 0.3 },
 };
 
 export interface SelfTestResult {
@@ -439,7 +444,6 @@ export async function runSelfTest(log: (s: string) => void = () => {}): Promise<
     const m = analyze(r.buf, 0.6, 3);
     const rw = row('loop', loop, r, m);
     if (m.peakDb > SINGLE_PEAK_DB) rw.fail.push(`peak ${m.peakDb.toFixed(1)} dBFS > ${SINGLE_PEAK_DB}`);
-    if (m.dc > 0.01) rw.fail.push(`DC ${m.dc.toFixed(4)}`);
     if (peakIn(r.buf, 4.4, 5) > 0.001) rw.fail.push('still audible 1.4 s after switching off');
     leakCheck(rw);
     rows.push(rw);
@@ -452,7 +456,6 @@ export async function runSelfTest(log: (s: string) => void = () => {}): Promise<
     const all = analyze(r.buf, 0.3, 10);
     const rw = row('vehicle', `${kind} (whole run)`, r, all);
     if (all.peakDb > SINGLE_PEAK_DB) rw.fail.push(`peak ${all.peakDb.toFixed(1)} dBFS > ${SINGLE_PEAK_DB}`);
-    if (all.dc > 0.01) rw.fail.push(`DC ${all.dc.toFixed(4)}`);
     if (peakIn(r.buf, 11, 11.6) > 0.001) rw.fail.push('still audible 1 s after stopping');
     leakCheck(rw);
     rows.push(rw);
@@ -486,7 +489,6 @@ export async function runSelfTest(log: (s: string) => void = () => {}): Promise<
     const m = analyze(r.buf, 1.5, 10);
     const rw = row('ambience', name, r, m);
     if (m.peakDb > SINGLE_PEAK_DB) rw.fail.push(`peak ${m.peakDb.toFixed(1)} dBFS > ${SINGLE_PEAK_DB}`);
-    if (m.dc > 0.01) rw.fail.push(`DC ${m.dc.toFixed(4)}`);
     if (peakIn(r.buf, 11.7, 12.2) > 0.001) rw.fail.push('still audible 1.7 s after silence()');
     leakCheck(rw);
     rows.push(rw);
@@ -536,7 +538,6 @@ export async function runSelfTest(log: (s: string) => void = () => {}): Promise<
     const m = analyze(r.buf, 0.5, 8);
     const rw = row('mix', 'stress (everything at once)', r, m);
     if (m.peakDb > -1) rw.fail.push(`peak ${m.peakDb.toFixed(1)} dBFS > -1`);
-    if (m.dc > 0.01) rw.fail.push(`DC ${m.dc.toFixed(4)}`);
     rows.push(rw);
   }
   {

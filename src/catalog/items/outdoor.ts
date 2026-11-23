@@ -179,6 +179,7 @@ const bbq: FurnitureDef = {
   category: 'outdoor',
   size: { w: 1.3, d: 0.6, h: 1.17 },
   colors: [slot('body', 'גוף', '#2b2c2f')],
+  actions: [{ kind: 'cook', at: { x: 0, y: 0.95, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const body = M.metal(c.body, 0.45, 0.6);
@@ -571,47 +572,36 @@ const swingSet: FurnitureDef = {
   category: 'outdoor',
   size: SWING,
   colors: [slot('frame', 'מסגרת', PAL.teak), slot('seat', 'מושבים', PAL.terracotta)],
-  seats: SW.xs.map((x) => ({ x, z: 0, height: SW.seatY, facing: 0, kind: 'sit' as const })),
-  noBake: true,
-  ride: { kind: 'swing', prompt: 'להתנדנד' },
+  seats: [
+    { x: -0.5, z: 0, height: 0.5, facing: 0, kind: 'sit' },
+    { x: 0.5, z: 0, height: 0.5, facing: 0, kind: 'sit' },
+  ],
+  actions: [{ kind: 'swing' }],
   build: ({ colors: c }) => {
-    const root = new THREE.Group();
-    root.add(bakedPart(partKey('swing-frame', c, ['frame']), () => swingFrame(c)));
-    const L = SW.pivotY - SW.seatY;
-    const swings = SW.xs.map((x) => {
-      // pivot node on the eye-bolt axis; rotation.x = -angle swings the seat towards +Z
-      const pivot = new THREE.Group();
-      pivot.name = 'swing';
-      pivot.position.set(x, SW.pivotY, 0);
-      pivot.add(bakedPart(partKey('swing-seat', c, ['seat']), () => swingSeat(c)));
-      root.add(pivot);
-      return { pivot, seat: seatNode(pivot, 0, -L, 0, 0), body: new Pendulum(L, 0.92) };
-    });
-    const ride: RideRuntime = {
-      seatNodes: swings.map((s) => s.seat),
-      update(dt, push, riders) {
-        const p = push01(push);
-        const [n, h] = substeps(dt);
-        for (let i = 0; i < n; i++) {
-          swings.forEach((s, j) => {
-            // the frame shakes a little: an empty swing sways along with a busy neighbour
-            let ext = 0;
-            swings.forEach((o, m) => {
-              if (m !== j) ext -= 0.012 * o.body.alpha;
-            });
-            s.body.step(h, riders.includes(j) ? p : 0, ext);
-          });
-        }
-        let moving = false;
-        for (const s of swings) {
-          s.pivot.rotation.x = -s.body.theta;
-          moving = moving || s.body.moving;
-        }
-        return moving;
-      },
-    };
-    root.userData.ride = ride;
-    return root;
+    const k = new Kit();
+    const wood = M.wood(c.frame, 0.7);
+    const { w, d, h } = SWING;
+    const ax = w / 2 - 0.08;
+    const top = h - 0.05;
+    for (const s of [-1, 1]) {
+      for (const sz of [-1, 1]) k.beam([s * (ax + 0.03), 0.0115, sz * (d / 2 - 0.045)], [s * ax, top, sz * 0.03], 0.075, 0.075, wood, 0.01);
+      k.beam([s * (ax + 0.022), 0.55, -(d / 2 - 0.05) * 0.74], [s * (ax + 0.022), 0.55, (d / 2 - 0.05) * 0.74], 0.06, 0.035, wood, 0.006);
+    }
+    k.beam([-w / 2 + 0.01, top + 0.0, 0], [w / 2 - 0.01, top, 0], 0.09, 0.09, wood, 0.012);
+    const metal = M.steel();
+    const rope = M.matte('#d8cdb6');
+    const seat = M.plastic(c.seat);
+    for (const sx of [-0.5, 0.5]) {
+      // each swing hangs from the top beam and is animated around it
+      const sw = k.part('swing', sx, top, 0);
+      for (const s of [-1, 1]) {
+        const x = s * 0.2;
+        sw.cyl(0.012, 0.05, metal, x, -0.09, 0, 0.012, 8);
+        sw.rod([x, 0.5 - top, 0], [x, -0.06, 0], 0.007, rope, 0.007, 6);
+      }
+      sw.rbox(0.46, 0.03, 0.17, 0.012, seat, 0, 0.475 - top, 0, 1);
+    }
+    return k.g;
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
@@ -644,8 +634,7 @@ const trampoline: FurnitureDef = {
   category: 'outdoor',
   size: { w: 3.08, d: 3.08, h: TR.h },
   colors: [slot('pad', 'ריפוד', PAL.dustyBlue)],
-  // the black jumping mat inside the spring pad (the way in is the slit in the net at +Z)
-  bounce: { radius: TR.r - 0.27, surfaceY: TR.deck + 0.005, boost: 2.2 },
+  actions: [{ kind: 'bounce', at: { x: 0, y: TR.deck + 0.01, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const steel = M.metal('#b9bcbf', 0.4, 0.9);
@@ -821,7 +810,7 @@ const gardenLamp: FurnitureDef = {
   size: { w: 0.4, d: 0.4, h: 2.6 },
   colors: [slot('metal', 'מתכת', '#2f3235')],
   light: { x: 0, y: 2.3, z: 0, color: '#ffdca8', intensity: 90, distance: 10 },
-  interact: [{ kind: 'light' }],
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const metal = M.metal(c.metal, 0.55, 0.6);

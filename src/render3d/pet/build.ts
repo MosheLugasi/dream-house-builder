@@ -95,16 +95,6 @@ export function makeRig(b: Breed): Rig {
 
 /* ------------------------------------------------------------------ head helpers */
 
-function headStationAt(b: Breed, a: number): { c: number; up: number; down: number; w: number; n: number } {
-  const st = b.head.st;
-  let i = 0;
-  while (i < st.length - 2 && a > st[i + 1].a) i++;
-  const p = st[i];
-  const q = st[i + 1];
-  const t = Math.min(1, Math.max(0, (a - p.a) / (q.a - p.a)));
-  return { c: lerp(p.c, q.c, t), up: lerp(p.up, q.up, t), down: lerp(p.down, q.down, t), w: lerp(p.w, q.w, t), n: lerp(p.n ?? 2, q.n ?? 2, t) };
-}
-
 const headRingCache = new Map<string, Ring[]>();
 /** the rings of the head loft in bind space (shared by the mesh and by everything placed on the head) */
 function headRings(b: Breed): Ring[] {
@@ -209,7 +199,7 @@ function vnoise(x: number, y: number): number {
   return lerp(lerp(h(xi, yi), h(xi + 1, yi), u), lerp(h(xi, yi + 1), h(xi + 1, yi + 1), u), v);
 }
 
-function makeColorizer(b: Breed, pal: Palette, rig: Rig): (part: Part, i: LoftInfo, hl?: THREE.Vector3) => THREE.Color {
+function makeColorizer(b: Breed, pal: Palette, rig: Rig): (part: Part, i: LoftInfo) => THREE.Color {
   const out = new THREE.Color();
   const H = b.h;
   const head = rig.pos[B.head];
@@ -228,7 +218,7 @@ function makeColorizer(b: Breed, pal: Palette, rig: Rig): (part: Part, i: LoftIn
       out.copy(pal.coat);
       // darker along the top line, lighter belly / chest / feathering
       if (part === 'torso') {
-        out.lerp(pal.dark, 0.35 * sstep(0.55, 1, i.sn) * sstep(0.3 * H, 0.05 * H, Math.abs(p.z - 0.05 * H) - 0.6 * H + 0.4 * H));
+        out.lerp(pal.dark, 0.3 * sstep(0.55, 1, i.sn) * sstep(0.5 * H, 0.25 * H, Math.abs(p.z - 0.05 * H)));
         out.lerp(pal.light, 0.75 * sstep(0.45, 0.95, under));
         // pale ruff on the fore-chest
         out.lerp(pal.light, 0.55 * sstep(0.3 * H, 0.5 * H, p.z) * sstep(0.1, 0.8, under));
@@ -294,11 +284,12 @@ function makeColorizer(b: Breed, pal: Palette, rig: Rig): (part: Part, i: LoftIn
         // forehead "M" lines, cheek stripes, white muzzle and chin
         const top = sstep(0.012, 0.03, hy);
         const s = 0.5 + 0.5 * Math.cos((hx / 0.0125) * Math.PI * 2);
-        stripe = sstep(0.55, 0.9, s) * top * sstep(0.064, 0.05, ha) * sstep(-0.002, 0.012, ha);
+        stripe = sstep(0.55, 0.9, s) * top * sstep(0.07, 0.056, ha) * sstep(-0.002, 0.012, ha);
         const cheek = 0.5 + 0.5 * Math.cos(((hy + ha * 0.4) / 0.016) * Math.PI * 2);
         stripe = Math.max(stripe, sstep(0.6, 0.95, cheek) * sstep(0.03, 0.04, hx) * sstep(0.058, 0.04, ha) * sstep(0.014, -0.004, hy) * sstep(-0.03, -0.015, hy));
-        white = Math.max(sstep(0.068, 0.08, ha) * sstep(0.004, -0.004, hy - 0.004), sstep(0.5, 0.95, under) * sstep(0.03, 0.05, ha));
-        white = Math.max(white, sstep(0.072, 0.085, ha) * 0.8);
+        // white muzzle, chin and a short blaze up the nose
+        white = Math.max(sstep(0.074, 0.086, ha) * sstep(0.012, 0.0, hy), sstep(0.5, 0.95, under) * sstep(0.03, 0.05, ha));
+        white = Math.max(white, sstep(0.084, 0.094, ha), sstep(0.012, 0.004, hx) * sstep(0.07, 0.082, ha) * 0.9);
       } else if (part === 'jaw') {
         white = 1;
       } else if (part === 'ear') {
@@ -346,10 +337,10 @@ export function buildPetGeometry(b: Breed, rig: Rig, colors: Record<string, stri
     n: t.n,
     skin: Object.entries(t.skin).map(([k, w]) => [tb[k], w as number] as [number, number]),
   }));
-  const spacing = cat ? 0.0105 : 0.03;
+  const spacing = cat ? 0.0115 : 0.03;
   const sub = torsoSt.slice(0, -1).map((s, i) => Math.max(1, Math.round(s.c.distanceTo(torsoSt[i + 1].c) / spacing)));
   const torso = sampleRings(torsoSt, X, sub);
-  loft(buf, torso, { segs: cat ? 18 : 20, color: (i) => colorOf('torso', i), capStart: b.torsoCap[0], capEnd: b.torsoCap[1], uTile, vRepeat: 5 });
+  loft(buf, torso, { segs: cat ? 16 : 18, color: (i) => colorOf('torso', i), capStart: b.torsoCap[0], capEnd: b.torsoCap[1], uTile, vRepeat: 5 });
 
   /* ---- head */
   const head = headRings(b);
@@ -484,7 +475,7 @@ export function buildPetGeometry(b: Breed, rig: Rig, colors: Record<string, stri
       skin: k === 0 ? [[B.head, 1]] : k === 1 ? [[B.head, 0.25], [bone, 0.75]] : [[bone, 1]],
     }));
     loft(buf, sampleRings(st, sAxis, 2), {
-      segs: 10,
+      segs: 8,
       capEnd: e.w[e.w.length - 1] * 0.8,
       uTile: uTile * 0.5,
       vRepeat: 2,
@@ -505,9 +496,9 @@ export function buildPetGeometry(b: Breed, rig: Rig, colors: Record<string, stri
     [0.056, 0.066, 0.045],
     [0.044, 0.056, 0.04],
     [0.038, 0.046, 0.036],
-    [0.037, 0.042, 0.034],
-    [0.032, 0.036, 0.03],
-    [0.026, 0.029, 0.026],
+    [0.038, 0.043, 0.035],
+    [0.034, 0.038, 0.032],
+    [0.028, 0.031, 0.028],
     [0.027, 0.028, 0.027],
     [0.024, 0.026, 0.026],
     [0.025, 0.027, 0.028],
@@ -577,7 +568,7 @@ export function buildPetGeometry(b: Breed, rig: Rig, colors: Record<string, stri
       tc.copy(colorOf('torso', trunkInfo));
       return tmpC.lerp(tc, sstep(3.4, 1.6, i.k));
     };
-    loft(buf, sampleRings(st, X, [2, 2, 1, 1, 1, 2, 1, 1, 1, 1]), { segs: 12, color: legColor, uTile: uTile * 0.7, vRepeat: 2, capStart: 0.03 * R, capEnd: 0.004 * K });
+    loft(buf, sampleRings(st, X, [2, 2, 1, 1, 1, 1, 1, 1, 1, 1]), { segs: 12, color: legColor, uTile: uTile * 0.7, vRepeat: 2, capStart: 0.03 * R, capEnd: 0.004 * K });
 
     // paw: a flattened loft along +Z with toe grooves
     const pw = b.paw;
@@ -589,22 +580,24 @@ export function buildPetGeometry(b: Breed, rig: Rig, colors: Record<string, stri
       { c: v3(pj.x, py(0.44), pj.z + pw.toe * 0.55), up: py(0.46), down: py(0.44), w: pw.w, n: 2.5, skin: [[b0 + 3, 1]] },
       { c: v3(pj.x, py(0.34), pj.z + pw.toe), up: py(0.34), down: py(0.34), w: pw.w * 0.84, n: 2.5, skin: [[b0 + 3, 1]] },
     ];
-    const toeZ = pj.z + pw.toe * 0.45;
-    const groove = (i: LoftInfo) => {
-      // grooves between the four toes: at 60°, 90° and 120° around the ring (top half)
-      if (i.sn < 0.45 || i.p.z < toeZ) return 0;
+    const toeZ = pj.z + pw.toe * 0.3;
+    // four toes: with 16 segments the grooves fall on the vertices at 45°, 90° and 135° of the top half
+    const toe = (i: LoftInfo): number => {
+      if (i.sn < 0.3 || i.p.z < toeZ || i.cap <= -0.9) return 0;
       const th = Math.atan2(i.sn, i.cs);
-      const d = Math.min(Math.abs(th - Math.PI / 2), Math.abs(th - Math.PI / 3), Math.abs(th - (2 * Math.PI) / 3));
-      return d < 0.05 ? 1 : 0;
+      const q = (th - Math.PI / 4) / (Math.PI / 4);
+      const near = Math.abs(q - Math.round(q));
+      return near < 0.1 && Math.round(q) >= 0 && Math.round(q) <= 2 ? -1 : 0.35;
     };
+    const grooveCol = pal.pad.clone().lerp(pal.coat, 0.35);
     loft(buf, sampleRings(pst, X, [1, 1, 2]), {
-      segs: 12,
+      segs: 16,
       capStart: 0,
       capEnd: pw.toe * 0.32,
       uTile: uTile * 0.5,
       vRepeat: 2,
-      color: (i) => tmpC.copy(colorOf('paw', i)).lerp(pal.pad, groove(i) * 0.45 + sstep(0.9, 1, -i.sn) * 0.5),
-      displace: (i) => -groove(i) * pw.h * 0.1,
+      color: (i) => tmpC.copy(colorOf('paw', i)).lerp(grooveCol, (toe(i) < 0 ? 0.75 : 0) + sstep(0.9, 1, -i.sn) * 0.5),
+      displace: (i) => toe(i) * pw.h * 0.17 * sstep(toeZ, toeZ + pw.toe * 0.4, i.p.z),
     });
   }
 
@@ -612,9 +605,11 @@ export function buildPetGeometry(b: Breed, rig: Rig, colors: Record<string, stri
   {
     const tj = tailJoints(b);
     const n = b.tail.n;
-    const pre = tj[0].clone().addScaledVector(tj[0].clone().sub(tj[1]).normalize(), b.tail.r0 * 1.2);
-    pre.y -= b.tail.r0 * 0.3;
-    const st: Station[] = [{ c: pre, up: b.tail.r0 * 1.15, down: b.tail.r0 * 1.2, w: b.tail.r0 * 1.15, skin: [[B.pelvis, 1]] }];
+    // root of the tail: buried in the rump, straight in front of the first joint
+    const pre = tj[0].clone();
+    pre.z += b.tail.r0 * 1.5;
+    pre.y -= b.tail.r0 * 0.45;
+    const st: Station[] = [{ c: pre, up: b.tail.r0 * 0.95, down: b.tail.r0 * 1.1, w: b.tail.r0 * 1.05, skin: [[B.pelvis, 1]] }];
     for (let i = 0; i <= n; i++) {
       const u = i / n;
       const r = lerp(b.tail.r0, b.tail.r1, Math.pow(u, cat ? 1.5 : 0.9));

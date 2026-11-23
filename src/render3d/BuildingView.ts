@@ -55,6 +55,7 @@ export class BuildingView {
 
     while (this.levels.length > b.levels.length) {
       const lv = this.levels.pop()!;
+      lv.items.clear();
       this.group.remove(lv.group);
       if (lv.arch) disposeArchitecture(lv.arch);
       changed = true;
@@ -153,7 +154,10 @@ export class BuildingView {
   }
 
   dispose(): void {
-    for (const lv of this.levels) if (lv.arch) disposeArchitecture(lv.arch);
+    for (const lv of this.levels) {
+      lv.items.clear();
+      if (lv.arch) disposeArchitecture(lv.arch);
+    }
     this.roof?.traverse((m) => (m as THREE.Mesh).geometry?.dispose());
   }
 }

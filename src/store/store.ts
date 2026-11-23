@@ -59,9 +59,6 @@ interface State {
   wallThickness: number;
   /** short status / hint text shown at the bottom */
   hint: string;
-  /** the screen is faded to black while the character sleeps */
-  sleeping: boolean;
-  setSleeping(sleeping: boolean): void;
 
   setMode(mode: Mode): void;
   setTool(tool: Tool): void;
@@ -99,8 +96,6 @@ export const useStore = create<State>((set, get) => ({
   levelIndex: 0,
   view: { wallsLow: false, showRoof: false, quality: 'high', snap: true, showDimensions: true, firstPerson: false, timeOfDay: 14.5, autoTime: false },
   hint: '',
-  sleeping: false,
-  setSleeping: (sleeping) => set({ sleeping }),
   wallThickness: 0.2,
 
   setWallThickness: (wallThickness) => set({ wallThickness }),

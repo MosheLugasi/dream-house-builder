@@ -31,19 +31,22 @@ describe('player progress', () => {
 });
 
 describe('playable catalog items', () => {
+  const does = (def: { actions?: Array<{ kind: string }> }, kind: string) => !!def.actions?.some((a) => a.kind === kind);
+
   it('declares consistent ability specs', () => {
     for (const def of FURNITURE) {
-      // anything that moves on its own must not be baked into a static batch
-      if (def.ride || def.ball || def.pet) expect(def.noBake, def.id).toBe(true);
-      if (def.slide) {
-        expect(def.slide.path.length, def.id).toBeGreaterThan(2);
-        expect(def.slide.slideFrom, def.id).toBeLessThan(def.slide.path.length - 1);
-        // a slide goes down
-        expect(def.slide.path[def.slide.slideFrom].y, def.id).toBeGreaterThan(def.slide.path[def.slide.path.length - 1].y);
+      // anything that simulates itself must not be baked into a static batch
+      if (def.ride || def.pet) expect(def.noBake, def.id).toBe(true);
+      if (def.pet) {
+        expect(def.pet.runSpeed, def.id).toBeGreaterThan(def.pet.walkSpeed);
+        expect(does(def, 'pet'), def.id).toBe(true);
       }
-      if (def.bounce) expect(def.bounce.radius, def.id).toBeLessThanOrEqual(Math.min(def.size.w, def.size.d) / 2);
-      if (def.ball) expect(def.ball.radius, def.id).toBeGreaterThan(0.03);
-      if (def.pet) expect(def.pet.runSpeed, def.id).toBeGreaterThan(def.pet.walkSpeed);
+      for (const a of def.actions ?? []) {
+        if (a.kind !== 'slide') continue;
+        expect(a.path?.length ?? 0, def.id).toBeGreaterThan(1);
+        // a slide goes down
+        expect(a.path![0].y, def.id).toBeGreaterThan(a.path![a.path!.length - 1].y);
+      }
     }
   });
 
@@ -53,11 +56,8 @@ describe('playable catalog items', () => {
     const inside = project.buildings.flatMap((b) => b.levels.flatMap((l) => l.furniture.map((f) => f.catalogId)));
     for (const id of [...site, ...inside]) expect(getFurniture(id), id).toBeDefined();
     const all = [...site, ...inside].map((id) => getFurniture(id)!);
-    expect(all.some((d) => d.pet)).toBe(true);
-    expect(all.some((d) => d.ball)).toBe(true);
-    expect(all.some((d) => d.bounce)).toBe(true);
+    for (const kind of ['pet', 'ball', 'bounce', 'slide', 'light', 'tv', 'water']) expect(all.some((d) => does(d, kind)), kind).toBe(true);
     expect(all.some((d) => d.ride)).toBe(true);
-    expect(all.some((d) => d.slide)).toBe(true);
-    expect(all.some((d) => d.interact)).toBe(true);
+    expect(all.some((d) => d.id === 'football-goal' || d.id === 'goal-soccer')).toBe(true);
   });
 });

@@ -10,7 +10,6 @@ const toilet: FurnitureDef = {
   size: { w: 0.4, d: 0.7, h: 0.8 },
   colors: [slot('ceramic', 'חרסינה', '#f7f6f2')],
   seats: [{ x: 0, z: 0.1, height: 0.43, facing: 0, kind: 'sit' }],
-  interact: [{ kind: 'sfx', sound: 'flush' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const cer = M.ceramic(c.ceramic);
@@ -64,8 +63,7 @@ const basinVanity: FurnitureDef = {
   category: 'bathroom',
   size: { w: 0.8, d: 0.48, h: 1.95 },
   colors: [slot('fronts', 'ארון', PAL.oak), slot('top', 'משטח', PAL.white)],
-  // mixer spout tip (base z = -0.185, h = 0.2, reach = 0.13) down to the inside of the vessel basin
-  interact: [{ kind: 'water', x: 0, y: 0.914, z: -0.055, fall: 0.085, sound: 'tap' }],
+  actions: [{ kind: 'water', at: { x: 0, y: 0.8 + 0.124, z: -0.185 + 0.13 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.8;
@@ -139,8 +137,7 @@ const bathtub: FurnitureDef = {
   size: { w: 1.7, d: 0.75, h: 0.74 },
   colors: [slot('ceramic', 'אמבט', '#f7f6f2')],
   seats: [{ x: 0.25, z: 0, height: 0.14, facing: -Math.PI / 2, kind: 'sit' }],
-  // deck mixer at x = -0.8 pointing along +X: spout tip down to the basin floor (y = 0.12)
-  interact: [{ kind: 'water', x: -0.65, y: 0.631, z: 0, fall: 0.511, sound: 'tap' }],
+  actions: [{ kind: 'water', at: { x: -1.7 / 2 + 0.05 + 0.15, y: 0.56 + 0.075, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const cer = M.ceramic(c.ceramic);
@@ -191,8 +188,7 @@ const shower: FurnitureDef = {
   category: 'bathroom',
   size: { w: 0.9, d: 0.9, h: 2.05 },
   colors: [slot('tray', 'אגנית', '#f4f3ef'), slot('metal', 'פרזול', '#d9dcdf')],
-  // underside of the rain head (r = 0.11) down to the tray floor (y = 0.03)
-  interact: [{ kind: 'water', x: -0.1, y: 1.99, z: -0.12, fall: 1.96, sound: 'shower' }],
+  actions: [{ kind: 'water', at: { x: -0.1, y: 1.98, z: -0.9 / 2 + 0.03 + 0.3 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const s = 0.9;
@@ -256,7 +252,6 @@ const washer: FurnitureDef = {
   category: 'bathroom',
   size: { w: 0.6, d: 0.6, h: 0.85 },
   colors: [slot('body', 'גוף', '#f2f2f0')],
-  interact: [{ kind: 'appliance', sound: 'washing' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const body = M.paint(c.body, 0.35);

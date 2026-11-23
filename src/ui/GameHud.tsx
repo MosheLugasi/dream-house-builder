@@ -114,14 +114,11 @@ export function AvatarDialog({ onClose }: { onClose: () => void }) {
 }
 export const hasAvatarCreator = !!Creator;
 
-/** Buttons and read-outs on top of the 3D view while walking around. */
-export function WalkHud({ onAvatar }: { onAvatar: () => void }) {
+/** Walk-mode read-outs: stars found in this neighborhood and the speedometer. */
+export function WalkExtras() {
   const projectId = useStore((s) => s.project.id);
-  const sleeping = useStore((s) => s.sleeping);
   const found = useProgress((s) => s.stars[projectId]?.length ?? 0);
   const [info, setInfo] = useState({ total: 0, speed: -1 });
-  const [muted, setMuted] = useState(audio.muted);
-  const [shutter, setShutter] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -134,58 +131,19 @@ export function WalkHud({ onAvatar }: { onAvatar: () => void }) {
     return () => clearInterval(t);
   }, []);
 
-  const photo = () => {
-    const e = engine();
-    if (!e) return;
-    const url = e.capture();
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `בונים-חלום-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    audio.play('camera');
-    report('photo-taken');
-    setShutter(true);
-    setTimeout(() => setShutter(false), 350);
-  };
-
   return (
     <>
-      <div className="walk-tools">
-        {info.total > 0 && (
-          <span className="chip star-count" title="כוכבים שנאספו בשכונה הזאת">
-            ⭐ {Math.min(found, info.total)}/{info.total}
-          </span>
-        )}
-        <button className="chip" onClick={photo} title="צילום תמונה">
-          📷 צילום
-        </button>
-        {hasAvatarCreator && (
-          <button className="chip" onClick={onAvatar} title="עיצוב הדמות">
-            👤 הדמות שלי
-          </button>
-        )}
-        <button
-          className="chip"
-          title={muted ? 'הפעלת הצליל' : 'השתקה'}
-          onClick={() => {
-            audio.unlock();
-            audio.muted = !audio.muted;
-            setMuted(audio.muted);
-          }}
-        >
-          {muted ? '🔇' : '🔊'}
-        </button>
-      </div>
+      {info.total > 0 && (
+        <span className="chip star-count" title="כוכבים שנאספו בשכונה הזאת">
+          ⭐ {Math.min(found, info.total)}/{info.total}
+        </span>
+      )}
       {info.speed >= 0 && (
         <div className="speedometer">
           <strong>{Math.round(info.speed)}</strong>
           <small>קמ"ש</small>
         </div>
       )}
-      <div className={`sleep-fade ${sleeping ? 'on' : ''}`}>{sleeping && <span>לילה טוב… 😴</span>}</div>
-      {shutter && <div className="shutter" />}
     </>
   );
 }

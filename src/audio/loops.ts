@@ -121,7 +121,7 @@ const BUILD: Record<Loop, Builder> = {
       while (next < t0 + horizon) {
         const r = g.rng;
         const t = Math.max(next, t0 + 0.02);
-        const v = new Voice(g, t);
+        const v = p.adopt(new Voice(g, t));
         const n = 3 + Math.floor(r() * 4);
         let at = t;
         let idx = Math.floor(r() * scale.length);
@@ -227,7 +227,7 @@ const BUILD: Record<Loop, Builder> = {
     chain(p.noise('brown'), p.bq('bandpass', 190, 0.9), p.gain(0.6), out);
   },
 
-  swing(g, _p, out, now) {
+  swing(g, p, out, now) {
     // nothing sounds between swings: a chain creak at each end of the arc and a breath of air through the middle
     const period = 2.7;
     let next = now + 0.05;
@@ -237,7 +237,7 @@ const BUILD: Record<Loop, Builder> = {
       while (next < t0 + horizon) {
         const r = g.rng;
         const t = Math.max(next, t0 + 0.02);
-        const v = new Voice(g, t, rr(r, 0.96, 1.04));
+        const v = p.adopt(new Voice(g, t, rr(r, 0.96, 1.04)));
         const res: [number, number] = fwd ? [rr(r, 980, 1080), rr(r, 2150, 2350)] : [rr(r, 820, 900), rr(r, 1800, 1950)];
         const d = rr(r, 0.26, 0.36);
         creak(v, out, t, d, 0.5, fwd ? [34, 58, 50] : [52, 36, 30], res, 8);

@@ -37,7 +37,7 @@ function buildDesk(c: Colors, computer: boolean): THREE.Object3D {
     const neck = k.box(0.05, 0.19, 0.012, alu, 0, y + 0.01, -0.235);
     neck.rotation.x = -0.12;
     k.rbox(0.615, 0.365, 0.02, 0.006, blk, 0, y + 0.115, -0.2, 1);
-    k.box(0.6, 0.35, 0.002, M.screen('#141a24'), 0, y + 0.1225, -0.1895);
+    k.part('screen').box(0.6, 0.35, 0.002, M.screen('#141a24'), 0, y + 0.1225, -0.1895);
     // keyboard, mouse, mouse pad
     k.rbox(0.42, 0.014, 0.13, 0.005, alu, -0.04, y, 0.1, 1);
     k.box(0.4, 0.004, 0.11, M.plastic('#f2f2f2'), -0.04, y + 0.0125, 0.1);
@@ -84,8 +84,7 @@ const deskComputer: FurnitureDef = {
   category: 'office',
   size: { w: DESK_W, d: DESK_D, h: 1.24 },
   colors: DESK_COLORS,
-  // picture = the monitor glass (0.6 × 0.35, front face at z = -0.1885), 1.5 mm in front of it
-  interact: [{ kind: 'screen', x: 0, y: DESK_H + 0.2975, z: -0.187, w: 0.596, h: 0.346, ry: 0 }],
+  actions: [{ kind: 'computer' }],
   build: ({ colors }) => buildDesk(colors, true),
   draw2d: (ctx, colors) => drawDesk(ctx, colors, true),
 };

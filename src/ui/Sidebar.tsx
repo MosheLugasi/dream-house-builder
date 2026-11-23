@@ -22,8 +22,8 @@ const SITE_TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'buildings', label: 'מבנים', icon: 'building' },
   { id: 'props', label: 'רחוב, גינה ורכב', icon: 'tree' },
 ];
-const BUILDING_CATEGORIES: FurnitureCategory[] = ['living', 'dining', 'kitchen', 'bedroom', 'bathroom', 'office', 'kids', 'pet', 'lighting', 'decor', 'public', 'outdoor', 'playground'];
-const SITE_CATEGORIES: FurnitureCategory[] = ['vehicle', 'street', 'playground', 'outdoor', 'pet'];
+const BUILDING_CATEGORIES: FurnitureCategory[] = ['living', 'dining', 'kitchen', 'bedroom', 'bathroom', 'office', 'kids', 'lighting', 'decor', 'accessories', 'entertainment', 'sports', 'pets', 'public', 'outdoor', 'playground'];
+const SITE_CATEGORIES: FurnitureCategory[] = ['vehicle', 'street', 'playground', 'outdoor', 'sports', 'pets'];
 
 export const PAINT_COLORS = [
   '#ffffff', '#f4f1ea', '#ebe5d9', '#ddd3c2', '#c9bca7', '#a89a85',
@@ -232,6 +232,26 @@ function OpeningThumb({ id }: { id: string }) {
   );
 }
 
+function FurnitureGroup({ title, list, tool, pick }: { title: string; list: FurnitureDef[]; tool: Tool; pick: (t: Tool) => void }) {
+  return (
+    <>
+      {title && <h5 className="catalog-group">{title}</h5>}
+      {list.map((f) => (
+        <button
+          key={f.id}
+          className={`card ${tool.type === 'furniture' && tool.catalogId === f.id ? 'active' : ''}`}
+          onClick={() => pick({ type: 'furniture', catalogId: f.id })}
+          title={`${f.name} · ${Math.round(f.size.w * 100)}×${Math.round(f.size.d * 100)} ס"מ${f.actions?.length ? ' · אינטראקטיבי' : ''}`}
+        >
+          <FurnitureThumb def={f} />
+          <span>{f.name}</span>
+          {!!f.actions?.length && <i className="interactive-badge" title="אפשר לשחק עם זה בסיור">✨</i>}
+        </button>
+      ))}
+    </>
+  );
+}
+
 function FurnitureTab({ allowed }: { allowed: FurnitureCategory[] }) {
   const { tool, pick } = useTool();
   const categories = useMemo(() => {
@@ -241,11 +261,23 @@ function FurnitureTab({ allowed }: { allowed: FurnitureCategory[] }) {
   const [category, setCategory] = useState<FurnitureCategory>(categories[0] ?? 'living');
   const [query, setQuery] = useState('');
   const pool = FURNITURE.filter((f) => allowed.includes(f.category));
-  const items = pool.filter((f) => (query ? f.name.includes(query.trim()) : f.category === category));
+  const q = query.trim();
+  const items = pool.filter((f) =>
+    q ? f.name.includes(q) || (f.group ?? '').includes(q) || (f.tags ?? []).some((t) => t.includes(q)) : f.category === category,
+  );
+  // keep catalog order but gather each sub-group together
+  const groups = new Map<string, FurnitureDef[]>();
+  for (const f of items) {
+    const g = q ? '' : (f.group ?? '');
+    const list = groups.get(g) ?? [];
+    list.push(f);
+    groups.set(g, list);
+  }
+  const ordered = [...groups.entries()].sort((a, b) => (a[0] === '' ? -1 : b[0] === '' ? 1 : 0));
   return (
     <div className="tab-body">
-      <input className="search" placeholder="חיפוש פריט…" value={query} onChange={(e) => setQuery(e.target.value)} />
-      {!query && (
+      <input className="search" placeholder="חיפוש: ספה, קטיפה, כלב, מנורה…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      {!q && (
         <div className="pills">
           {categories.map((c) => (
             <button key={c} className={category === c ? 'active' : ''} onClick={() => setCategory(c)}>
@@ -254,17 +286,10 @@ function FurnitureTab({ allowed }: { allowed: FurnitureCategory[] }) {
           ))}
         </div>
       )}
+      <p className="note">{q ? `${items.length} תוצאות` : `${items.length} פריטים`} · {pool.length} בקטלוג</p>
       <div className="grid">
-        {items.map((f) => (
-          <button
-            key={f.id}
-            className={`card ${tool.type === 'furniture' && tool.catalogId === f.id ? 'active' : ''}`}
-            onClick={() => pick({ type: 'furniture', catalogId: f.id })}
-            title={`${f.name} · ${Math.round(f.size.w * 100)}×${Math.round(f.size.d * 100)} ס"מ`}
-          >
-            <FurnitureThumb def={f} />
-            <span>{f.name}</span>
-          </button>
+        {ordered.map(([g, list]) => (
+          <FurnitureGroup key={g || '_'} title={groups.size > 1 ? g || 'כללי' : ''} list={list} tool={tool} pick={pick} />
         ))}
         {!items.length && <p className="note">לא נמצאו פריטים.</p>}
       </div>

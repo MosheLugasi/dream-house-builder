@@ -11,12 +11,27 @@ import { KIDS } from './items/kids';
 import { DECOR } from './items/decor';
 import { OUTDOOR } from './items/outdoor';
 import { LIGHTING } from './items/lighting';
+import { SEATING } from './items/seating';
+import { CHAIRS } from './items/chairs';
+import { TABLES } from './items/tables';
+import { BEDS } from './items/beds';
+import { STORAGE } from './items/storage';
+import { LIGHTS } from './items/lights';
+import { TEXTILES } from './items/textiles';
+import { PLANTS } from './items/plants';
+import { WALL_DECOR } from './items/walldecor';
+import { ACCESSORIES } from './items/accessories';
+import { APPLIANCES } from './items/appliances';
+import { ENTERTAINMENT } from './items/entertainment';
+import { SPORTS } from './items/sports';
+import { PETS } from './items/pets';
+import { BACKYARD } from './items/backyard';
 import { STRUCTURE } from './items/structure';
 import { PLAYGROUND } from './items/playground';
 import { STREET } from './items/street';
 import { PUBLIC } from './items/public';
 import { VEHICLES } from './items/vehicles';
-import { PETS } from './items/pets';
+import { REAL_PETS } from './items/realpets';
 
 export * from './types';
 
@@ -30,7 +45,7 @@ export function resolveColors(def: FurnitureDef, overrides?: Record<string, stri
   return out;
 }
 
-const MAX_TEMPLATES = 400;
+const MAX_TEMPLATES = 900;
 const templates = new Map<string, THREE.Object3D>();
 
 /**
@@ -76,7 +91,47 @@ function wrap(raw: FurnitureDef): FurnitureDef {
   return def;
 }
 
-const RAW: FurnitureDef[] = [...LIVING, ...DINING, ...KITCHEN, ...BEDROOM, ...BATHROOM, ...OFFICE, ...KIDS, ...LIGHTING, ...DECOR, ...OUTDOOR, ...STRUCTURE, ...PLAYGROUND, ...STREET, ...PUBLIC, ...VEHICLES, ...PETS];
+const RAW: FurnitureDef[] = [
+  ...LIVING,
+  ...SEATING,
+  ...DINING,
+  ...CHAIRS,
+  ...TABLES,
+  ...KITCHEN,
+  ...APPLIANCES,
+  ...BEDROOM,
+  ...BEDS,
+  ...STORAGE,
+  ...BATHROOM,
+  ...OFFICE,
+  ...KIDS,
+  ...LIGHTING,
+  ...LIGHTS,
+  ...DECOR,
+  ...PLANTS,
+  ...WALL_DECOR,
+  ...TEXTILES,
+  ...ACCESSORIES,
+  ...ENTERTAINMENT,
+  ...SPORTS,
+  ...REAL_PETS,
+  ...PETS,
+  ...OUTDOOR,
+  ...BACKYARD,
+  ...STRUCTURE,
+  ...PLAYGROUND,
+  ...STREET,
+  ...PUBLIC,
+  ...VEHICLES,
+];
+
+if (import.meta.env?.DEV) {
+  const seen = new Set<string>();
+  for (const f of RAW) {
+    if (seen.has(f.id)) console.warn(`duplicate furniture id: ${f.id}`);
+    seen.add(f.id);
+  }
+}
 
 export const FURNITURE: FurnitureDef[] = RAW.map(wrap);
 
