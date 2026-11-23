@@ -136,25 +136,11 @@ export class Engine {
     this.scene.add(this.sun, this.sun.target);
     this.scene.add(new THREE.HemisphereLight('#fff9f0', '#b3a78f', 0.35));
 
-    // ground: a large plane; low-frequency vertex tint hides the texture's repetition at a distance
-    const groundGeo = new THREE.PlaneGeometry(600, 600, 150, 150).rotateX(-Math.PI / 2);
+    // ground (the finish library adds its own large-scale variation, so plain tiling UVs in meters are enough)
+    const groundGeo = new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2);
     const uv = groundGeo.attributes.uv;
     const gp = groundGeo.attributes.position;
-    const tint = new Float32Array(gp.count * 3);
-    for (let i = 0; i < gp.count; i++) {
-      uv.setXY(i, gp.getX(i), gp.getZ(i));
-      const x = gp.getX(i);
-      const z = gp.getZ(i);
-      const n =
-        Math.sin(x * 0.071 + 1.3) * Math.cos(z * 0.083 - 0.4) * 0.5 +
-        Math.sin(x * 0.19 + z * 0.13) * 0.3 +
-        Math.sin(x * 0.37 - z * 0.41 + 2.0) * 0.2;
-      const v = 0.93 + n * 0.11;
-      tint[i * 3] = v * (1 + n * 0.035);
-      tint[i * 3 + 1] = v;
-      tint[i * 3 + 2] = v * (1 - n * 0.05);
-    }
-    groundGeo.setAttribute('color', new THREE.BufferAttribute(tint, 3));
+    for (let i = 0; i < gp.count; i++) uv.setXY(i, gp.getX(i), gp.getZ(i));
     this.ground = new THREE.Mesh(groundGeo);
     this.ground.receiveShadow = true;
     this.scene.add(this.ground);
@@ -329,10 +315,8 @@ export class Engine {
 
     if (project.site.ground !== this.groundFinish) {
       this.groundFinish = project.site.ground;
-      const mat = finishes.material(this.groundFinish).clone();
-      mat.vertexColors = true;
-      (this.ground.material as THREE.Material | undefined)?.dispose?.();
-      this.ground.material = mat;
+      // shared material: never clone it, the library upgrades its textures in place
+      this.ground.material = finishes.material(this.groundFinish);
     }
 
     const walking = this.mode === 'walk';
