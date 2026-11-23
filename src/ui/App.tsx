@@ -3,7 +3,9 @@ import { deleteSelection, duplicateSelection, pruneRoomStyles, updateFurniture }
 import { currentLevel, useStore, type Tool } from '../store/store';
 import { HelpDialog, ProjectsDialog } from './Dialogs';
 import { Inspector } from './Inspector';
+import { LevelBar } from './LevelBar';
 import { Plan2D } from './Plan2D';
+import { Site2D } from './Site2D';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { View3D } from './View3D';
@@ -16,16 +18,20 @@ const TOOL_HINTS: Record<Tool['type'], string> = {
   furniture: 'לחצו כדי למקם · R לסיבוב · Esc לביטול',
   paint: 'לחצו על חדר (או על קיר חיצוני) כדי להחיל את החומר',
   erase: 'לחצו על פריט כדי למחוק אותו',
+  road: 'גררו על המפה כדי לסלול כביש · גרירה על כביש קיים מוחקת אותו',
+  area: 'גררו מלבן כדי לסמן גינה, רחבה או מגרש',
+  building: 'לחצו על המפה כדי למקם את המבנה · R לסיבוב',
 };
 
 export function App() {
   const mode = useStore((s) => s.mode);
   const tool = useStore((s) => s.tool);
+  const scope = useStore((s) => s.scope);
   const [dialog, setDialog] = useState<'projects' | 'help' | null>(null);
   const [seen3d, setSeen3d] = useState(false);
 
   useEffect(() => {
-    if (mode !== 'plan') setSeen3d(true);
+    if (mode === 'view3d' || mode === 'walk') setSeen3d(true);
   }, [mode]);
 
   useEffect(() => {
@@ -48,7 +54,7 @@ export function App() {
         if (st.selection && st.selection.kind !== 'room') {
           e.preventDefault();
           deleteSelection();
-          pruneRoomStyles();
+          if (st.scope === 'building') pruneRoomStyles();
         }
       } else if (e.key.startsWith('Arrow') && st.mode === 'plan' && st.selection?.kind === 'furniture') {
         const selId = st.selection.id;
@@ -71,8 +77,10 @@ export function App() {
       <div className="workspace">
         {mode !== 'walk' && <Sidebar />}
         <main className="stage">
+          <Site2D active={mode === 'site'} />
           <Plan2D active={mode === 'plan'} />
-          {(seen3d || mode !== 'plan') && <View3D active={mode !== 'plan'} />}
+          {(seen3d || mode === 'view3d' || mode === 'walk') && <View3D active={mode === 'view3d' || mode === 'walk'} />}
+          {scope === 'building' && (mode === 'plan' || mode === 'view3d') && <LevelBar />}
           {mode !== 'walk' && <div className="statusbar">{TOOL_HINTS[tool.type]}</div>}
         </main>
         {mode !== 'walk' && <Inspector />}

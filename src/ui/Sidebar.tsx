@@ -4,18 +4,26 @@ import { OPENINGS } from '../catalog/openings';
 import { CATEGORY_LABELS, type FurnitureCategory, type FurnitureDef } from '../catalog/types';
 import { finishes } from '../materials/finishes';
 import type { FinishKind } from '../materials/types';
+import { TEMPLATES } from '../model/templates';
 import { useStore, type Tool } from '../store/store';
 import { Icon } from './icons';
 import { requestThumbnail } from './thumbnails';
 
-type Tab = 'build' | 'openings' | 'furniture' | 'finishes';
+type Tab = 'build' | 'openings' | 'furniture' | 'finishes' | 'site' | 'buildings' | 'props';
 
-const TABS: { id: Tab; label: string; icon: string }[] = [
+const BUILDING_TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'build', label: 'בנייה', icon: 'wall' },
   { id: 'openings', label: 'דלתות וחלונות', icon: 'door' },
   { id: 'furniture', label: 'רהיטים', icon: 'sofa' },
   { id: 'finishes', label: 'חומרים וצבעים', icon: 'paint' },
 ];
+const SITE_TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'site', label: 'כבישים ושטחים', icon: 'road' },
+  { id: 'buildings', label: 'מבנים', icon: 'building' },
+  { id: 'props', label: 'רחוב, גינה ורכב', icon: 'tree' },
+];
+const BUILDING_CATEGORIES: FurnitureCategory[] = ['living', 'dining', 'kitchen', 'bedroom', 'bathroom', 'office', 'kids', 'lighting', 'decor', 'public', 'outdoor', 'playground'];
+const SITE_CATEGORIES: FurnitureCategory[] = ['vehicle', 'street', 'playground', 'outdoor'];
 
 export const PAINT_COLORS = [
   '#ffffff', '#f4f1ea', '#ebe5d9', '#ddd3c2', '#c9bca7', '#a89a85',
@@ -27,9 +35,10 @@ export const PAINT_COLORS = [
 function useTool() {
   const tool = useStore((s) => s.tool);
   const setTool = useStore((s) => s.setTool);
-  const pick = (next: Tool, planOnly = false) => {
+  /** `only`: the 2D editor a tool needs (walls only exist in the plan, roads only on the map). */
+  const pick = (next: Tool, only?: 'plan' | 'site') => {
     const st = useStore.getState();
-    if (planOnly && st.mode !== 'plan') st.setMode('plan');
+    if (only && st.mode !== only) st.setMode(only);
     else if (st.mode === 'walk') st.setMode('view3d');
     setTool(next);
   };
@@ -122,7 +131,7 @@ function BuildTab() {
     <div className="tab-body">
       <div className="tool-list">
         {tools.map((t) => (
-          <button key={t.label} className={`tool-card ${tool.type === t.tool.type ? 'active' : ''}`} onClick={() => pick(t.tool, t.planOnly)}>
+          <button key={t.label} className={`tool-card ${tool.type === t.tool.type ? 'active' : ''}`} onClick={() => pick(t.tool, t.planOnly ? 'plan' : undefined)}>
             <span className="tool-icon">
               <Icon name={t.icon} size={22} />
             </span>
@@ -133,6 +142,20 @@ function BuildTab() {
           </button>
         ))}
       </div>
+      <h4>מדרגות לקומה שמעל</h4>
+      <div className="grid">
+        {FURNITURE.filter((f) => f.stair).map((f) => (
+          <button
+            key={f.id}
+            className={`card ${tool.type === 'furniture' && tool.catalogId === f.id ? 'active' : ''}`}
+            onClick={() => pick({ type: 'furniture', catalogId: f.id }, 'plan')}
+          >
+            <FurnitureThumb def={f} />
+            <span>{f.name}</span>
+          </button>
+        ))}
+      </div>
+      <p className="note">הניחו מדרגות, ואז הוסיפו קומה בכפתור "+ קומה" שבפינת המסך. הפתח ברצפה נחתך לבד.</p>
       <h4>עובי קיר</h4>
       <div className="segmented">
         {[0.1, 0.15, 0.2, 0.25, 0.3].map((t) => (
@@ -166,7 +189,7 @@ function OpeningsTab() {
               <button
                 key={o.id}
                 className={`card ${tool.type === 'opening' && tool.style === o.id ? 'active' : ''}`}
-                onClick={() => pick({ type: 'opening', style: o.id }, true)}
+                onClick={() => pick({ type: 'opening', style: o.id }, 'plan')}
               >
                 <OpeningThumb id={o.id} />
                 <span>{o.name}</span>
@@ -209,18 +232,19 @@ function OpeningThumb({ id }: { id: string }) {
   );
 }
 
-function FurnitureTab() {
+function FurnitureTab({ allowed }: { allowed: FurnitureCategory[] }) {
   const { tool, pick } = useTool();
-  const [category, setCategory] = useState<FurnitureCategory | 'all'>('living');
-  const [query, setQuery] = useState('');
   const categories = useMemo(() => {
     const present = new Set(FURNITURE.map((f) => f.category));
-    return (Object.keys(CATEGORY_LABELS) as FurnitureCategory[]).filter((c) => present.has(c));
-  }, []);
-  const items = FURNITURE.filter((f) => (query ? f.name.includes(query.trim()) : category === 'all' || f.category === category));
+    return allowed.filter((c) => present.has(c));
+  }, [allowed]);
+  const [category, setCategory] = useState<FurnitureCategory>(categories[0] ?? 'living');
+  const [query, setQuery] = useState('');
+  const pool = FURNITURE.filter((f) => allowed.includes(f.category));
+  const items = pool.filter((f) => (query ? f.name.includes(query.trim()) : f.category === category));
   return (
     <div className="tab-body">
-      <input className="search" placeholder="חיפוש רהיט…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input className="search" placeholder="חיפוש פריט…" value={query} onChange={(e) => setQuery(e.target.value)} />
       {!query && (
         <div className="pills">
           {categories.map((c) => (
@@ -307,13 +331,92 @@ function FinishesTab() {
   );
 }
 
+function SiteTab() {
+  const { tool, pick } = useTool();
+  const tools: { tool: Tool; label: string; icon: string; desc: string; site?: boolean }[] = [
+    { tool: { type: 'select' }, label: 'בחירה והזזה', icon: 'select', desc: 'גררו מבנים ופריטים · לחיצה כפולה נכנסת למבנה' },
+    { tool: { type: 'road' }, label: 'כביש', icon: 'road', desc: 'גררו כדי לסלול; מדרכות וצמתים נוצרים לבד', site: true },
+    { tool: { type: 'erase' }, label: 'מחיקה', icon: 'erase', desc: 'לחצו על כביש, שטח או פריט' },
+  ];
+  const grounds = finishes.list.filter((f) => f.kinds.includes('ground'));
+  return (
+    <div className="tab-body">
+      <div className="tool-list">
+        {tools.map((t) => (
+          <button key={t.label} className={`tool-card ${tool.type === t.tool.type ? 'active' : ''}`} onClick={() => pick(t.tool, t.site ? 'site' : undefined)}>
+            <span className="tool-icon">
+              <Icon name={t.icon} size={22} />
+            </span>
+            <span>
+              <strong>{t.label}</strong>
+              <small>{t.desc}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <h4>שטחים: גינה, רחבה, מגרש משחקים, בריכה</h4>
+      <p className="note">בחרו כיסוי קרקע וגררו מלבן על המפה.</p>
+      <div className="grid">
+        {grounds.map((f) => (
+          <button
+            key={f.id}
+            className={`card ${tool.type === 'area' && tool.finish === f.id ? 'active' : ''}`}
+            onClick={() => pick({ type: 'area', finish: f.id }, 'site')}
+          >
+            <Swatch id={f.id} />
+            <span>{f.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BuildingsTab() {
+  const { tool, pick } = useTool();
+  return (
+    <div className="tab-body">
+      <p className="note">בחרו מבנה ולחצו על המפה כדי למקם אותו. כל מבנה אפשר לפתוח ולעצב מבפנים – גם מבני ציבור.</p>
+      {(['house', 'public'] as const).map((group) => {
+        const list = TEMPLATES.filter((t) => t.group === group);
+        if (!list.length) return null;
+        return (
+          <section key={group}>
+            <h4>{group === 'house' ? 'בתי מגורים' : 'מבני ציבור'}</h4>
+            <div className="grid">
+              {list.map((t) => (
+                <button
+                  key={t.id}
+                  className={`card ${tool.type === 'building' && tool.template === t.id ? 'active' : ''}`}
+                  onClick={() => pick({ type: 'building', template: t.id }, 'site')}
+                >
+                  <span className="tpl-thumb">
+                    <Icon name={group === 'house' ? 'home' : 'building'} size={34} />
+                  </span>
+                  <span>{t.name}</span>
+                  <small>
+                    {t.size.w}×{t.size.d} מ'
+                  </small>
+                </button>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 export function Sidebar() {
-  const [tab, setTab] = useState<Tab>('build');
+  const scope = useStore((s) => s.scope);
+  const tabs = scope === 'site' ? SITE_TABS : BUILDING_TABS;
+  const [picked, setPicked] = useState<Tab>('build');
+  const tab = tabs.some((t) => t.id === picked) ? picked : tabs[0].id;
   return (
     <aside className="sidebar">
       <div className="side-tabs">
-        {TABS.map((t) => (
-          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
+        {tabs.map((t) => (
+          <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setPicked(t.id)}>
             <Icon name={t.icon} size={22} />
             <span>{t.label}</span>
           </button>
@@ -321,8 +424,11 @@ export function Sidebar() {
       </div>
       {tab === 'build' && <BuildTab />}
       {tab === 'openings' && <OpeningsTab />}
-      {tab === 'furniture' && <FurnitureTab />}
+      {tab === 'furniture' && <FurnitureTab key="b" allowed={BUILDING_CATEGORIES} />}
       {tab === 'finishes' && <FinishesTab />}
+      {tab === 'site' && <SiteTab />}
+      {tab === 'buildings' && <BuildingsTab />}
+      {tab === 'props' && <FurnitureTab key="s" allowed={SITE_CATEGORIES} />}
     </aside>
   );
 }

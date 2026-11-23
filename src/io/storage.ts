@@ -82,9 +82,24 @@ export function parseProject(raw: string): Project {
   if (!data || data.format !== 'dream-house-builder' || !Array.isArray(data.buildings) || !data.buildings.length) {
     throw new Error('זה לא קובץ של "בונים חלום"');
   }
-  if (data.version !== 1) throw new Error('גרסת קובץ לא נתמכת');
+  const version = (data as { version?: number }).version;
+  if (version !== 1 && version !== 2) throw new Error('גרסת קובץ לא נתמכת');
+  // v1 -> v2: buildings gained a position, the site gained roads / areas / props
+  const site = (data.site ?? {}) as Partial<Project['site']>;
+  site.ground ??= 'grass';
+  site.size = Math.max(site.size ?? 0, 150);
+  site.roads ??= [];
+  site.areas ??= [];
+  site.props ??= [];
+  data.site = site as Project['site'];
   for (const b of data.buildings) {
     if (!Array.isArray(b.levels) || !b.levels.length) throw new Error('קובץ פגום: חסרות קומות');
+    b.x ??= 0;
+    b.y ??= 0;
+    b.rotation ??= 0;
+    b.roof ??= { type: 'flat', finish: 'roof-gravel' };
+    b.roof.pitch ??= 30;
+    b.roof.overhang ??= 0.45;
     for (const l of b.levels) {
       l.walls ??= [];
       l.openings ??= [];
@@ -92,6 +107,7 @@ export function parseProject(raw: string): Project {
       l.roomStyles ??= [];
     }
   }
+  data.version = 2;
   return data as Project;
 }
 

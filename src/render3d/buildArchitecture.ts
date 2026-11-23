@@ -2,15 +2,31 @@ import * as THREE from 'three';
 import { getOpeningDef, type OpeningAnim } from '../catalog/openings';
 import { finishes } from '../materials/finishes';
 import { getGraph, styleOfRoom } from '../model/graph';
-import type { Building, Level, Opening, Vec2 } from '../model/types';
+import { SLAB, type Building, type Level, type Opening, type Vec2 } from '../model/types';
 import { MeshBuilder, type V3 } from './MeshBuilder';
+
+/** A rectangle on the plan with a rotation (stair footprints that pierce floors and ceilings). */
+export interface OrientedRect {
+  x: number;
+  y: number;
+  hw: number;
+  hd: number;
+  rotation: number;
+}
 
 export interface ArchOptions {
   /** cut walls at ~1 m so that interiors are visible from above */
   wallsLow: boolean;
-  /** ceilings (needed when walking inside) */
+  /** draw ceilings */
   ceilings: boolean;
-  roof: boolean;
+  /** draw the flat roof / terrace surface above the ceiling */
+  topSlab: boolean;
+  /** extra height of the exterior walls: the slab below the next level, or a flat roof's parapet */
+  exteriorExtra: number;
+  /** openings in this level's floor (stairs arriving from the level below) */
+  floorHoles: OrientedRect[];
+  /** openings in this level's ceiling and top slab (stairs leaving for the level above) */
+  ceilingHoles: OrientedRect[];
 }
 
 /** A solid stretch of wall the character cannot pass. */
@@ -34,6 +50,8 @@ export interface Architecture {
 }
 
 const LOW_HEIGHT = 1.05;
+/** height of the flat roof / terrace surface above the ceiling line */
+const TOP_SLAB_Y = 0.22;
 const TOP_KEY = '__top';
 const REVEAL_KEY = 'paint:#f1efe9';
 const CEILING_KEY = '__ceiling';
@@ -49,6 +67,55 @@ function materialFor(key: string): THREE.Material {
   if (key === BASEBOARD_KEY) return baseboardMaterial;
   if (key === CEILING_KEY) return ceilingMaterial;
   return finishes.material(key);
+}
+
+/** Clip a convex polygon to the half-plane a*x + b*y <= c. */
+function clipHalfPlane(poly: Vec2[], a: number, b: number, c: number): Vec2[] {
+  const out: Vec2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const dp = a * p.x + b * p.y - c;
+    const dq = a * q.x + b * q.y - c;
+    if (dp <= 0) out.push(p);
+    if ((dp < 0 && dq > 0) || (dp > 0 && dq < 0)) {
+      const t = dp / (dp - dq);
+      out.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+    }
+  }
+  return out;
+}
+
+const polyArea = (poly: Vec2[]): number => {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    s += p.x * q.y - q.x * p.y;
+  }
+  return Math.abs(s) / 2;
+};
+
+/** Convex polygon minus an oriented rectangle, as a list of convex pieces. */
+export function subtractRect(poly: Vec2[], r: OrientedRect): Vec2[][] {
+  const c = Math.cos(r.rotation);
+  const s = Math.sin(r.rotation);
+  // half-planes of the rectangle in world space: n·p <= n·center + extent
+  const planes: [number, number, number][] = [
+    [c, s, c * r.x + s * r.y + r.hw],
+    [-c, -s, -(c * r.x + s * r.y) + r.hw],
+    [-s, c, -s * r.x + c * r.y + r.hd],
+    [s, -c, -(-s * r.x + c * r.y) + r.hd],
+  ];
+  const pieces: Vec2[][] = [];
+  let rest = poly;
+  for (const [a, b, d] of planes) {
+    const outside = clipHalfPlane(rest, -a, -b, -d);
+    if (outside.length >= 3 && polyArea(outside) > 1e-6) pieces.push(outside);
+    rest = clipHalfPlane(rest, a, b, d);
+    if (rest.length < 3) break;
+  }
+  return pieces;
 }
 
 interface Cut {
@@ -82,11 +149,11 @@ export function buildArchitecture(level: Level, building: Building, opts: ArchOp
     openingsByWall.set(o.wallId, list);
   }
 
-  const showRoof = opts.roof && !opts.wallsLow && building.roof.type !== 'none';
+  const extra = opts.wallsLow ? 0 : opts.exteriorExtra;
 
   for (const e of graph.edges) {
     const isExterior = e.posRoom < 0 || e.negRoom < 0;
-    const wallH = opts.wallsLow ? LOW_HEIGHT : showRoof && isExterior ? H + 0.3 : H;
+    const wallH = opts.wallsLow ? LOW_HEIGHT : isExterior ? H + extra : H;
     const half = e.thickness / 2;
 
     // openings on this edge, in edge-local coordinates
@@ -211,7 +278,7 @@ export function buildArchitecture(level: Level, building: Building, opts: ArchOp
     // top
     {
       const y = wallH;
-      const topKey = showRoof && isExterior ? building.exterior : TOP_KEY;
+      const topKey = extra > 0 && isExterior ? building.exterior : TOP_KEY;
       const p3 = (p: Vec2): V3 => [p.x, y, p.y];
       const uv = (p: Vec2): [number, number] => [p.x, p.y];
       const up: V3 = [0, 1, 0];
@@ -235,25 +302,56 @@ export function buildArchitecture(level: Level, building: Building, opts: ArchOp
     cap(e.bNeg, e.bPos, e.bJoined, [e.dir.x, 0, e.dir.y]);
   }
 
-  // floors, ceilings, roof
+  // floors, ceilings, top slab – with the stair openings cut out
+  const drawCeiling = opts.ceilings && !opts.wallsLow;
+  const drawTop = opts.topSlab && !opts.wallsLow;
   for (const room of graph.rooms) {
     const contour = room.polygon.map((p) => new THREE.Vector2(p.x, p.y));
     const holes = room.holes.map((h) => h.map((p) => new THREE.Vector2(p.x, p.y)));
     const all = contour.concat(...holes);
-    const tris = THREE.ShapeUtils.triangulateShape(contour, holes);
-    const layer = (key: string, y: number, normal: V3) => {
-      for (const t of tris) {
-        const [a, b, c] = t.map((i) => all[i]);
-        mb.tri(key, [a.x, y, a.y], [b.x, y, b.y], [c.x, y, c.y], normal, [
-          [a.x, a.y],
-          [b.x, b.y],
-          [c.x, c.y],
-        ]);
+    const tris = THREE.ShapeUtils.triangulateShape(contour, holes).map((t) => t.map((i) => ({ x: all[i].x, y: all[i].y })));
+    const layer = (key: string, y: number, normal: V3, cut: OrientedRect[]) => {
+      let pieces: Vec2[][] = tris;
+      for (const rect of cut) pieces = pieces.flatMap((poly) => subtractRect(poly, rect));
+      for (const poly of pieces) {
+        for (let i = 1; i + 1 < poly.length; i++) {
+          const a = poly[0];
+          const b = poly[i];
+          const c = poly[i + 1];
+          mb.tri(key, [a.x, y, a.y], [b.x, y, b.y], [c.x, y, c.y], normal, [
+            [a.x, a.y],
+            [b.x, b.y],
+            [c.x, c.y],
+          ]);
+        }
       }
     };
-    layer(roomFloor[room.index], 0.012, [0, 1, 0]);
-    if ((opts.ceilings || showRoof) && !opts.wallsLow) layer(CEILING_KEY, H, [0, -1, 0]);
-    if (showRoof) layer(building.roof.finish, H + 0.22, [0, 1, 0]);
+    layer(roomFloor[room.index], 0.012, [0, 1, 0], opts.floorHoles);
+    if (drawCeiling) layer(CEILING_KEY, H, [0, -1, 0], opts.ceilingHoles);
+    if (drawTop) layer(building.roof.finish, H + TOP_SLAB_Y, [0, 1, 0], opts.ceilingHoles);
+  }
+
+  // the cut edge of the slab around each stair opening
+  if (drawCeiling) {
+    for (const r of opts.ceilingHoles) {
+      const c = Math.cos(r.rotation);
+      const s = Math.sin(r.rotation);
+      const corner = (lx: number, ly: number): Vec2 => ({ x: r.x + lx * c - ly * s, y: r.y + lx * s + ly * c });
+      const pts = [corner(-r.hw, -r.hd), corner(r.hw, -r.hd), corner(r.hw, r.hd), corner(-r.hw, r.hd)];
+      for (let i = 0; i < 4; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % 4];
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        const inward: V3 = [r.x - mid.x, 0, r.y - mid.y];
+        const L = Math.hypot(b.x - a.x, b.y - a.y);
+        mb.quad(REVEAL_KEY, [a.x, H, a.y], [b.x, H, b.y], [b.x, H + SLAB + 0.012, b.y], [a.x, H + SLAB + 0.012, a.y], inward, [
+          [0, 0],
+          [L, 0],
+          [L, SLAB],
+          [0, SLAB],
+        ]);
+      }
+    }
   }
 
   const meshes = mb.build(materialFor);

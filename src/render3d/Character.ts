@@ -20,7 +20,7 @@ export const DEFAULT_LOOK: CharacterLook = {
   longHair: true,
 };
 
-export type Pose = 'stand' | 'sit' | 'lie';
+export type Pose = 'stand' | 'sit' | 'lie' | 'ride';
 
 const damp = (current: number, target: number, lambda: number, dt: number) =>
   current + (target - current) * (1 - Math.exp(-lambda * dt));
@@ -44,6 +44,7 @@ export class Character {
   private seatHeight = 0.45;
   private poseBlend = 0; // 0 stand .. 1 sit/lie
   private lieBlend = 0;
+  private rideBlend = 0;
   readonly eyeHeight: number;
 
   constructor(look: CharacterLook = DEFAULT_LOOK) {
@@ -159,34 +160,46 @@ export class Character {
     this.moveBlend = damp(this.moveBlend, moving ? 1 : 0, 10, dt);
     this.poseBlend = damp(this.poseBlend, this.pose === 'stand' ? 0 : 1, 9, dt);
     this.lieBlend = damp(this.lieBlend, this.pose === 'lie' ? 1 : 0, 7, dt);
-    this.phase += dt * (4.2 + speed * 2.6) * (moving ? 1 : 0.25);
+    this.rideBlend = damp(this.rideBlend, this.pose === 'ride' ? 1 : 0, 9, dt);
+    this.phase += this.pose === 'ride' ? dt * speed * 2.4 : dt * (4.2 + speed * 2.6) * (moving ? 1 : 0.25);
     const t = this.phase;
     const mb = this.moveBlend;
-    const sit = this.poseBlend * (1 - this.lieBlend);
+    const sit = this.poseBlend * (1 - this.lieBlend) * (1 - this.rideBlend);
     const stride = Math.min(0.75, 0.3 + speed * 0.14) * mb;
 
     const breath = Math.sin(performance.now() / 900) * 0.006;
     const bob = Math.abs(Math.sin(t)) * 0.035 * mb;
     const standY = this.legLen + bob;
     const sitY = this.seatHeight + 0.09;
-    this.hips.position.y = THREE.MathUtils.lerp(standY, sitY, sit);
+    this.hips.position.y = THREE.MathUtils.lerp(standY, sitY, Math.max(sit, this.rideBlend));
     this.hips.position.z = THREE.MathUtils.lerp(0, -0.02, sit);
     this.chest.position.y = 0.06 * (this.legLen / 0.94) + breath;
     this.chest.rotation.x = 0.07 * mb + 0.04 * sit;
     this.chest.rotation.y = Math.sin(t) * 0.08 * mb;
     this.head.rotation.y = -Math.sin(t) * 0.05 * mb;
 
+    const ride = this.rideBlend;
+    this.chest.rotation.x += 0.42 * ride;
+    this.head.rotation.x = -0.3 * ride;
     this.legs.forEach((leg, i) => {
-      const s = Math.sin(t + (i ? Math.PI : 0));
+      const ph = t + (i ? Math.PI : 0);
+      const s = Math.sin(ph);
       const walkHip = -s * stride;
-      const walkKnee = Math.max(0, Math.cos(t + (i ? Math.PI : 0))) * stride * 1.5 + 0.04 * mb;
-      leg.hip.rotation.x = THREE.MathUtils.lerp(walkHip, -Math.PI / 2 + 0.06, sit);
-      leg.knee.rotation.x = THREE.MathUtils.lerp(walkKnee, Math.PI / 2 - 0.02, sit);
+      const walkKnee = Math.max(0, Math.cos(ph)) * stride * 1.5 + 0.04 * mb;
+      const sitHip = -Math.PI / 2 + 0.06;
+      const sitKnee = Math.PI / 2 - 0.02;
+      // pedalling: the foot travels around a circle
+      const rideHip = -0.95 + Math.sin(ph) * 0.42;
+      const rideKnee = 1.25 - Math.cos(ph) * 0.5;
+      leg.hip.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkHip, sitHip, sit), rideHip, ride);
+      leg.knee.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkKnee, sitKnee, sit), rideKnee, ride);
     });
     this.arms.forEach((arm, i) => {
       const s = Math.sin(t + (i ? 0 : Math.PI));
-      arm.shoulder.rotation.x = THREE.MathUtils.lerp(-s * stride * 0.85, -0.55, sit);
-      arm.elbow.rotation.x = THREE.MathUtils.lerp(-0.18 - Math.max(0, -s) * stride * 0.7 - 0.25 * mb, -0.75, sit);
+      const walkS = -s * stride * 0.85;
+      const walkE = -0.18 - Math.max(0, -s) * stride * 0.7 - 0.25 * mb;
+      arm.shoulder.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkS, -0.55, sit), -1.05, ride);
+      arm.elbow.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkE, -0.75, sit), -0.35, ride);
     });
 
     // lying down: rotate the whole body onto its back

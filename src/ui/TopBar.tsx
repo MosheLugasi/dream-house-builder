@@ -4,9 +4,10 @@ import { useStore, type Mode } from '../store/store';
 import { Icon } from './icons';
 
 const MODES: { mode: Mode; label: string; icon: string }[] = [
-  { mode: 'plan', label: 'תכנון', icon: 'plan' },
+  { mode: 'site', label: 'שכונה', icon: 'map' },
+  { mode: 'plan', label: 'תכנון בית', icon: 'plan' },
   { mode: 'view3d', label: 'תלת־ממד', icon: 'cube' },
-  { mode: 'walk', label: 'סיור בבית', icon: 'walk' },
+  { mode: 'walk', label: 'סיור', icon: 'walk' },
 ];
 
 export function TopBar({ onProjects, onHelp }: { onProjects: () => void; onHelp: () => void }) {

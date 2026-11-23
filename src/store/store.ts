@@ -5,7 +5,9 @@ import { emptyProject } from '../model/defaults';
 import { sampleProject } from '../model/sample';
 import { loadCurrentProject, saveProject } from '../io/storage';
 
-export type Mode = 'plan' | 'view3d' | 'walk';
+export type Mode = 'site' | 'plan' | 'view3d' | 'walk';
+/** what is being edited: the whole neighborhood, or the inside of one building */
+export type Scope = 'site' | 'building';
 
 export type Tool =
   | { type: 'select' }
@@ -14,13 +16,19 @@ export type Tool =
   | { type: 'opening'; style: string }
   | { type: 'furniture'; catalogId: string }
   | { type: 'paint'; target: 'floor' | 'wall' | 'exterior'; finish: string }
+  | { type: 'road' }
+  | { type: 'area'; finish: string }
+  | { type: 'building'; template: string }
   | { type: 'erase' };
 
 export type Selection =
   | { kind: 'wall'; id: string }
   | { kind: 'opening'; id: string }
   | { kind: 'furniture'; id: string }
-  | { kind: 'room'; point: { x: number; y: number } };
+  | { kind: 'room'; point: { x: number; y: number } }
+  | { kind: 'prop'; id: string }
+  | { kind: 'building'; id: string }
+  | { kind: 'area'; id: string };
 
 export interface ViewOptions {
   wallsLow: boolean;
@@ -36,6 +44,9 @@ interface State {
   past: Project[];
   future: Project[];
   mode: Mode;
+  scope: Scope;
+  /** index of the building being edited in plan / building-scope 3D */
+  buildingIndex: number;
   tool: Tool;
   selection: Selection | null;
   levelIndex: number;
@@ -52,6 +63,8 @@ interface State {
   setHint(hint: string): void;
   setWallThickness(t: number): void;
   setLevelIndex(i: number): void;
+  /** Open a building for editing (plan mode). */
+  editBuilding(id: string): void;
   /** Apply a change to the project. By default it creates an undo step. */
   update(fn: (draft: Project) => void, opts?: { transient?: boolean }): void;
   /** Push the current project on the undo stack (call once before a series of transient updates). */
@@ -72,6 +85,8 @@ export const useStore = create<State>((set, get) => ({
   past: [],
   future: [],
   mode: 'plan',
+  scope: 'building',
+  buildingIndex: 0,
   tool: { type: 'select' },
   selection: null,
   levelIndex: 0,
@@ -81,7 +96,16 @@ export const useStore = create<State>((set, get) => ({
 
   setWallThickness: (wallThickness) => set({ wallThickness }),
   setLevelIndex: (levelIndex) => set({ levelIndex, selection: null }),
-  setMode: (mode) => set({ mode, tool: { type: 'select' } }),
+  setMode: (mode) => {
+    const scope: Scope = mode === 'site' ? 'site' : mode === 'plan' ? 'building' : get().scope;
+    const keep = scope === get().scope ? get().selection : null;
+    set({ mode, scope, tool: { type: 'select' }, selection: keep });
+  },
+  editBuilding: (id) => {
+    const i = get().project.buildings.findIndex((b) => b.id === id);
+    if (i < 0) return;
+    set({ buildingIndex: i, levelIndex: 0, mode: 'plan', scope: 'building', tool: { type: 'select' }, selection: null });
+  },
   setTool: (tool) => set({ tool, selection: tool.type === 'select' ? get().selection : null }),
   select: (selection) => set({ selection }),
   setView: (patch) => set({ view: { ...get().view, ...patch } }),
@@ -113,12 +137,14 @@ export const useStore = create<State>((set, get) => ({
     if (!future.length) return;
     set({ project: future[0], past: [...past, project], future: future.slice(1), selection: null });
   },
-  loadProject: (project) => set({ project, past: [], future: [], selection: null, levelIndex: 0, tool: { type: 'select' } }),
+  loadProject: (project) =>
+    set({ project, past: [], future: [], selection: null, levelIndex: 0, buildingIndex: 0, tool: { type: 'select' } }),
 }));
 
 // ---- selectors / helpers -------------------------------------------------------------------
 
-export const currentBuilding = (p: Project): Building => p.buildings[0];
+export const currentBuilding = (p: Project): Building =>
+  p.buildings[Math.min(useStore.getState().buildingIndex, p.buildings.length - 1)];
 export const currentLevel = (p: Project, levelIndex: number): Level => {
   const b = currentBuilding(p);
   return b.levels[Math.min(levelIndex, b.levels.length - 1)];

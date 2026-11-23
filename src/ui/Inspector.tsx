@@ -3,17 +3,49 @@ import { getOpeningDef, OPENINGS } from '../catalog/openings';
 import { finishes } from '../materials/finishes';
 import { dist } from '../model/geom';
 import { getGraph, roomAt, styleOfRoom } from '../model/graph';
+import { roofPlan } from '../model/roofPlan';
 import {
   deleteSelection,
   duplicateSelection,
   pruneRoomStyles,
+  setGround,
   setRoomStyle,
-  updateFurniture,
+  updateArea,
+  updateBuilding,
+  updateFurniture as updateItem,
   updateOpening,
+  updateProp,
+  updateRoof,
   updateWall,
 } from '../store/actions';
+import type { FurnitureItem, RoofType } from '../model/types';
 import { currentBuilding, currentLevel, useStore } from '../store/store';
 import { Icon } from './icons';
+
+const ROOF_TYPES: { id: RoofType; label: string }[] = [
+  { id: 'flat', label: 'שטוח' },
+  { id: 'gable', label: 'רעפים – דו־שיפועי' },
+  { id: 'hip', label: 'רעפים – ארבעה שיפועים' },
+  { id: 'shed', label: 'חד־שיפועי' },
+  { id: 'none', label: 'ללא גג' },
+];
+
+function FinishSelect({ label, value, kind, onChange }: { label: string; value: string; kind: 'roof' | 'ground' | 'exterior'; onChange: (id: string) => void }) {
+  const list = finishes.list.filter((f) => f.kinds.includes(kind));
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {!list.some((f) => f.id === value) && <option value={value}>{finishes.get(value).name}</option>}
+        {list.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 const ROOM_NAMES = ['סלון', 'מטבח', 'פינת אוכל', 'חדר שינה', 'חדר ילדים', 'אמבטיה', 'שירותים', 'חדר עבודה', 'מסדרון', 'מרפסת', 'חדר כביסה', 'מחסן'];
 
@@ -72,6 +104,8 @@ export function Inspector() {
   const selection = useStore((s) => s.selection);
   const project = useStore((s) => s.project);
   const levelIndex = useStore((s) => s.levelIndex);
+  const scope = useStore((s) => s.scope);
+  useStore((s) => s.buildingIndex);
   const update = useStore((s) => s.update);
   const building = currentBuilding(project);
   const lvl = currentLevel(project, levelIndex);
@@ -80,9 +114,11 @@ export function Inspector() {
   let body: React.ReactNode = null;
   let title = 'הבית';
 
-  if (selection?.kind === 'furniture') {
-    const item = lvl.furniture.find((f) => f.id === selection.id);
+  if (selection?.kind === 'furniture' || selection?.kind === 'prop') {
+    const isProp = selection.kind === 'prop';
+    const item = (isProp ? project.site.props : lvl.furniture).find((f) => f.id === selection.id);
     const def = item && getFurniture(item.catalogId);
+    const updateFurniture = (id: string, patch: Partial<FurnitureItem>) => (isProp ? updateProp(id, patch) : updateItem(id, patch));
     if (item && def) {
       title = def.name;
       const colors = resolveColors(def, item.colors);
@@ -199,6 +235,59 @@ export function Inspector() {
         </>
       );
     }
+  } else if (selection?.kind === 'building') {
+    const b = project.buildings.find((x) => x.id === selection.id);
+    if (b) {
+      title = b.name || 'מבנה';
+      const only = project.buildings.length <= 1;
+      body = (
+        <>
+          <label className="field">
+            <span>שם</span>
+            <input type="text" value={b.name} onChange={(e) => updateBuilding(b.id, { name: e.target.value }, true)} />
+          </label>
+          <div className="finish-row">
+            <span>קומות</span>
+            <strong>{b.levels.length}</strong>
+          </div>
+          <button className="btn primary block" onClick={() => useStore.getState().editBuilding(b.id)}>
+            <Icon name="enter" size={16} /> כניסה לעריכת המבנה
+          </button>
+          <div className="row">
+            <button className="btn" onClick={() => updateBuilding(b.id, { rotation: b.rotation + Math.PI / 2 })}>
+              <Icon name="rotate" size={16} /> סיבוב 90°
+            </button>
+            <button className="btn" onClick={duplicateSelection}>
+              <Icon name="copy" size={16} /> שכפול
+            </button>
+          </div>
+          <button className="btn danger block" disabled={only} onClick={() => deleteSelection()}>
+            <Icon name="trash" size={16} /> מחיקת המבנה
+          </button>
+          {only && <p className="note">בשכונה חייב להישאר לפחות מבנה אחד.</p>}
+          <p className="note">גררו את המבנה כדי להזיז אותו. לחיצה כפולה פותחת אותו לעריכה.</p>
+        </>
+      );
+    }
+  } else if (selection?.kind === 'area') {
+    const a = project.site.areas.find((x) => x.id === selection.id);
+    if (a) {
+      title = 'שטח';
+      body = (
+        <>
+          <div className="finish-row">
+            <span>גודל</span>
+            <strong>
+              {(a.x1 - a.x0).toFixed(1)} × {(a.y1 - a.y0).toFixed(1)} מ'
+            </strong>
+          </div>
+          <FinishSelect label="כיסוי" kind="ground" value={a.finish} onChange={(finish) => updateArea(a.id, { finish })} />
+          <button className="btn danger block" onClick={() => deleteSelection()}>
+            <Icon name="trash" size={16} /> מחיקת השטח
+          </button>
+        </>
+      );
+    }
   } else if (selection?.kind === 'room') {
     const room = roomAt(graph, selection.point);
     if (room) {
@@ -233,17 +322,40 @@ export function Inspector() {
     }
   }
 
-  if (!body) {
-    const totalArea = graph.rooms.reduce((sum, r) => sum + r.area, 0);
+  if (!body && scope === 'site') {
+    title = 'השכונה';
     body = (
       <>
         <div className="finish-row">
-          <span>חדרים</span>
-          <strong>{graph.rooms.length}</strong>
+          <span>מבנים</span>
+          <strong>{project.buildings.length}</strong>
         </div>
         <div className="finish-row">
-          <span>שטח כולל</span>
-          <strong>{totalArea.toFixed(1)} מ"ר</strong>
+          <span>פריטים ברחוב</span>
+          <strong>{project.site.props.length}</strong>
+        </div>
+        <FinishSelect label="קרקע" kind="ground" value={project.site.ground} onChange={setGround} />
+        <p className="note">
+          סללו כבישים, סמנו גינות ורחבות, והוסיפו מבנים, עצים, מתקני משחק וכלי רכב. ב"סיור" אפשר ללכת בשכונה, לרכוב על אופניים ולנהוג.
+        </p>
+      </>
+    );
+  }
+
+  if (!body) {
+    const totalArea = graph.rooms.reduce((sum, r) => sum + r.area, 0);
+    title = building.name || 'הבית';
+    body = (
+      <>
+        <label className="field">
+          <span>שם המבנה</span>
+          <input type="text" value={building.name} onChange={(e) => updateBuilding(building.id, { name: e.target.value }, true)} />
+        </label>
+        <div className="finish-row">
+          <span>{lvl.name}</span>
+          <strong>
+            {graph.rooms.length} חדרים · {totalArea.toFixed(1)} מ"ר
+          </strong>
         </div>
         <NumberField
           label="גובה תקרה"
@@ -257,8 +369,29 @@ export function Inspector() {
             })
           }
         />
-        <FinishRow label="חיפוי חוץ" id={building.exterior} />
-        <p className="note">בחרו קיר, דלת, רהיט או חדר כדי לראות ולשנות את המאפיינים שלהם.</p>
+        <FinishSelect label="חיפוי חוץ" kind="exterior" value={building.exterior} onChange={(exterior) => updateBuilding(building.id, { exterior })} />
+        <h4>גג</h4>
+        <label className="field">
+          <span>סוג</span>
+          <select value={building.roof.type} onChange={(e) => updateRoof({ type: e.target.value as RoofType })}>
+            {ROOF_TYPES.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {building.roof.type !== 'none' && <FinishSelect label="חומר" kind="roof" value={building.roof.finish} onChange={(finish) => updateRoof({ finish })} />}
+        {building.roof.type !== 'flat' && building.roof.type !== 'none' && (
+          <>
+            <NumberField label="שיפוע" unit="°" value={building.roof.pitch ?? 30} min={10} max={55} step={1} onChange={(pitch) => updateRoof({ pitch })} />
+            <NumberField label="בליטת הגג" value={building.roof.overhang ?? 0.45} min={0} max={1.2} step={0.05} onChange={(overhang) => updateRoof({ overhang })} />
+            {!roofPlan(building.levels[building.levels.length - 1]) && (
+              <p className="note">גג רעפים דורש קומה עליונה עם קירות ישרים (ללא אלכסונים). בינתיים מוצג גג שטוח.</p>
+            )}
+          </>
+        )}
+        <p className="note">כדי לראות את הגג: בתלת־ממד סמנו "כל הבניין עם הגג".</p>
       </>
     );
   }

@@ -88,6 +88,7 @@ export class PlanView {
         this.chainFirst = null;
         this.placeRotation = 0;
       }
+      if (s.buildingIndex !== prev.buildingIndex || s.project.id !== prev.project.id) this.fit();
       this.requestDraw();
     });
   }
@@ -697,7 +698,7 @@ export class PlanView {
   private furniturePlacement(world: Vec2, catalogId: string, rotation: number, free = false): { pos: Vec2; rotation: number } {
     const def = getFurniture(catalogId);
     const snapOn = this.state().view.snap && !free;
-    if (def && snapOn && !def.walkable && def.mount !== 'ceiling') {
+    if (def && snapOn && !def.walkable && !def.stair && def.mount !== 'ceiling') {
       const s = snapFurnitureToWall(world, def.size, this.level().walls, def.mount === 'wall' ? 1.0 : 0.22);
       if (s) {
         // slide along the wall on a 5 cm grid
@@ -725,6 +726,17 @@ export class PlanView {
     ctx.translate(this.origin.x, this.origin.y);
     ctx.scale(this.scale, this.scale);
 
+    // the level below, as a faint guide
+    const below = st.levelIndex > 0 ? building.levels[st.levelIndex - 1] : null;
+    if (below) {
+      ctx.fillStyle = '#dcd8cf';
+      for (const e of getGraph(below.walls).edges) {
+        ctx.beginPath();
+        this.tracePolygon([e.aNeg, e.pa, e.aPos, e.bPos, e.pb, e.bNeg]);
+        ctx.fill();
+      }
+    }
+
     // rooms
     for (const room of graph.rooms) {
       const style = styleOfRoom(graph, room, lvl.roomStyles);
@@ -740,6 +752,23 @@ export class PlanView {
       if (sel?.kind === 'room' && roomAt(graph, sel.point)?.index === room.index) {
         ctx.fillStyle = 'rgba(226,112,58,0.14)';
         ctx.fill('evenodd');
+      }
+    }
+
+    // stair openings arriving from the level below
+    if (below) {
+      for (const f of below.furniture) {
+        const def = getFurniture(f.catalogId);
+        if (!def?.stair) continue;
+        this.drawFurniture(f, 0.45);
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(f.rotation);
+        ctx.setLineDash([0.18, 0.12]);
+        ctx.lineWidth = 0.035;
+        ctx.strokeStyle = COLORS.accent;
+        ctx.strokeRect(-def.size.w / 2, -def.size.d / 2, def.size.w, def.size.d);
+        ctx.restore();
       }
     }
 
