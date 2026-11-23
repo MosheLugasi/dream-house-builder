@@ -322,7 +322,7 @@ export function buildHead(b: Builder, s: Spec, st: Styles, torso: TorsoInfo): He
         for (let j = 0; j <= Cn; j++) {
           const be = lerp(-bMax, bMax, j / Cn);
           const m = upperA(be);
-          const al = lerp(m, creaseA(be) + travel * shape(be, 0.6) + 3 * deg, Math.pow(i / R, 1.2));
+          const al = lerp(m, creaseA(be) + travel + 4 * deg, Math.pow(i / R, 1.2));
           const hp: [number, number, number] = [C[0] + rl * Math.sin(be), C[1] + rl * Math.cos(be) * Math.sin(al), C[2] + rl * Math.cos(be) * Math.cos(al)];
           const p = abs(hp);
           const shade = i === 0 ? 0.86 : 0.97;

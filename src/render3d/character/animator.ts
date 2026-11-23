@@ -395,7 +395,7 @@ export class Animator {
     const hipZ = -0.03 * k * reach - 0.012 * k * mv * run;
 
     // ---- feet --------------------------------------------------------------------------------------------
-    const stanceX = lerp(s.hipX * 1.04, s.hipX * lerp(0.62, 0.3, run), mv);
+    const stanceX = lerp(s.hipX * 1.04, s.hipX * lerp(0.78, 0.36, run), mv);
     const zLand = duty * stride * 0.5 + 0.015 * k;
     const hs = -(0.36 - 0.27 * run) * amp;
     const to = (0.92 + 0.12 * run) * amp;

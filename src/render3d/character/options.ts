@@ -45,7 +45,7 @@ export const ACCESSORY_OPTIONS: Option<Accessory>[] = [
 ];
 
 /** Realistic skin tones, light → dark. */
-export const SKIN_TONES: string[] = ['#f7dcc8', '#f0c9aa', '#e8b996', '#dba57e', '#c98d62', '#a56c43', '#7e5030', '#56351f'];
+export const SKIN_TONES: string[] = ['#f3d0b6', '#edc3a2', '#e8b996', '#dba57e', '#c98d62', '#a56c43', '#7e5030', '#56351f'];
 
 export const HAIR_COLORS: string[] = ['#17120f', '#3a2416', '#5a3620', '#8a5a2b', '#b98a4a', '#e2c078', '#a8431f', '#d8702e', '#8c8c8a', '#e6e2da', '#d85a9a', '#4a78c8'];
 

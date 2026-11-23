@@ -124,7 +124,13 @@ export function buildBody(b: Builder, s: Spec, st: Styles): TorsoInfo {
           rf: rf + o,
           rb: rb + o,
           n,
-          w: (_t, x, yy, z) => torsoW(x, yy, z),
+          // the hem follows the thighs a little, so a lifted leg pushes the fabric instead of poking through it
+          w: (_t, x, yy, z) => {
+            const legW = dress ? 0 : smooth(s.hipY + 0.07 * k, s.hipY - 0.03 * k, yy) * 0.4 * smooth(-0.02 * k, 0.03 * k, z);
+            if (legW <= 0.001) return torsoW(x, yy, z);
+            const sl = smooth(-0.035 * k, 0.035 * k, x);
+            return [B.hips, 1 - legW, B.thighL, legW * sl, B.thighR, legW * (1 - sl)];
+          },
           col: hoodie && i === 0 ? RIB : WHITE,
           v: y * 6,
           uScale: 5,
@@ -715,7 +721,7 @@ function buildHoodieExtras(b: Builder, s: Spec, shirtR: (th: number, y: number) 
         const u = j / cols;
         const th = lerp(-half, half, u);
         const edge = i === 0 || i === rowsN || j === 0 || j === cols;
-        const r = shirtR(th, y) + (edge ? 0.0008 : 0.007) * k;
+        const r = shirtR(th, y) + (edge ? 0.003 : 0.008) * k;
         row.push(b.v(Math.sin(th) * r, y, Math.cos(th) * r, wmix(B.hips, B.spine, smooth(s.spineY - 0.07 * k, s.spineY + 0.05 * k, y)), edge ? ([0.93, 0.93, 0.93] as RGB) : WHITE));
       }
       grid.push(row);
