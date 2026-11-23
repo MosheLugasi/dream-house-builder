@@ -7,7 +7,11 @@ import type { Quality } from '../../store/quality';
  */
 export interface RenderPreset {
   quality: Quality;
-  /** upper limit of the device pixel ratio */
+  /**
+   * upper limit of the device pixel ratio. `high` renders at CSS resolution, as it effectively did before
+   * (N8AO was sized in CSS pixels, so the scene was never drawn at 2× anyway); `ultra` renders sharper on
+   * HiDPI screens.
+   */
   pixelRatioCap: number;
   /** post-processing chain (AO, bloom, graded output, SMAA); off = render straight to the canvas */
   post: boolean;
@@ -50,7 +54,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
   },
   high: {
     quality: 'high',
-    pixelRatioCap: 2,
+    pixelRatioCap: 1,
     post: true,
     ao: 'Medium',
     accumulate: 0,
@@ -65,7 +69,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
   },
   ultra: {
     quality: 'ultra',
-    pixelRatioCap: 2,
+    pixelRatioCap: 1.5,
     post: true,
     ao: 'High',
     accumulate: 16,
