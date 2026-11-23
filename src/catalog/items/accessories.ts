@@ -1105,26 +1105,29 @@ const bust: FurnitureDef = {
       18,
     );
     // chest / shoulders: upper part of an ellipsoid with a flat cut
-    const ch = new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.6);
-    ch.scale(0.115, 0.115, 0.062);
-    const cutY = Math.cos(Math.PI * 0.6) * 0.115;
+    const ch = new THREE.SphereGeometry(1, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.56);
+    ch.scale(0.105, 0.1, 0.052);
+    const cutY = Math.cos(Math.PI * 0.56) * 0.1;
     k.geo(ch, pl, 0, 0.072 - cutY, 0);
-    k.slab(ellipseShape(0.109, 0.058), 0.004, pl, 0, 0.07, 0);
-    // neck, head, jaw, nose, ears, hair
-    k.cyl(0.03, 0.08, pl, 0, 0.13, 0.004, 0.027, 16);
-    k.sphere(0.056, pl, 0, 0.245, 0.006, 0.88, 1.12, 1, 20);
-    k.sphere(0.036, pl, 0, 0.207, 0.028, 1, 0.9, 1, 14);
-    const nose = k.geo(new THREE.ConeGeometry(0.011, 0.036, 4), pl, 0, 0.24, 0.058);
-    nose.rotation.x = 0.28;
+    k.slab(ellipseShape(0.1, 0.05), 0.004, pl, 0, 0.07, 0);
+    // neck, head, jaw, nose, brow, ears, hair
+    k.cyl(0.027, 0.08, pl, 0, 0.145, 0.006, 0.025, 16);
+    k.sphere(0.062, pl, 0, 0.255, 0.004, 0.84, 1.08, 0.94, 22);
+    k.sphere(0.034, pl, 0, 0.218, 0.026, 1, 0.92, 1, 14);
+    const nose = k.geo(new THREE.ConeGeometry(0.01, 0.034, 4), pl, 0, 0.248, 0.058);
+    nose.rotation.x = 0.3;
+    nose.rotation.y = Math.PI / 4;
+    k.box(0.06, 0.006, 0.01, pl, 0, 0.27, 0.047);
     for (const s of [-1, 1]) {
-      k.sphere(0.014, pl, s * 0.05, 0.24, -0.002, 0.45, 1, 0.8, 10);
-      k.sphere(0.0075, M.stone(darken(c.plaster, 0.06), 0.8), s * 0.021, 0.256, 0.05, 1.3, 0.6, 0.6, 8);
+      k.sphere(0.014, pl, s * 0.052, 0.252, -0.002, 0.45, 1, 0.8, 10);
+      k.sphere(0.008, M.stone(darken(c.plaster, 0.12), 0.8), s * 0.02, 0.262, 0.05, 1.3, 0.6, 0.5, 8);
     }
-    k.sphere(0.06, M.stone(darken(c.plaster, 0.03), 0.9), 0, 0.262, -0.022, 0.95, 0.92, 0.85, 18);
+    const hair = M.stone(darken(c.plaster, 0.04), 0.9);
+    k.sphere(0.063, hair, 0, 0.275, -0.018, 0.9, 0.88, 0.86, 18);
     // curls over the forehead
-    for (let i = 0; i < 6; i++) {
-      const a = -0.9 + (i / 5) * 1.8;
-      k.sphere(0.013, pl, Math.sin(a) * 0.045, 0.292 - Math.abs(a) * 0.014, Math.cos(a) * 0.034 - 0.002, 1, 0.8, 0.9, 8);
+    for (let i = 0; i < 7; i++) {
+      const a = -1.0 + (i / 6) * 2.0;
+      k.sphere(0.012, hair, Math.sin(a) * 0.044, 0.3 - Math.abs(a) * 0.014, Math.cos(a) * 0.034 + 0.002, 1, 0.8, 0.9, 8);
     }
     return k.g;
   },

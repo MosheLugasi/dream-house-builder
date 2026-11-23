@@ -288,7 +288,7 @@ function beltSeat(k: Kit, mat: THREE.Material, y: number): void {
     const x = -w + (2 * w * i) / n;
     s.lineTo(x, -sag * (1 - (x / w) ** 2) - 0.014);
   }
-  k.geo(profileZ(s, 0.15, 0.004, 4), mat, 0, y, 0);
+  k.geo(profileZ(s, 0.15, 0, 4), mat, 0, y, 0);
   // metal end clamps
   for (const sx of [-1, 1]) k.rbox(0.03, 0.03, 0.06, 0.006, M.steel(), sx * w, y - 0.025, 0, 1);
 }
@@ -301,7 +301,7 @@ function bucketSeat(k: Kit, mat: THREE.Material, y: number): void {
   // front guard with two leg holes
   const s = roundedRectShape(0.36, 0.2, 0.04);
   for (const sx of [-1, 1]) s.holes.push(new THREE.Path().absellipse(sx * 0.08, -0.02, 0.055, 0.07, 0, Math.PI * 2, true, 0));
-  k.geo(profileZ(s, 0.04, 0.008, 8), mat, 0, y + 0.06, 0.15);
+  k.geo(profileZ(s, 0.04, 0, 8), mat, 0, y + 0.06, 0.15);
 }
 
 interface SwingOpts {
@@ -357,7 +357,7 @@ function swingFrame(o: SwingOpts): FurnitureDef {
           else
             for (const sz of [-1, 1]) chain(p, [s * hx, -0.07, 0], [s * hx, rel + 0.16, sz * 0.13], steel, 0.08, 0.012);
           // plastic chain sleeves where hands grip
-          p.rod([s * hx, rel + 0.25, 0], [s * hx, rel + 0.6, 0], 0.012, M.plastic(darken(c.seat, 0.1)), 0.012, 8);
+          p.rod([s * hx, rel + 0.25, 0], [s * hx, rel + 0.6, 0], 0.012, M.plastic(darken(c.seat, 0.1)), 0.012, 6);
         }
         if (o.seats[i] === 'belt') beltSeat(p, M.rubber(c.seat), rel + 0.01);
         else bucketSeat(p, M.plastic(c.seat), rel);
@@ -470,7 +470,7 @@ const porchSwing: FurnitureDef = {
     for (const s of [-1, 1]) {
       for (const sz of [-1, 1]) k.beam([s * ex, 0.03, sz * (d / 2 - 0.06)], [s * (ex - 0.04), top, sz * 0.05], 0.08, 0.08, wood, 0.01);
       k.beam([s * (ex - 0.02), 0.6, -(d / 2 - 0.2)], [s * (ex - 0.02), 0.6, d / 2 - 0.2], 0.06, 0.04, wood, 0.006);
-      k.beam([s * (ex - 0.03), 0.06, -(d / 2 - 0.06)], [s * (ex - 0.03), 0.06, d / 2 - 0.06], 0.08, 0.06, wood, 0.006);
+      k.beam([s * (ex - 0.03), 0.03, -(d / 2 - 0.06)], [s * (ex - 0.03), 0.03, d / 2 - 0.06], 0.08, 0.06, wood, 0.006);
     }
     k.beam([-w / 2 + 0.01, top, 0], [w / 2 - 0.01, top, 0], 0.1, 0.12, wood, 0.012);
     // canopy (sloping fabric)
@@ -1288,9 +1288,9 @@ const aboveGroundPool: FurnitureDef = {
       const z = cz + Math.sin(a) * (r + 0.03);
       const up = k.box(0.06, H, 0.035, M.metal(lighten(c.wall, 0.08), 0.4, 0.5), x, 0, z);
       up.rotation.y = -a + Math.PI / 2;
-      const ft = k.rbox(0.12, 0.03, 0.14, 0.01, M.plastic('#e9ebed'), x, 0, z, 1);
+      const ft = k.box(0.12, 0.03, 0.14, M.plastic('#e9ebed'), x, 0, z);
       ft.rotation.y = -a;
-      const cap = k.rbox(0.14, 0.04, 0.16, 0.012, M.plastic('#e9ebed'), Math.cos(a) * (r + 0.0), H + 0.005, cz + Math.sin(a) * r, 1);
+      const cap = k.box(0.14, 0.04, 0.16, M.plastic('#e9ebed'), Math.cos(a) * (r + 0.0), H + 0.005, cz + Math.sin(a) * r);
       cap.rotation.y = -a;
     }
     // top rail ring
@@ -1526,7 +1526,7 @@ const fountain: FurnitureDef = {
 
 /* ================================================================== fire & grill */
 
-const FIRE = { w: 2.32, d: 2.32 };
+const FIRE = { w: 2.36, d: 2.36 };
 const FIRE_SEAT_R = 1.18;
 const FIRE_SEATS: SeatAnchor[] = [0, 1, 2, 3].map((i) => {
   const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
@@ -1626,8 +1626,8 @@ const kettleBbq: FurnitureDef = {
     k.disc(R - 0.08, 0.04, M.glow('#ff5a1a', 0.9, '#2a1a12'), cx, rimY - 0.14, 0, 18);
     // cooking grate + food
     k.ring(R - 0.02, 0.004, steel, cx, rimY - 0.03, 0, 28);
-    for (let i = -6; i <= 6; i++) {
-      const z = i * 0.04;
+    for (let i = -5; i <= 5; i++) {
+      const z = i * 0.048;
       const half = Math.sqrt(Math.max(0, (R - 0.02) ** 2 - z * z));
       k.rod([cx - half, rimY - 0.03, z], [cx + half, rimY - 0.03, z], 0.003, steel, 0.003, 4);
     }
