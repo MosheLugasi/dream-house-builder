@@ -1,0 +1,139 @@
+/* Character creator dialog (uses the house modal / pills / palette styles from styles.css) */
+.cc-modal {
+  width: min(940px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 14px;
+}
+.cc-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.1fr);
+  gap: 18px;
+  min-height: 0;
+  flex: 1;
+  margin-top: 10px;
+}
+.cc-stage {
+  position: relative;
+  min-height: 420px;
+  border-radius: 14px;
+  background: radial-gradient(120% 90% at 50% 12%, #fdf6ea 0%, #f3e6d2 55%, #e7d6bd 100%);
+  overflow: hidden;
+  border: 1.5px solid var(--line);
+}
+.cc-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+.cc-canvas:active {
+  cursor: grabbing;
+}
+.cc-stage-tools {
+  position: absolute;
+  top: 10px;
+  inset-inline-start: 10px;
+  margin: 0;
+}
+.cc-stage-tools button {
+  background: rgba(255, 255, 255, 0.86);
+}
+.cc-stage-tools button.active {
+  background: var(--accent);
+}
+.cc-hint {
+  position: absolute;
+  bottom: 8px;
+  inset-inline: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.cc-nogl {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+}
+.cc-controls {
+  overflow-y: auto;
+  padding-inline-end: 6px;
+  min-height: 0;
+}
+.cc-section {
+  margin-bottom: 14px;
+}
+.cc-section h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.cc-section .pills {
+  margin-bottom: 8px;
+}
+.cc-section .pills button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.cc-palette {
+  grid-template-columns: repeat(auto-fill, 30px);
+  gap: 7px;
+}
+.cc-palette button,
+.cc-palette .custom-color {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  cursor: pointer;
+  font-weight: 700;
+}
+.cc-palette.round button,
+.cc-palette.round .custom-color {
+  border-radius: 50%;
+}
+.cc-palette .custom-color.active {
+  outline: 2.5px solid var(--accent);
+  outline-offset: 1px;
+}
+.cc-palette button:focus-visible,
+.cc-section .pills button:focus-visible {
+  outline: 2.5px solid var(--teal);
+  outline-offset: 2px;
+}
+.cc-note {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.cc-footer {
+  margin: 12px 0 0;
+}
+.cc-footer .btn {
+  padding-block: 10px;
+  font-size: 14px;
+}
+
+@media (max-width: 720px) {
+  .cc-modal {
+    overflow-y: auto;
+  }
+  .cc-body {
+    grid-template-columns: 1fr;
+  }
+  .cc-stage {
+    min-height: 300px;
+  }
+  .cc-controls {
+    overflow: visible;
+  }
+}

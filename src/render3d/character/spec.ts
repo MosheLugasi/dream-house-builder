@@ -55,6 +55,7 @@ export interface Face {
   cheek: number;
   eyeY: number;
   eyeX: number;
+  /** half width of the open eye */
   eyeR: number;
   /** nose length / projection scale */
   nose: number;
@@ -85,7 +86,7 @@ const MAN: Spec = {
   headY: 1.588,
   chinY: 1.548,
   headH: 0.232,
-  shoulderY: 1.452,
+  shoulderY: 1.438,
   shoulderX: 0.186,
   upperArm: 0.3,
   foreArm: 0.262,
@@ -102,11 +103,11 @@ const MAN: Spec = {
     [1.2, 0.168, 0.11, 0.1, 2.4],
     [1.3, 0.182, 0.12, 0.108, 2.45],
     [1.385, 0.186, 0.116, 0.11, 2.45],
-    [1.45, 0.172, 0.096, 0.1, 2.35],
-    [1.488, 0.118, 0.076, 0.088, 2.2],
-    [1.515, 0.066, 0.06, 0.068, 2.0],
+    [1.47, 0.166, 0.09, 0.098, 2.3],
+    [1.497, 0.112, 0.074, 0.088, 2.2],
+    [1.517, 0.066, 0.06, 0.068, 2.0],
   ],
-  face: { jaw: 0.275, chin: 0.13, cheek: 0.0, eyeY: 0.475, eyeX: 0.138, eyeR: 0.066, nose: 1.0, noseY: 0.32, mouthY: 0.2, mouthW: 0.108, lip: 0.75, brow: 1.25, lash: 0.6, skullW: 0.335 },
+  face: { jaw: 0.262, chin: 0.125, cheek: 0.0, eyeY: 0.475, eyeX: 0.142, eyeR: 0.063, nose: 1.05, noseY: 0.32, mouthY: 0.2, mouthW: 0.108, lip: 0.75, brow: 1.25, lash: 0.6, skullW: 0.335 },
 };
 
 const WOMAN: Spec = {
@@ -125,7 +126,7 @@ const WOMAN: Spec = {
   headY: 1.48,
   chinY: 1.44,
   headH: 0.22,
-  shoulderY: 1.358,
+  shoulderY: 1.345,
   shoulderX: 0.162,
   upperArm: 0.276,
   foreArm: 0.24,
@@ -142,11 +143,11 @@ const WOMAN: Spec = {
     [1.11, 0.14, 0.1, 0.088, 2.3],
     [1.19, 0.151, 0.122, 0.093, 2.35],
     [1.27, 0.156, 0.106, 0.095, 2.35],
-    [1.355, 0.15, 0.083, 0.088, 2.3],
-    [1.388, 0.1, 0.066, 0.076, 2.2],
-    [1.414, 0.054, 0.05, 0.056, 2.0],
+    [1.374, 0.144, 0.078, 0.086, 2.3],
+    [1.397, 0.096, 0.064, 0.076, 2.2],
+    [1.416, 0.054, 0.05, 0.056, 2.0],
   ],
-  face: { jaw: 0.25, chin: 0.105, cheek: 0.35, eyeY: 0.465, eyeX: 0.138, eyeR: 0.071, nose: 0.82, noseY: 0.315, mouthY: 0.195, mouthW: 0.1, lip: 1.25, brow: 0.8, lash: 1.3, skullW: 0.335 },
+  face: { jaw: 0.252, chin: 0.11, cheek: 0.35, eyeY: 0.465, eyeX: 0.144, eyeR: 0.069, nose: 0.9, noseY: 0.315, mouthY: 0.195, mouthW: 0.1, lip: 1.25, brow: 0.8, lash: 1.3, skullW: 0.335 },
 };
 
 const KID: Spec = {
@@ -165,7 +166,7 @@ const KID: Spec = {
   headY: 1.212,
   chinY: 1.184,
   headH: 0.216,
-  shoulderY: 1.1,
+  shoulderY: 1.09,
   shoulderX: 0.126,
   upperArm: 0.226,
   foreArm: 0.196,
@@ -182,11 +183,11 @@ const KID: Spec = {
     [0.92, 0.122, 0.088, 0.081, 2.3],
     [1.0, 0.128, 0.09, 0.084, 2.35],
     [1.055, 0.13, 0.086, 0.084, 2.35],
-    [1.1, 0.119, 0.07, 0.076, 2.3],
-    [1.126, 0.08, 0.055, 0.064, 2.2],
-    [1.146, 0.046, 0.043, 0.048, 2.0],
+    [1.114, 0.112, 0.066, 0.074, 2.3],
+    [1.133, 0.076, 0.054, 0.064, 2.2],
+    [1.149, 0.046, 0.043, 0.048, 2.0],
   ],
-  face: { jaw: 0.255, chin: 0.1, cheek: 1.0, eyeY: 0.44, eyeX: 0.138, eyeR: 0.078, nose: 0.62, noseY: 0.3, mouthY: 0.185, mouthW: 0.092, lip: 1.0, brow: 0.8, lash: 1.1, skullW: 0.345 },
+  face: { jaw: 0.268, chin: 0.118, cheek: 0.8, eyeY: 0.44, eyeX: 0.15, eyeR: 0.076, nose: 0.75, noseY: 0.3, mouthY: 0.185, mouthW: 0.092, lip: 1.0, brow: 0.8, lash: 1.1, skullW: 0.345 },
 };
 
 /** Uniformly scale every length of a spec. */
@@ -206,7 +207,7 @@ const SPECS: Record<BodyType, Spec> = {
   boy: scaled(KID, 1.42 / 1.4, {
     body: 'boy',
     female: false,
-    face: { ...KID.face, lash: 0.6, brow: 1.0, lip: 0.8, jaw: 0.262, chin: 0.108 },
+    face: { ...KID.face, lash: 0.6, brow: 1.0, lip: 0.8, jaw: 0.272, chin: 0.124 },
   }),
   woman: WOMAN,
   man: MAN,

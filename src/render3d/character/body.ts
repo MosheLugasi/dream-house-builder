@@ -58,8 +58,9 @@ export function buildBody(b: Builder, s: Spec, st: Styles): TorsoInfo {
   const waistY = s.torso[4][0];
   const loose = hoodie ? 0.03 : dress ? 0.004 : s.female && !s.child ? 0.02 : 0.013;
   const base = hoodie ? 0.016 : 0.006;
+  const hemFlare = bottom === 'pants' ? 0.008 : 0.013;
   const shirtOff = (y: number) =>
-    base * k + loose * k * Math.exp(-Math.pow((y - waistY) / (0.11 * k), 2)) + 0.008 * k * smooth(waistY, s.hipY, y);
+    base * k + loose * k * Math.exp(-Math.pow((y - waistY) / (0.11 * k), 2)) + hemFlare * k * smooth(waistY, s.hipY, y);
   const shirtR = (th: number, y: number) => {
     const [rx, rf, rb, n] = prof(y);
     const o = shirtOff(y);
@@ -123,7 +124,13 @@ export function buildBody(b: Builder, s: Spec, st: Styles): TorsoInfo {
           rf: rf + o,
           rb: rb + o,
           n,
-          w: (_t, x, yy, z) => torsoW(x, yy, z),
+          // the hem follows the thighs a little, so a lifted leg pushes the fabric instead of poking through it
+          w: (_t, x, yy, z) => {
+            const legW = dress ? 0 : smooth(s.hipY + 0.07 * k, s.hipY - 0.03 * k, yy) * 0.4 * smooth(-0.02 * k, 0.03 * k, z);
+            if (legW <= 0.001) return torsoW(x, yy, z);
+            const sl = smooth(-0.035 * k, 0.035 * k, x);
+            return [B.hips, 1 - legW, B.thighL, legW * sl, B.thighR, legW * (1 - sl)];
+          },
           col: hoodie && i === 0 ? RIB : WHITE,
           v: y * 6,
           uScale: 5,
@@ -166,7 +173,8 @@ export function buildBody(b: Builder, s: Spec, st: Styles): TorsoInfo {
   // ---- skirt ---------------------------------------------------------------------------------------
   if (bottom === 'skirt') {
     const slot: Slot = dress ? 'top' : 'bottom';
-    const yW = dress ? waistY + 0.012 * k : waistY + 0.03 * k;
+    const shirtHem = top === 'hoodie' ? s.hipY - 0.03 * k : s.hipY - 0.012 * k;
+    const yW = dress ? waistY + 0.012 * k : shirtHem + 0.03 * k;
     const yH = s.kneeY + (dress ? 0.03 : 0.07) * k;
     const flare = dress ? 1.42 : 1.32;
     const keys = curve([
@@ -180,7 +188,7 @@ export function buildBody(b: Builder, s: Spec, st: Styles): TorsoInfo {
       const t = (yW - y) / (yW - yH);
       const [f, pleat] = keys(t);
       const [wx, wf, wb, n] = prof(Math.max(y, s.hipY));
-      const o = (dress ? shirtOff(yW) + 0.004 * k : 0.006 * k) + 0.012 * k * Math.min(1, t * 3);
+      const o = (dress ? shirtOff(yW) + 0.004 * k : 0.004 * k) + 0.014 * k * smooth(0.06, 0.4, t);
       const g = Math.max(1, f);
       const rx = wx * (y >= s.hipY ? 1 : g) + o;
       const rf = wf * (y >= s.hipY ? 1 : g * 1.12) + o;
@@ -269,14 +277,12 @@ function buildArm(b: Builder, s: Spec, top: TopStyle, L: boolean): void {
     const m = capR ?? 1;
     return b.ring(N_ARM, { c: [sx, sy - d, 0], rx: (rx + o) * m, rf: (rz + o) * m, w: weight(d), col, v: d * 6, uScale: 2 });
   };
-  const VF = 0.6; // the shoulder cap is flatter than a ball so it does not rise above the shoulder line
+  const VF = 0.8; // the shoulder cap is flatter than a ball so it does not rise above the shoulder line
   const cap = (o: number) => {
     const R = s.r.delt + o;
-    return [
-      b.ring(N_ARM, { c: [sx - R * 0.1, sy + 0.9 * R * VF, 0], rx: R * 0.42, w: w1(A) }),
-      b.ring(N_ARM, { c: [sx - R * 0.05, sy + 0.66 * R * VF, 0], rx: R * 0.75, w: w1(A) }),
-      b.ring(N_ARM, { c: [sx, sy + 0.34 * R * VF, 0], rx: R * 0.94, w: w1(A) }),
-    ];
+    return [0.95, 0.8, 0.56, 0.27].map((f) =>
+      b.ring(N_ARM, { c: [sx - R * 0.55 * f, sy + f * R * VF, 0], rx: R * Math.sqrt(1 - f * f) * 1.01, w: w1(A) }),
+    );
   };
   const upperDs = [0, 0.2, 0.4, 0.6, 0.78].map((t) => t * s.upperArm);
   const elbowDs = [-h, -h * 0.5, 0, h * 0.5, h].map((e) => s.upperArm + e);
@@ -300,7 +306,7 @@ function buildArm(b: Builder, s: Spec, top: TopStyle, L: boolean): void {
       rows.push(ringAt(sleeveEnd - 0.004 * k, 0, SHADE));
     }
     b.loft('top', rows);
-    b.cap('top', rows[0], [sx - (s.r.delt + off) * 0.12, sy + (s.r.delt + off) * VF, 0], w1(A));
+    b.cap('top', rows[0], [sx - (s.r.delt + off) * 0.56, sy + (s.r.delt + off) * VF, 0], w1(A));
   }
   // bare arm below the sleeve
   {
@@ -356,7 +362,7 @@ function buildHand(b: Builder, s: Spec, L: boolean): void {
   ];
   for (const f of fingers) {
     const segs = [0.0, 0.42, 0.72, 1.0];
-    const angles = [0.16, 0.5, 0.95, 1.2].map((a) => a * f[3]);
+    const angles = [0.08, 0.3, 0.62, 0.85].map((a) => a * f[3]);
     let x = wx - 0.001 * u;
     let y = wy - 0.092 * u;
     const frows: number[][] = [];
@@ -467,7 +473,7 @@ function buildLeg(b: Builder, s: Spec, bottom: BottomStyle, dress: boolean, L: b
   const shorts = bottom === 'shorts';
   const garmentO = (d: number) => {
     if (pants) return (0.006 + 0.016 * smooth(thigh * 0.75, len, d)) * k;
-    return (0.011 + 0.008 * smooth(0, thigh * 0.6, d)) * k;
+    return (0.005 + 0.014 * smooth(thigh * 0.08, thigh * 0.6, d)) * k;
   };
   const ringAt = (d: number, o: number, col: RGB = WHITE, even = 0) => {
     const [rx, rf, rb] = rad(d);
@@ -701,8 +707,8 @@ function buildHoodieExtras(b: Builder, s: Spec, shirtR: (th: number, y: number) 
   }
   // kangaroo pocket
   {
-    const yB = s.hipY + 0.012 * k;
-    const yT = lerp(yB, waistY + 0.06 * k, 1);
+    const yB = s.hipY + 0.035 * k;
+    const yT = waistY + 0.07 * k;
     const cols = 8;
     const rowsN = 3;
     const grid: number[][] = [];
@@ -715,7 +721,7 @@ function buildHoodieExtras(b: Builder, s: Spec, shirtR: (th: number, y: number) 
         const u = j / cols;
         const th = lerp(-half, half, u);
         const edge = i === 0 || i === rowsN || j === 0 || j === cols;
-        const r = shirtR(th, y) + (edge ? 0.0008 : 0.007) * k;
+        const r = shirtR(th, y) + (edge ? 0.003 : 0.008) * k;
         row.push(b.v(Math.sin(th) * r, y, Math.cos(th) * r, wmix(B.hips, B.spine, smooth(s.spineY - 0.07 * k, s.spineY + 0.05 * k, y)), edge ? ([0.93, 0.93, 0.93] as RGB) : WHITE));
       }
       grid.push(row);

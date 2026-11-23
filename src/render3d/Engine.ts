@@ -36,14 +36,14 @@ import { updateEffects } from './effects';
 import { ItemLayer, makeItemHolder, type ItemEntry } from './ItemLayer';
 import { Particles, Stars } from './Life';
 import { Traffic } from './Traffic';
-import { randomLook } from '../game/looks';
+import { randomLook } from './characterTypes';
 import { LightManager, type LampSource } from './LightManager';
 import { emptyWorld, seatsOf, WalkController, type WalkWorld } from './WalkController';
 import { Interactions } from './Interactions';
 import { itemEvents } from './ItemLayer';
 import { sound } from '../audio/sound';
 import { useWalk } from '../store/walk';
-import type { Activity, CharacterLook } from './Character';
+import { normalizeLook, type Activity } from './Character';
 
 /** Named moments of the day (the HUD buttons and the N key jump between them). */
 export const DAY_MOMENTS = { day: 14.5, sunset: 18.6, night: 21.5 } as const;
@@ -179,6 +179,7 @@ export class Engine {
       st.setView({ firstPerson: !st.view.firstPerson });
     };
     this.walk.onVehicleParked = (id, x, y, rotation) => updateProp(id, { x, y, rotation }, true);
+    this.adoptLegacyLook();
     this.walk.character.setLook(useProgress.getState().look);
     this.unsubLook = useProgress.subscribe((st, prev) => {
       if (st.look !== prev.look) this.walk.character.setLook(st.look);
@@ -362,6 +363,19 @@ export class Engine {
       this.savePhoto();
     }
   }
+  /** A look saved by the first character editor becomes the avatar once, then the old key goes away. */
+  private adoptLegacyLook(): void {
+    const KEY = 'dream-house-builder:character';
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return;
+      localStorage.removeItem(KEY);
+      useProgress.getState().setLook(normalizeLook(JSON.parse(raw)));
+    } catch {
+      /* no storage, or an unreadable value: keep the current avatar */
+    }
+  }
+
   // ---- walk-mode extras ----------------------------------------------------------------------
 
   /** run a walk-mode action button */
@@ -423,10 +437,6 @@ export class Engine {
     } catch (err) {
       console.warn('photo failed', err);
     }
-  }
-
-  setLook(look: CharacterLook): void {
-    this.walk.character.setLook(look);
   }
 
   private shortcut(code: string): boolean {

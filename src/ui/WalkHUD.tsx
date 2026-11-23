@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { DAY_MOMENTS, momentOf, type Engine } from '../render3d/Engine';
 import { audio } from '../audio';
-import { hasAvatarCreator, WalkExtras } from './GameHud';
-import type { CharacterLook, HairStyle } from '../render3d/Character';
-import { loadLook, saveLook } from '../render3d/look';
+import { WalkExtras } from './GameHud';
 import { useStore } from '../store/store';
 import { useWalk } from '../store/walk';
 import { sound } from '../audio/sound';
-import { Modal } from './Dialogs';
 
 const KEY_LABELS = ['E', 'F', 'G', 'T'];
 
@@ -123,74 +120,6 @@ function InstrumentPanel({ engine }: { engine: Engine | null }) {
   );
 }
 
-const HAIR: Array<{ id: HairStyle; label: string }> = [
-  { id: 'short', label: 'קצר' },
-  { id: 'ponytail', label: 'קוקו' },
-  { id: 'long', label: 'ארוך' },
-  { id: 'bun', label: 'פקעת' },
-  { id: 'curly', label: 'מתולתל' },
-  { id: 'bald', label: 'קרחת' },
-];
-const SKINS = ['#f6d7c3', '#e8b996', '#d29b74', '#b07650', '#8a5a3b', '#5e3b26'];
-
-function ColorRow({ label, value, onChange, presets }: { label: string; value: string; onChange: (v: string) => void; presets: string[] }) {
-  return (
-    <div className="look-row">
-      <span>{label}</span>
-      <div className="look-swatches">
-        {presets.map((c) => (
-          <button key={c} className={value === c ? 'on' : ''} style={{ background: c }} onClick={() => onChange(c)} aria-label={c} />
-        ))}
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} />
-      </div>
-    </div>
-  );
-}
-
-export function CharacterDialog({ engine, onClose }: { engine: Engine | null; onClose: () => void }) {
-  const [look, setLook] = useState<CharacterLook>(() => loadLook());
-  const update = (patch: Partial<CharacterLook>) => {
-    const next = { ...look, ...patch };
-    setLook(next);
-    saveLook(next);
-    engine?.setLook(next);
-  };
-  return (
-    <Modal title="הדמות שלי" onClose={onClose} className="side-panel">
-      <div className="look-editor">
-        <div className="look-row">
-          <span>תסרוקת</span>
-          <div className="segmented">
-            {HAIR.map((h) => (
-              <button key={h.id} className={(look.hairStyle ?? 'ponytail') === h.id ? 'active' : ''} onClick={() => update({ hairStyle: h.id, longHair: h.id !== 'short' })}>
-                {h.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <ColorRow label="עור" value={look.skin} onChange={(skin) => update({ skin })} presets={SKINS} />
-        <ColorRow label="שיער" value={look.hair} onChange={(hair) => update({ hair })} presets={['#1f1a17', '#5a3620', '#8b5a2b', '#d4a96a', '#e8d6a8', '#b5462e', '#9a9a9a']} />
-        <ColorRow label="חולצה" value={look.shirt} onChange={(shirt) => update({ shirt })} presets={['#e8725a', '#4f7896', '#f3f1ec', '#2f3339', '#6f8f72', '#d6a544', '#c77dff']} />
-        <ColorRow label={look.skirt ? 'חצאית' : 'מכנסיים'} value={look.pants} onChange={(pants) => update({ pants })} presets={['#3f5f8a', '#2f3339', '#c9bca7', '#6b4f3a', '#8a2f2f', '#5e7a52']} />
-        <ColorRow label="נעליים" value={look.shoes} onChange={(shoes) => update({ shoes })} presets={['#f4f4f2', '#1e1f22', '#8b5a2b', '#c0392b', '#4f7896']} />
-        <div className="look-row">
-          <span>גובה</span>
-          <input type="range" min={1.2} max={1.95} step={0.01} value={look.height} onChange={(e) => update({ height: parseFloat(e.target.value) })} />
-          <em>{Math.round(look.height * 100)} ס"מ</em>
-        </div>
-        <div className="look-row">
-          <label className={`chip toggle ${look.skirt ? 'on' : ''}`}>
-            <input type="checkbox" checked={!!look.skirt} onChange={(e) => update({ skirt: e.target.checked })} /> חצאית
-          </label>
-          <label className={`chip toggle ${look.glasses ? 'on' : ''}`}>
-            <input type="checkbox" checked={!!look.glasses} onChange={(e) => update({ glasses: e.target.checked })} /> משקפיים
-          </label>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 export function WalkHUD({ engine, onAvatar }: { engine: Engine | null; onAvatar?: () => void }) {
   const choices = useWalk((s) => s.choices);
   const toasts = useWalk((s) => s.toasts);
@@ -202,7 +131,6 @@ export function WalkHUD({ engine, onAvatar }: { engine: Engine | null; onAvatar?
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const setMode = useStore((s) => s.setMode);
-  const [lookOpen, setLookOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [flashOn, setFlashOn] = useState(false);
   useEffect(() => {
@@ -234,7 +162,7 @@ export function WalkHUD({ engine, onAvatar }: { engine: Engine | null; onAvatar?
         >
           {muted ? '🔇' : '🔊'}
         </button>
-        <button className="chip" onClick={() => (hasAvatarCreator && onAvatar ? onAvatar() : setLookOpen(true))}>
+        <button className="chip" onClick={() => onAvatar?.()}>
           🧑 הדמות שלי
         </button>
         <button className="chip" onClick={() => setHelpOpen((v) => !v)}>
@@ -311,7 +239,6 @@ export function WalkHUD({ engine, onAvatar }: { engine: Engine | null; onAvatar?
 
       <div className="fade-overlay" style={{ opacity: fade }} />
       <div className={`flash-overlay ${flashOn ? 'on' : ''}`} />
-      {lookOpen && <CharacterDialog engine={engine} onClose={() => setLookOpen(false)} />}
     </>
   );
 }

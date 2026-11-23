@@ -15,6 +15,8 @@ export interface BodyBuild {
   rest: Float32Array;
   parents: Int8Array;
   eyeHeight: number;
+  /** angle (radians) the upper eyelids travel to close */
+  lidTravel: number;
   hair: HairInfo;
   triangles: number;
   refs: number;
@@ -89,5 +91,5 @@ function build(key: string, look: CharacterLook): BodyBuild {
   // generous static bounds (the pose changes every frame; lying down is as long as the body is tall)
   geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, s.H * 0.5, 0), s.H * 1.15);
   geometry.boundingBox = new THREE.Box3(new THREE.Vector3(-s.H, -0.2, -s.H), new THREE.Vector3(s.H, s.H * 1.3, s.H));
-  return { key, geometry, spec: s, rest, parents, eyeHeight: eye[1], hair, triangles: b.triangleCount(), refs: 0 };
+  return { key, geometry, spec: s, rest, parents, eyeHeight: eye[1], lidTravel: head.eye.travel, hair, triangles: b.triangleCount(), refs: 0 };
 }

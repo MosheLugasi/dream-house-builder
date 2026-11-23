@@ -114,7 +114,7 @@ function create(slot: Slot, color: string): THREE.MeshStandardMaterial {
       m.roughness = 0.93;
       m.side = THREE.DoubleSide;
       m.bumpMap = clothTexture();
-      m.bumpScale = 0.6;
+      m.bumpScale = 0.25;
       break;
     case 'shoes':
       m.roughness = 0.62;
