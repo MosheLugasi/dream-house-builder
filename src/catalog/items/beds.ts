@@ -184,7 +184,7 @@ function mkBed(s: BedSpec): FurnitureDef {
         s.plan(ctx, c);
         if (s.ownBedding) return;
         const b = beddingFor(s, c);
-        const o = { mw: b.mw, len: b.len, zHead: b.zHead, x: b.x, duvet: b.duvet, throwC: b.throwC, pillows: b.pillows, euro: b.euro, deco: b.deco, hw: b.hw, drop: b.drop };
+        const o = { mw: b.mw, len: b.len, zHead: b.zHead, x: b.x, duvet: b.duvet, throwC: b.throwC, pillows: b.pillows, euro: b.euro, deco: b.deco, hw: b.hw, drop: b.drop, cover: b.cover, fold: b.fold };
         if (s.alongX) {
           ctx.save();
           ctx.rotate(-Math.PI / 2);
@@ -481,7 +481,7 @@ const brassQueen = mkBed({
         const x = -px + 2 * px * t;
         const yt = yTop + arch * Math.sin(t * Math.PI);
         k.rod([x, 0.36, z], [x, yt, z], 0.007, b, 0.007, 6);
-        k.sphere(0.014, b, x, 0.36 + (yt - 0.36) * 0.5, z, 1, 1, 1, 6);
+        k.cyl(0.013, 0.03, b, x, 0.345 + (yt - 0.36) * 0.5, z, 0.013, 6);
       }
     };
     end(zH, BR.h - 0.07, 0.1);
@@ -551,7 +551,7 @@ const canopyKing = mkBed({
   len: CP.len,
   my: 0.36,
   cz: -CP.d / 2 + 0.1 + CP.len / 2,
-  bedding: (c) => ({ hw: 0.93, drop: 0.32, dropF: 0.25, euro: true, deco: ['#d9cbb8', c.throw, '#d9cbb8'], decoMat: 'boucle', throwKind: 'knit', seed: 17 }),
+  bedding: (c) => ({ hw: 0.93, drop: 0.32, dropF: 0.25, euro: true, deco: ['#d9cbb8', c.throw], decoMat: 'boucle', throwKind: 'knit', seed: 17 }),
   frame: (k, c) => {
     const wood = M.wood(c.frame);
     const { d, h } = CP;
@@ -566,11 +566,11 @@ const canopyKing = mkBed({
     for (const z of [zH, zF]) k.box(2 * CP_PX + 0.06, 0.06, 0.05, wood, 0, h - 0.12, z);
     for (const sx of [-1, 1]) k.box(0.05, 0.06, zF - zH, wood, sx * CP_PX, h - 0.12, 0);
     // side rails + low headboard panel
-    for (const sx of [-1, 1]) k.rbox(0.04, 0.24, zF - zH - 0.07, 0.008, wood, sx * 0.99, 0.16, 0, 1);
-    k.rbox(2 * CP_PX - 0.07, 0.24, 0.04, 0.008, wood, 0, 0.16, zF, 1);
+    for (const sx of [-1, 1]) k.box(0.04, 0.24, zF - zH - 0.07, wood, sx * 0.99, 0.16, 0);
+    k.box(2 * CP_PX - 0.07, 0.24, 0.04, wood, 0, 0.16, zF);
     k.box(1.94, 0.025, zF - zH - 0.1, M.matte('#3a3531'), 0, 0.34, 0);
     const uph = M.linen('#e4dbcd');
-    k.rbox(2 * CP_PX - 0.08, 0.86, 0.08, 0.03, uph, 0, 0.3, zH + 0.035, 2);
+    k.rbox(2 * CP_PX - 0.08, 0.86, 0.08, 0.03, uph, 0, 0.3, zH + 0.035, 1);
     k.box(2 * CP_PX - 0.07, 0.05, 0.05, wood, 0, 1.16, zH);
     // sheer drapes tied to the four posts, hanging along the sides
     const sheer = MX.sheer(c.sheer);
@@ -671,7 +671,7 @@ const storageQueen = mkBed({
 
 /* ================================================================== 9. daybed */
 
-const DB = { w: 2.06, d: 1.1, h: 0.95, mw: 0.9, len: 1.9 };
+const DB = { w: 2.06, d: 1.1, h: 1.0, mw: 0.9, len: 1.9 };
 const daybed = mkBed({
   id: 'bed2-daybed',
   name: 'מיטת יום עם משענות קש',
@@ -1042,7 +1042,7 @@ const roundBed = mkBed({
 
 /* ================================================================== 14. sleigh bed, double */
 
-const SL = { w: 1.76, d: 2.32, h: 1.09, mw: 1.4, len: 2.0 };
+const SL = { w: 1.76, d: 2.32, h: 1.06, mw: 1.4, len: 2.0 };
 const sleighDouble = mkBed({
   id: 'bed2-sleigh-double',
   name: 'מיטת מזחלת קלאסית מעץ אגוז',

@@ -4,7 +4,7 @@
  * small decor props.
  */
 import * as THREE from 'three';
-import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, darken, extrudeY, latheGeo, leafGeo, lighten, noise3, rng, smoothProfile, tint, type Ctx2D, type V3 } from '../kit';
+import { D, INK_SOFT, Kit, artPlaneGeo, LINE_THIN, M, PAL, darken, extrudeY, latheGeo, leafGeo, lighten, noise3, rng, smoothProfile, tint, type Ctx2D, type V3 } from '../kit';
 import { barHandle } from './_parts';
 
 type Mat = THREE.Material;
@@ -415,7 +415,7 @@ export function bedding2(k: Kit, o: BeddingOpts): BeddingInfo {
     fold: o.fold ?? 0.32,
     thick,
     puff: o.puff ?? 0.035,
-    wrinkle: o.wrinkle ?? 0.012,
+    wrinkle: o.wrinkle ?? 0.016,
     seed: o.seed ?? 1,
     floor: o.floor ?? 0.012,
   };
@@ -466,15 +466,16 @@ export function bedding2(k: Kit, o: BeddingOpts): BeddingInfo {
 
 /* ------------------------------------------------------------------ bed plan symbol */
 
-export function drawBedding2(ctx: Ctx2D, o: { mw: number; len: number; zHead: number; x?: number; duvet: string; throwC?: string | null; pillows: number; euro?: boolean; deco?: string[]; hw?: number; drop?: number }): void {
+export function drawBedding2(ctx: Ctx2D, o: { mw: number; len: number; zHead: number; x?: number; duvet: string; throwC?: string | null; pillows: number; euro?: boolean; deco?: string[]; hw?: number; drop?: number; cover?: number; fold?: number }): void {
   const x0 = o.x ?? 0;
   const zF = o.zHead + o.len;
   const hw = (o.hw ?? o.mw / 2) + Math.min(0.06, (o.drop ?? 0.2) * 0.2);
   D.box(ctx, x0 - o.mw / 2, o.zHead, x0 + o.mw / 2, zF, 0.05, '#fbfaf6', INK_SOFT, LINE_THIN);
-  const cover = (o.euro ? 0.2 : 0) + 0.5 + (o.deco?.length ? 0.06 : 0) + 0.04;
+  const cover = o.cover ?? (o.euro ? 0.2 : 0) + 0.5 + (o.deco?.length ? 0.06 : 0) + 0.04;
   const zA = o.zHead + cover;
-  D.box(ctx, x0 - hw, zA - 0.02, x0 + hw, zF + 0.03, 0.05, tint(o.duvet, 0.35));
-  D.box(ctx, x0 - hw, zA - 0.02, x0 + hw, zA + 0.3, 0.04, tint(o.duvet, 0.6), undefined, LINE_THIN);
+  const fold = o.fold ?? 0.32;
+  D.box(ctx, x0 - hw, zA - 0.02, x0 + hw, zF + ((o.drop ?? 0.2) > 0 ? 0.03 : 0), 0.05, tint(o.duvet, 0.35));
+  if (fold > 0) D.box(ctx, x0 - hw, zA - 0.02, x0 + hw, zA + fold, 0.04, tint(o.duvet, 0.6), undefined, LINE_THIN);
   if (o.throwC) {
     const L = zF - zA;
     const tw = Math.min(0.6, L * 0.42);
@@ -608,16 +609,8 @@ export function frontPanel(k: Kit, style: FrontStyle, x0: number, w: number, h: 
   }
 }
 
-/** Debug helper: `?openparts` in the URL shows every door / drawer opened (preview only). */
-const OPEN_ALL = typeof location !== 'undefined' && /[?&]openparts\b/.test(location.search);
-
 function mkPart(k: Kit, name: 'door' | 'drawer', x: number, y: number, z: number, open: number): Kit {
-  const p = k.part(name, x, y, z, { open });
-  if (OPEN_ALL) {
-    if (name === 'door') p.g.rotation.y = open;
-    else p.g.position.z += open;
-  }
-  return p;
+  return k.part(name, x, y, z, { open });
 }
 
 export interface DoorOpts {
@@ -795,7 +788,7 @@ export function vase(k: Kit, x: number, y: number, z: number, h: number, r: numb
 }
 
 /** Small potted plant (leafy), base at (x, y, z). Returns its height. */
-export function smallPlant(k: Kit, x: number, y: number, z: number, s = 1, potMat: Mat = M.ceramic('#efebe4'), leafC = PAL.leaf, seed = 1, trailing = false): number {
+export function smallPlant(k: Kit, x: number, y: number, z: number, s = 1, potMat: Mat = M.ceramic('#efebe4'), leafC: string = PAL.leaf, seed = 1, trailing = false): number {
   const pr = 0.06 * s;
   const ph = 0.09 * s;
   k.geo(latheGeo([[0, 0], [pr * 0.78, 0], [pr, ph * 0.9], [pr * 1.02, ph], [pr * 0.9, ph], [pr * 0.85, ph - 0.01], [0, ph - 0.01]], 12), potMat, x, y, z);
@@ -849,9 +842,15 @@ export function basket(k: Kit, x: number, y: number, z: number, w: number, h: nu
 export function leaningFrame(k: Kit, x: number, y: number, z: number, w: number, h: number, frameMat: Mat, art: Mat): void {
   const g = new Kit();
   g.box(w, h, 0.018, frameMat, 0, 0, 0);
-  g.box(w - 0.05, h - 0.05, 0.002, art, 0, 0.025, 0.0095);
-  const s = k.sub(g, x, y, z);
+  g.box(w - 0.03, h - 0.03, 0.002, M.matte('#f4f1ea'), 0, 0.015, 0.0095);
+  g.geo(artPlaneGeo(w - 0.08, h - 0.08), art, 0, 0.04, 0.0108);
+  const s = k.sub(g, x, y + 0.002, z);
   s.rotation.x = -0.1;
+}
+
+/** Depth a handle of this kind sticks out in front of its front panel. */
+export function handleDepth(kind: HandleKind): number {
+  return kind === 'bar' ? 0.031 : kind === 'knob' ? 0.037 : kind === 'ring' ? 0.024 : kind === 'tab' ? 0.022 : kind === 'cup' ? 0.018 : 0.002;
 }
 
 /** Tapered square leg from the floor to y = h at (x, z) with a small splay. */
