@@ -2,15 +2,12 @@ import * as THREE from 'three';
 import { getFurniture, resolveColors } from '../catalog';
 import type { FurnitureItem } from '../model/types';
 
-/** Catalog lamp intensities are tuned for a dark room; by day they only add a gentle warm pool of light. */
-const LAMP_SCALE = 0.05;
-
 export interface ItemContext {
   /** ceiling height of the level (ceiling-mounted items hang from it) */
   levelHeight: number;
   /** floor-to-floor height (stairs) */
   rise: number;
-  /** point lights for lamps (off for far-away / shell buildings) */
+  /** unused: lamps are lit by the LightManager */
   lights: boolean;
 }
 
@@ -36,11 +33,6 @@ export function makeItemHolder(item: Pick<FurnitureItem, 'catalogId' | 'colors'>
   obj.position.y += lift;
   holder.add(obj);
   holder.userData.body = obj;
-  if (def.light && ctx.lights) {
-    const l = new THREE.PointLight(def.light.color, def.light.intensity * LAMP_SCALE, def.light.distance, 2);
-    l.position.set(def.light.x, def.light.y + lift, def.light.z);
-    holder.add(l);
-  }
   return holder;
 }
 

@@ -6,6 +6,7 @@
  * footprint in x/z and by its BOTTOM in y (like furniture standing on a floor), unless noted.
  */
 import * as THREE from 'three';
+import { addWind } from '../render3d/effects';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
@@ -458,20 +459,22 @@ export const M = {
   foliage(color: string, doubleSided = false): THREE.MeshStandardMaterial {
     return cached(`foliage|${color}|${doubleSided}`, () => {
       const map = texRep('noise', 2, 2);
-      return new THREE.MeshStandardMaterial({
-        color,
-        roughness: 0.78,
-        metalness: 0,
-        map,
-        side: doubleSided ? THREE.DoubleSide : THREE.FrontSide,
-      });
+      return addWind(
+        new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.78,
+          metalness: 0,
+          map,
+          side: doubleSided ? THREE.DoubleSide : THREE.FrontSide,
+        }),
+      );
     });
   },
   /** Glossy leaf (ficus, monstera). */
   leaf(color: string): THREE.MeshStandardMaterial {
     return cached(
       `leaf|${color}`,
-      () => new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0, side: THREE.DoubleSide }),
+      () => addWind(new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness: 0, side: THREE.DoubleSide }), 0.6),
     );
   },
   bark(color: string = '#6d5544'): THREE.MeshStandardMaterial {

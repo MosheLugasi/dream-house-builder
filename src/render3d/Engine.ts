@@ -1,16 +1,20 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { N8AOPass } from 'n8ao';
 import { getFurniture } from '../catalog';
+import { setWindowGlow } from '../catalog/openings';
 import { finishes } from '../materials/finishes';
 import { setMaxAnisotropy } from '../materials/textureGen';
 import { snapTo } from '../model/geom';
-import { getGraph, roomAt } from '../model/graph';
+import { getGraph, roomAt, styleOfRoom } from '../model/graph';
 import { stairBarriers } from '../model/stairs';
+import { audio } from '../audio';
+import type { Surface } from '../audio/types';
+import { useProgress } from '../game/progress';
 import { levelElevation, ROAD_CELL, SLAB, toLocal, toSite, type Building, type FurnitureItem, type Level, type Vec2 } from '../model/types';
 import {
   addFurniture,
@@ -25,44 +29,18 @@ import {
   updateProp,
 } from '../store/actions';
 import { currentBuilding, currentLevel, useStore, type Mode } from '../store/store';
+import { Atmosphere } from './Atmosphere';
 import { BuildingView } from './BuildingView';
-import { buildSite, groundHeight, roadSet } from './buildSite';
+import { buildSite, groundHeight, roadSet, SIDEWALK_HEIGHT } from './buildSite';
+import { updateEffects } from './effects';
+import { Interactions, type ItemRef } from './Interactions';
 import { ItemLayer, makeItemHolder, type ItemEntry } from './ItemLayer';
+import { Balls, Particles, Pets, Stars } from './Life';
+import { Traffic } from './Traffic';
+import { randomLook } from '../game/looks';
+import { LightManager, type LampSource } from './LightManager';
+import type { RideRuntime } from '../catalog/types';
 import { emptyWorld, seatsOf, WalkController, type WalkWorld } from './WalkController';
-
-const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(44), THREE.MathUtils.degToRad(318));
-
-/** Soft, mostly neutral sky gradient used for image-based lighting (the visible sky is the Sky shader). */
-function makeEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
-  const scene = new THREE.Scene();
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(50, 48, 24),
-    new THREE.ShaderMaterial({
-      side: THREE.BackSide,
-      depthWrite: false,
-      uniforms: { sunDir: { value: SUN_DIR.clone() } },
-      vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-      fragmentShader: `
-        varying vec3 vDir; uniform vec3 sunDir;
-        void main(){
-          vec3 d = normalize(vDir);
-          vec3 zenith = vec3(0.60, 0.68, 0.84);
-          vec3 horizon = vec3(0.96, 0.95, 0.93);
-          vec3 ground = vec3(0.50, 0.47, 0.41);
-          vec3 col = d.y > 0.0 ? mix(horizon, zenith, pow(d.y, 0.55)) : mix(horizon * 0.75, ground, pow(-d.y, 0.35));
-          float s = max(dot(d, sunDir), 0.0);
-          col += vec3(1.0, 0.9, 0.74) * (pow(s, 90.0) * 5.0 + pow(s, 6.0) * 0.3);
-          gl_FragColor = vec4(col, 1.0);
-        }`,
-    }),
-  );
-  scene.add(dome);
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const tex = pmrem.fromScene(scene, 0, 0.1, 200).texture;
-  pmrem.dispose();
-  dome.geometry.dispose();
-  return tex;
-}
 
 type Picked =
   | { kind: 'furniture'; entry: ItemEntry }
@@ -77,7 +55,20 @@ export class Engine {
   private controls: OrbitControls;
   private composer: EffectComposer | null = null;
   private aoPass: N8AOPass | null = null;
-  private sun = new THREE.DirectionalLight('#fff1dc', 3.1);
+  readonly atmosphere: Atmosphere;
+  readonly lights = new LightManager();
+  private bloom: UnrealBloomPass | null = null;
+  private time = 14.5;
+  private storeTime = 14.5;
+  private clockTimer = 0;
+  private lampKey: unknown[] = [];
+  private interactions: Interactions;
+  private particles = new Particles();
+  private stars = new Stars(this.particles);
+  private balls = new Balls(this.particles);
+  private pets = new Pets(this.particles);
+  private traffic = new Traffic();
+  private unsubLook: () => void = () => {};
   private ground: THREE.Mesh;
   private groundFinish = '';
   private buildings = new Map<string, BuildingView>();
@@ -121,28 +112,14 @@ export class Engine {
     renderer.domElement.style.touchAction = 'none';
     setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
 
-    // sky + image based lighting
-    const sky = new Sky();
-    sky.scale.setScalar(1000);
-    const u = sky.material.uniforms;
-    u.turbidity.value = 3;
-    u.rayleigh.value = 0.9;
-    u.mieCoefficient.value = 0.004;
-    u.mieDirectionalG.value = 0.85;
-    u.sunPosition.value.copy(SUN_DIR);
-    this.scene.add(sky);
-    this.scene.environment = makeEnvironment(renderer);
-    this.scene.environmentIntensity = 0.75;
-    this.scene.fog = new THREE.Fog('#cfdde8', 160, 620);
-
-    // lights
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(4096, 4096);
-    this.sun.shadow.bias = -0.0003;
-    this.sun.shadow.normalBias = 0.03;
-    this.sun.shadow.radius = 2.5;
-    this.scene.add(this.sun, this.sun.target);
-    this.scene.add(new THREE.HemisphereLight('#fff9f0', '#b3a78f', 0.35));
+    // sky, sun / moon, ambient light
+    this.atmosphere = new Atmosphere(renderer, this.scene);
+    this.time = this.storeTime = useStore.getState().view.timeOfDay;
+    this.atmosphere.setTime(this.time);
+    this.scene.add(this.lights.group, this.particles.group, this.stars.group, this.traffic.group);
+    this.stars.group.visible = false;
+    this.traffic.group.visible = false;
+    this.interactions = new Interactions(this.lights, () => this.atmosphere.night);
 
     // ground (the finish library adds its own large-scale variation, so plain tiling UVs in meters are enough)
     // (tessellated: depth is interpolated more precisely over small triangles than over two 900 m ones)
@@ -177,6 +154,11 @@ export class Engine {
       st.setView({ firstPerson: !st.view.firstPerson });
     };
     this.walk.onVehicleParked = (id, x, y, rotation) => updateProp(id, { x, y, rotation }, true);
+    this.walk.onSleep = () => this.sleep();
+    this.walk.character.setLook(useProgress.getState().look);
+    this.unsubLook = useProgress.subscribe((st, prev) => {
+      if (st.look !== prev.look) this.walk.character.setLook(st.look);
+    });
     this.walk.character.root.visible = false;
     this.scene.add(this.walk.character.root);
 
@@ -197,6 +179,7 @@ export class Engine {
   dispose(): void {
     this.stop();
     this.unsub();
+    this.unsubLook();
     this.walk.disable();
     const el = this.renderer.domElement;
     el.removeEventListener('pointerdown', this.onPointerDown);
@@ -227,9 +210,11 @@ export class Engine {
     this.quality = q;
     const ratio = q === 'high' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
     this.renderer.setPixelRatio(ratio);
-    this.sun.shadow.mapSize.setScalar(q === 'high' ? 4096 : 2048);
-    this.sun.shadow.map?.dispose();
-    this.sun.shadow.map = null;
+    const sun = this.atmosphere.sun;
+    sun.shadow.mapSize.setScalar(q === 'high' ? 4096 : 2048);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
+    this.bloom = null;
     this.composer?.dispose();
     this.composer = null;
     this.aoPass = null;
@@ -245,6 +230,10 @@ export class Engine {
         ao.configuration.gammaCorrection = false;
         ao.setQualityMode('Medium');
         composer.addPass(ao);
+        // glow around lamps, windows at night and the low sun
+        const bloom = new UnrealBloomPass(new THREE.Vector2(this.width, this.height), 0.03, 0.5, 4);
+        composer.addPass(bloom);
+        this.bloom = bloom;
         composer.addPass(new OutputPass());
         composer.addPass(new SMAAPass());
         composer.setPixelRatio(ratio);
@@ -291,8 +280,24 @@ export class Engine {
       this.dirty = false;
       this.sync();
     }
-    if (this.mode === 'walk') this.walk.update(dt);
-    else this.controls.update();
+    this.advanceClock(dt);
+    if (this.mode === 'walk') {
+      const walk = this.walk;
+      walk.night = this.atmosphere.night;
+      walk.update(dt);
+      const ground = walk.world.groundAt;
+      this.interactions.update(dt, walk.pos, walk.y);
+      this.balls.update(Math.min(dt, 0.05), walk, ground);
+      this.pets.update(Math.min(dt, 0.05), walk);
+      this.stars.update(dt, walk);
+      this.traffic.update(dt, walk, () => audio.play('horn', { volume: 0.45 }));
+      this.updateHeadlight();
+    } else this.controls.update();
+    this.particles.update(dt);
+    this.atmosphere.update(dt, this.camera);
+    updateEffects(dt);
+    const focus = this.mode === 'walk' ? this.walk.character.root.position : this.controls.target;
+    this.lights.update(dt, focus, this.atmosphere.night);
     // a far-away overview needs a farther near plane to keep roads and floors from z-fighting
     const near = this.mode === 'walk' ? 0.1 : Math.max(0.1, Math.min(3, this.camera.position.distanceTo(this.controls.target) / 150));
     if (Math.abs(near - this.camera.near) > this.camera.near * 0.2) {
@@ -304,11 +309,121 @@ export class Engine {
     else this.renderer.render(this.scene, this.camera);
   }
 
+  /** Time of day: follows the store (slider) and runs on its own when the clock is switched on. */
+  private advanceClock(dt: number): void {
+    const view = useStore.getState().view;
+    if (view.timeOfDay !== this.storeTime) {
+      // changed from outside (slider, sleeping…)
+      this.storeTime = view.timeOfDay;
+      this.time = view.timeOfDay;
+    }
+    if (view.autoTime) {
+      // a full day in 12 minutes; the night passes twice as fast
+      const rate = this.atmosphere.night > 0.9 ? 4 : 2;
+      this.time = (this.time + dt * (rate / 60)) % 24;
+      this.clockTimer -= dt;
+      if (this.clockTimer <= 0) {
+        this.clockTimer = 1;
+        this.storeTime = Math.round(this.time * 60) / 60;
+        useStore.getState().setView({ timeOfDay: this.storeTime });
+      }
+    }
+    const before = this.atmosphere.night;
+    this.atmosphere.setTime(this.time);
+    const night = this.atmosphere.night;
+    if (Math.abs(night - before) > 1e-4 || this.lampKey.length === 0) setWindowGlow(night);
+    if (this.bloom) {
+      // by day the sky itself is far brighter than any lamp: keep the glow for the evening
+      this.bloom.threshold = 4 - 2.9 * night;
+      this.bloom.strength = 0.03 + 0.25 * night;
+    }
+  }
+
+  /** Jump to an hour (used when the character sleeps until morning). */
+  setTime(hours: number): void {
+    this.time = hours;
+    this.storeTime = hours;
+    useStore.getState().setView({ timeOfDay: hours });
+  }
+
+  /** Night falls on the sleeper and they wake up at seven in the morning. */
+  private sleep(): void {
+    const st = useStore.getState();
+    st.setSleeping(true);
+    setTimeout(() => this.setTime(7), 1400);
+    setTimeout(() => {
+      useStore.getState().setSleeping(false);
+      useProgress.getState().setFlash('☀ בוקר טוב!');
+    }, 2800);
+  }
+
+  /** Stars found / placed in this neighborhood. */
+  starCount(): { found: number; total: number } {
+    return this.stars.count;
+  }
+
+  /** Render one frame and hand back a PNG of it (photo mode). */
+  capture(): string {
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.scene, this.camera);
+    return this.renderer.domElement.toDataURL('image/png');
+  }
+
+  /** Headlights of the vehicle being driven switch on after dark. */
+  private updateHeadlight(): void {
+    const lamp = this.lights.headlight;
+    const v = this.walk.currentVehicle;
+    const on = !!v && this.atmosphere.night > 0.35 && v.def.vehicle!.kind !== 'scooter';
+    lamp.intensity += ((on ? 260 : 0) - lamp.intensity) * 0.15;
+    if (!v) return;
+    const phi = v.holder.rotation.y;
+    const fx = Math.sin(phi);
+    const fz = Math.cos(phi);
+    const front = v.def.size.d / 2;
+    lamp.position.set(v.holder.position.x + fx * front, v.holder.position.y + Math.min(0.9, v.def.size.h * 0.45), v.holder.position.z + fz * front);
+    lamp.target.position.set(lamp.position.x + fx * 16, 0, lamp.position.z + fz * 16);
+  }
+
+  /** What the floor is made of at a place (for footsteps). */
+  private surfaceAt(x: number, y: number, feetY: number): Surface {
+    const { project } = useStore.getState();
+    const fromFinish = (id: string): Surface => {
+      if (/carpet/.test(id)) return 'carpet';
+      if (/plank|wood|herringbone|deck|oak|walnut|maple/.test(id)) return 'wood';
+      if (/grass|soil/.test(id)) return 'grass';
+      if (/sand|gravel/.test(id)) return 'sand';
+      if (/water/.test(id)) return 'water';
+      if (/asphalt/.test(id)) return 'asphalt';
+      if (/paver|cobble|stone|concrete/.test(id)) return 'stone';
+      return 'tile';
+    };
+    for (const b of project.buildings) {
+      const local = toLocal(b, { x, y });
+      for (let i = b.levels.length - 1; i >= 0; i--) {
+        if (Math.abs(levelElevation(b, i) - feetY) > 1) continue;
+        const lvl = b.levels[i];
+        const graph = getGraph(lvl.walls);
+        const room = roomAt(graph, local);
+        if (room) return fromFinish(styleOfRoom(graph, room, lvl.roomStyles)?.floor ?? b.defaultFloor);
+      }
+    }
+    if (feetY > 1) return 'wood'; // stairs
+    const g = groundHeight(this.roads, x, y);
+    if (g >= SIDEWALK_HEIGHT - 1e-3) return 'stone';
+    if (g > 0) return 'asphalt';
+    for (let i = project.site.areas.length - 1; i >= 0; i--) {
+      const a = project.site.areas[i];
+      if (x >= a.x0 && x <= a.x1 && y >= a.y0 && y <= a.y1) return fromFinish(a.finish);
+    }
+    return fromFinish(project.site.ground);
+  }
+
   /** Keep the shadow frustum centred on what the camera looks at. */
   private updateSun(): void {
+    const sun = this.atmosphere.sun;
     const focus = this.mode === 'walk' ? this.walk.character.root.position : this.controls.target;
     const range = this.mode === 'walk' ? 26 : Math.max(22, Math.min(170, this.camera.position.distanceTo(this.controls.target) * 0.9));
-    const cam = this.sun.shadow.camera;
+    const cam = sun.shadow.camera;
     if (cam.right !== range) {
       cam.left = -range;
       cam.right = range;
@@ -318,8 +433,8 @@ export class Engine {
       cam.far = 420;
       cam.updateProjectionMatrix();
     }
-    this.sun.target.position.set(focus.x, 0, focus.z);
-    this.sun.position.copy(this.sun.target.position).addScaledVector(SUN_DIR, 200);
+    sun.target.position.set(focus.x, 0, focus.z);
+    sun.position.copy(sun.target.position).addScaledVector(this.atmosphere.lightDir, 200);
   }
 
   /** Interiors are only furnished for buildings close to the walker. */
@@ -435,6 +550,13 @@ export class Engine {
       for (const e of this.props.entries.values()) e.holder.position.y = e.item.elevation + groundHeight(this.roads, e.item.x, e.item.y);
     }
 
+    // lamps of the site and of every furnished building
+    const lampKey: unknown[] = [project.site.props, ...project.buildings.flatMap((b) => [b, this.buildings.get(b.id)?.levels[0]?.items.entries.size ?? 0])];
+    if (lampKey.length !== this.lampKey.length || lampKey.some((v, i) => v !== this.lampKey[i])) {
+      this.lampKey = lampKey;
+      this.lights.setSources(this.collectLamps());
+    }
+
     if (modeChanged) this.applyMode();
     if (walking && (changed || modeChanged || project !== this.walkProject)) {
       this.walkProject = project;
@@ -456,26 +578,94 @@ export class Engine {
     }
   }
 
+  /** Every lamp that currently exists in the scene, with its position in the world. */
+  private collectLamps(): LampSource[] {
+    const { project } = useStore.getState();
+    const out: LampSource[] = [];
+    const add = (f: FurnitureItem, origin: Pick<Building, 'x' | 'y' | 'rotation'>, floorY: number, lift: number) => {
+      const def = getFurniture(f.catalogId);
+      if (!def?.light) return;
+      const rot = f.rotation + origin.rotation;
+      const p = toSite(origin, { x: f.x, y: f.y });
+      const c = Math.cos(rot);
+      const s = Math.sin(rot);
+      const l = def.light;
+      out.push({
+        id: f.id,
+        pos: new THREE.Vector3(p.x + l.x * c - l.z * s, floorY + f.elevation + l.y + (def.mount === 'ceiling' ? lift : 0), p.y + l.x * s + l.z * c),
+        color: l.color,
+        intensity: l.intensity,
+        distance: l.distance,
+      });
+    };
+    for (const f of project.site.props) add(f, { x: 0, y: 0, rotation: 0 }, groundHeight(this.roads, f.x, f.y), 0);
+    for (const b of project.buildings) {
+      const bv = this.buildings.get(b.id);
+      b.levels.forEach((lvl, i) => {
+        const layer = bv?.levels[i]?.items;
+        if (!layer) return;
+        for (const entry of layer.entries.values()) add(entry.item, b, levelElevation(b, i), lvl.height - 2.7);
+      });
+    }
+    return out;
+  }
+
   /** Everything the walk controller needs, in site coordinates. */
   private buildWalkWorld(): WalkWorld {
     const { project } = useStore.getState();
     const world = emptyWorld();
     const roads = this.roads;
     world.groundAt = (x, y) => groundHeight(roads, x, y);
+    world.surfaceAt = (x, y, feetY) => this.surfaceAt(x, y, feetY);
     world.occluders = [this.buildingsGroup];
+    const ballRefs: ItemRef[] = [];
+    const goalRefs: ItemRef[] = [];
+    const petRefs: { ref: ItemRef; home: Building | null }[] = [];
 
-    const addItem = (f: FurnitureItem, origin: Pick<Building, 'x' | 'y' | 'rotation'>, floorY: number, rise: number | null) => {
+    const addItem = (
+      f: FurnitureItem,
+      origin: Pick<Building, 'x' | 'y' | 'rotation'>,
+      floorY: number,
+      rise: number | null,
+      holder: THREE.Group | undefined,
+      home: Building | null,
+    ) => {
       const def = getFurniture(f.catalogId);
       if (!def) return;
       const p = toSite(origin, { x: f.x, y: f.y });
       const rot = f.rotation + origin.rotation;
-      world.seats.push(...seatsOf(def, p.x, p.y, rot, floorY, f.elevation));
+      const c = Math.cos(rot);
+      const s = Math.sin(rot);
+      const tx = (q: Vec2): Vec2 => ({ x: p.x + q.x * c - q.y * s, y: p.y + q.x * s + q.y * c });
+      const body = holder?.userData.body as THREE.Object3D | undefined;
+
+      // seats (moving play equipment glues the rider to its own nodes)
+      const seats = seatsOf(def, f.id, p.x, p.y, rot, floorY, f.elevation);
+      const ride = body?.userData.ride as RideRuntime | undefined;
+      if (def.ride && ride) seats.forEach((seat, index) => (seat.ride = { runtime: ride, index, prompt: def.ride!.prompt }));
+      world.seats.push(...seats);
+
+      if (holder) {
+        const ref: ItemRef = { item: f, def, holder, pos: p, rotation: rot, floorY: floorY + f.elevation };
+        world.usables.push(...this.interactions.usablesFor(ref));
+        if (def.ball && !home) ballRefs.push(ref);
+        if (def.id === 'football-goal') goalRefs.push(ref);
+        if (def.pet) petRefs.push({ ref, home });
+      }
+      if (def.slide) {
+        world.slides.push({
+          points: def.slide.path.map((q) => {
+            const w = tx({ x: q.x, y: q.z });
+            return new THREE.Vector3(w.x, floorY + f.elevation + q.y, w.y);
+          }),
+          slideFrom: def.slide.slideFrom,
+        });
+      }
+      if (def.bounce) world.bouncers.push({ x: p.x, y: p.y, radius: def.bounce.radius, surfaceY: floorY + f.elevation + def.bounce.surfaceY, boost: def.bounce.boost });
+
       if (def.stair && rise !== null) {
         world.stairs.push({ x: p.x, y: p.y, rotation: rot, w: def.size.w, d: def.size.d, type: def.stair.type, y0: floorY, y1: floorY + rise });
         const bars = stairBarriers(def.stair.type, def.size.w, def.size.d);
-        const c = Math.cos(rot);
-        const s = Math.sin(rot);
-        const tx = (q: Vec2): Vec2 => ({ x: p.x + q.x * c - q.y * s, y: p.y + q.x * s + q.y * c });
         const y0 = floorY;
         const y1 = floorY + rise + 1;
         for (const [a, b] of bars.solid) world.walls.push({ a: tx(a), b: tx(b), half: 0.05, y0, y1 });
@@ -503,23 +693,31 @@ export class Engine {
       b.levels.forEach((lvl, i) => {
         const y = levelElevation(b, i);
         const top = i === b.levels.length - 1;
-        const arch = bv?.levels[i]?.arch;
-        for (const w of arch?.colliders ?? []) {
+        const view = bv?.levels[i];
+        for (const w of view?.arch?.colliders ?? []) {
           world.walls.push({ a: toSite(b, w.a), b: toSite(b, w.b), half: w.half, y0: y, y1: y + lvl.height + SLAB });
         }
-        for (const d of arch?.doors ?? []) world.doors.push({ center: toSite(b, d.center), y, anims: d.anims, open: 0 });
-        for (const f of lvl.furniture) addItem(f, b, y, top ? null : lvl.height + SLAB);
+        for (const d of view?.arch?.doors ?? []) {
+          world.doors.push({ center: toSite(b, d.center), y, anims: d.anims, open: 0, sliding: d.anims.some((a) => a.kind === 'slide') });
+        }
+        for (const f of lvl.furniture) addItem(f, b, y, top ? null : lvl.height + SLAB, view?.items.entries.get(f.id)?.holder, b);
         floors.levels.push({ y, rooms: getGraph(lvl.walls).rooms.map((r) => r.polygon.map((p) => toSite(b, p))) });
       });
       world.floors.push(floors);
     }
     const origin = { x: 0, y: 0, rotation: 0 };
     for (const f of project.site.props) {
-      addItem(f, origin, 0, null);
-      const def = getFurniture(f.catalogId);
       const entry = this.props.entries.get(f.id);
+      addItem(f, origin, groundHeight(roads, f.x, f.y), null, entry?.holder, null);
+      const def = getFurniture(f.catalogId);
       if (def?.vehicle && entry) world.vehicles.push({ id: f.id, def, holder: entry.holder });
     }
+    this.balls.set(ballRefs, goalRefs);
+    this.pets.set(petRefs);
+    world.usables.push(...this.pets.usables);
+    this.stars.build(project, world.groundAt);
+    this.traffic.setRoads(project.site.roads, world.groundAt, randomLook);
+    world.boxes.push(...this.traffic.boxes);
     return world;
   }
 
@@ -609,6 +807,8 @@ export class Engine {
   }
 
   private applyMode(): void {
+    this.stars.group.visible = this.mode === 'walk';
+    this.traffic.group.visible = this.mode === 'walk';
     if (this.mode === 'walk') {
       this.controls.enabled = false;
       this.walk.character.root.visible = true;

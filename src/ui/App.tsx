@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { deleteSelection, duplicateSelection, pruneRoomStyles, updateFurniture } from '../store/actions';
 import { currentLevel, useStore, type Tool } from '../store/store';
 import { HelpDialog, ProjectsDialog } from './Dialogs';
+import { AvatarDialog, ChallengesDialog, Toasts } from './GameHud';
 import { Inspector } from './Inspector';
 import { LevelBar } from './LevelBar';
 import { Plan2D } from './Plan2D';
@@ -27,7 +28,7 @@ export function App() {
   const mode = useStore((s) => s.mode);
   const tool = useStore((s) => s.tool);
   const scope = useStore((s) => s.scope);
-  const [dialog, setDialog] = useState<'projects' | 'help' | null>(null);
+  const [dialog, setDialog] = useState<'projects' | 'help' | 'challenges' | 'avatar' | null>(null);
   const [seen3d, setSeen3d] = useState(false);
 
   useEffect(() => {
@@ -73,13 +74,13 @@ export function App() {
 
   return (
     <div className={`app mode-${mode}`}>
-      <TopBar onProjects={() => setDialog('projects')} onHelp={() => setDialog('help')} />
+      <TopBar onProjects={() => setDialog('projects')} onHelp={() => setDialog('help')} onChallenges={() => setDialog('challenges')} onAvatar={() => setDialog('avatar')} />
       <div className="workspace">
         {mode !== 'walk' && <Sidebar />}
         <main className="stage">
           <Site2D active={mode === 'site'} />
           <Plan2D active={mode === 'plan'} />
-          {(seen3d || mode === 'view3d' || mode === 'walk') && <View3D active={mode === 'view3d' || mode === 'walk'} />}
+          {(seen3d || mode === 'view3d' || mode === 'walk') && <View3D active={mode === 'view3d' || mode === 'walk'} onAvatar={() => setDialog('avatar')} />}
           {scope === 'building' && (mode === 'plan' || mode === 'view3d') && <LevelBar />}
           {mode !== 'walk' && <div className="statusbar">{TOOL_HINTS[tool.type]}</div>}
         </main>
@@ -87,6 +88,9 @@ export function App() {
       </div>
       {dialog === 'projects' && <ProjectsDialog onClose={() => setDialog(null)} />}
       {dialog === 'help' && <HelpDialog onClose={() => setDialog(null)} />}
+      {dialog === 'challenges' && <ChallengesDialog onClose={() => setDialog(null)} />}
+      {dialog === 'avatar' && <AvatarDialog onClose={() => setDialog(null)} />}
+      <Toasts />
     </div>
   );
 }

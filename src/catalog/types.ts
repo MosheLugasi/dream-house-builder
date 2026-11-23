@@ -26,7 +26,8 @@ export type FurnitureCategory =
   | 'playground'
   | 'street'
   | 'public'
-  | 'vehicle';
+  | 'vehicle'
+  | 'pet';
 
 export interface ColorSlot {
   /** key used in the `colors` record passed to build/draw2d */
@@ -102,6 +103,93 @@ export interface VehicleSpec {
   prompt: string;
 }
 
+/**
+ * Things the character can switch on / use in walk mode (E key). Positions are in the item's local
+ * frame (meters, origin at the footprint center on the floor, front = +Z).
+ */
+export type InteractSpec =
+  /** a lamp: toggles the item's `light` */
+  | { kind: 'light' }
+  /** a TV / monitor: a glowing animated picture on a rectangle centered at (x, y, z); `ry` = yaw of its normal (0 = faces +Z) */
+  | { kind: 'screen'; x: number; y: number; z: number; w: number; h: number; ry?: number }
+  /** running water falling `fall` meters from the spout at (x, y, z) */
+  | { kind: 'water'; x: number; y: number; z: number; fall: number; sound: 'tap' | 'shower' }
+  /** gas burners on a stove: small flames at these points */
+  | { kind: 'flame'; points: { x: number; y: number; z: number }[] }
+  /** a keyboard instrument that is played (number keys) while sitting on its seat */
+  | { kind: 'instrument'; instrument: 'piano' }
+  /** a one-shot sound, e.g. flushing the toilet */
+  | { kind: 'sfx'; sound: 'flush' | 'bell' | 'squeak' }
+  /** an appliance that hums and shakes a little while on */
+  | { kind: 'appliance'; sound: 'washing' | 'fan' };
+
+/**
+ * Moving play equipment (swing, carousel, seesaw, spring rider).
+ * `build` must return an UN-BAKED object (`noBake: true`) with `object.userData.ride: RideRuntime`.
+ */
+export interface RideSpec {
+  kind: 'swing' | 'spin' | 'seesaw' | 'rock';
+  /** Hebrew verb phrase for the prompt, e.g. "להתנדנד" */
+  prompt: string;
+}
+
+export interface RideRuntime {
+  /**
+   * One node per `seats` entry, parented to the moving part. A rider is glued to the node's world
+   * transform: node origin = seat surface where the hips rest, node +Z = direction the rider faces.
+   */
+  seatNodes: THREE.Object3D[];
+  /**
+   * Advance the motion by `dt` seconds. `push` is 0…1 while a rider is pumping (W key held),
+   * `riders` lists the occupied seat indices. With nobody pushing the motion must decay to rest.
+   * Returns true while the equipment is still moving.
+   */
+  update(dt: number, push: number, riders: number[]): boolean;
+}
+
+/** A slide: the character climbs the ladder and slides down along `path` (local points, y = feet/seat height). */
+export interface SlideSpec {
+  /** polyline: ladder bottom → platform → chute → landing point on the ground */
+  path: { x: number; y: number; z: number }[];
+  /** index in `path` where sliding (sitting, fast) starts; before it the character climbs */
+  slideFrom: number;
+}
+
+/** A trampoline: stepping on the mat (a disc of `radius` at height `surfaceY`) bounces the character. */
+export interface BounceSpec {
+  radius: number;
+  surfaceY: number;
+  /** how many times higher than a normal jump */
+  boost: number;
+}
+
+/** A ball that can be kicked around. The item's origin is the point where it touches the ground. */
+export interface BallSpec {
+  radius: number;
+  /** 0…1 restitution when bouncing off the ground and walls */
+  bounce: number;
+  /** kg-ish: heavier balls fly less far when kicked */
+  mass: number;
+}
+
+/**
+ * A pet. `build` must return an UN-BAKED object with `object.userData.pet: PetRuntime`
+ * (see render3d/Pet.ts) so that the game can animate it.
+ */
+export interface PetSpec {
+  kind: 'dog' | 'cat';
+  /** walking / running speed, m/s */
+  walkSpeed: number;
+  runSpeed: number;
+  /** Hebrew name of the animal, e.g. "כלב" */
+  label: string;
+}
+
+export interface PetRuntime {
+  /** animate: `speed` in m/s (0 = standing), `mood` selects the idle behaviour */
+  update(dt: number, speed: number, mood: 'idle' | 'sit' | 'lie' | 'happy'): void;
+}
+
 export interface WheelPart {
   /** node that spins around its local X axis as the vehicle rolls */
   spin: THREE.Object3D;
@@ -129,6 +217,13 @@ export interface FurnitureDef {
   light?: LightSpec;
   stair?: StairSpec;
   vehicle?: VehicleSpec;
+  /** what pressing E next to the item can switch on / off */
+  interact?: InteractSpec[];
+  ride?: RideSpec;
+  slide?: SlideSpec;
+  bounce?: BounceSpec;
+  ball?: BallSpec;
+  pet?: PetSpec;
   /**
    * true = hand out a freshly built, un-merged object on every `build` call (needed when parts move
    * or when the geometry depends on more than the colors). Default: baked + cached per color set.
@@ -156,4 +251,5 @@ export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
   street: 'רחוב',
   public: 'מבני ציבור',
   vehicle: 'כלי רכב',
+  pet: 'חיות מחמד',
 };

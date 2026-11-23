@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pet preview</title>
+    <style>
+      body { margin: 0; background: #dfe3e8; font-family: system-ui, sans-serif; color: #222; }
+      #wrap { position: relative; display: inline-block; }
+      #gl { display: block; }
+      .lbl { position: absolute; font-size: 12px; background: rgba(255,255,255,.75); padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+      .lbl.bad { background: #ffd0d0; }
+    </style>
+  </head>
+  <body>
+    <div id="wrap"><canvas id="gl"></canvas></div>
+    <script type="module" src="/tools/pet-preview/main.ts"></script>
+  </body>
+</html>

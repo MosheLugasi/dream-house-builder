@@ -74,6 +74,8 @@ const sinkCabinet: FurnitureDef = {
   category: 'kitchen',
   size: { w: SINK_W, d: BASE_D, h: 1.2 },
   colors: KITCHEN_COLORS,
+  // gooseneck outlet (see `faucet`: base z = -0.225, h = 0.28, reach = 0.19) down to the bowl floor at y = 0.722
+  interact: [{ kind: 'water', x: 0, y: 1.068, z: -0.035, fall: 0.346, sound: 'tap' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     baseUnit(
@@ -118,12 +120,25 @@ const sinkCabinet: FurnitureDef = {
     }),
 };
 
+/** gas burners on the hob: [x, z, radius of the zone] */
+const BURNERS: Array<[number, number, number]> = [
+  [-0.135, -0.125, 0.085],
+  [0.135, -0.125, 0.07],
+  [-0.135, 0.11, 0.07],
+  [0.135, 0.11, 0.095],
+];
+/** top of the glass hob / top of the burner caps (where the flames sit) */
+const HOB_Y = BASE_H + 0.005;
+const BURNER_Y = HOB_Y + 0.02;
+
 const stove: FurnitureDef = {
   id: 'kitchen-stove',
   name: 'תנור וכיריים',
   category: 'kitchen',
-  size: { w: 0.6, d: BASE_D, h: 0.91 },
+  size: { w: 0.6, d: BASE_D, h: 0.94 },
   colors: [slot('body', 'גוף', '#c9ccce'), slot('top', 'משטח', PAL.stone)],
+  // burner centers at cap height; the flame ring of a burner has a radius of about 0.42 × its zone radius
+  interact: [{ kind: 'flame', points: BURNERS.map(([x, z]) => ({ x, y: BURNER_Y, z })) }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.6;
@@ -150,16 +165,28 @@ const stove: FurnitureDef = {
     k.rbox(w, TOP_T, BASE_D, 0.004, M.stone(c.top, 0.35), 0, BASE_H - TOP_T, 0, 1);
     k.rbox(0.56, 0.006, 0.5, 0.003, glass, 0, BASE_H - 0.001, -0.005, 1);
     const ringM = M.metal('#8a8d90', 0.5, 0.3);
-    const zones: Array<[number, number, number]> = [
-      [-0.135, -0.125, 0.085],
-      [0.135, -0.125, 0.07],
-      [-0.135, 0.11, 0.07],
-      [0.135, 0.11, 0.095],
-    ];
-    for (const [x, z, r] of zones) {
+    const iron = M.metal('#232427', 0.75, 0.35);
+    const crown = M.metal('#b9a26a', 0.45, 0.9);
+    for (const [x, z, r] of BURNERS) {
       const ring = new THREE.RingGeometry(r - 0.004, r, 28);
       ring.rotateX(-Math.PI / 2);
       k.geo(ring, ringM, x, BASE_H + 0.0056, z).castShadow = false;
+      // gas burner: enamel cup, brass flame crown, cast-iron cap
+      const br = r * 0.5;
+      k.cyl(br + 0.008, 0.008, iron, x, HOB_Y, z, br, 16);
+      k.cyl(br * 0.84, 0.007, crown, x, HOB_Y + 0.008, z, br * 0.84, 16);
+      k.cyl(br * 0.8, 0.005, iron, x, HOB_Y + 0.015, z, br * 0.62, 16);
+      // pan support: four cast-iron fingers on little feet
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        const r0 = br + 0.012;
+        const r1 = r + 0.02;
+        const fx = Math.cos(a);
+        const fz = Math.sin(a);
+        const finger = k.box(r1 - r0, 0.011, 0.009, iron, x + (fx * (r0 + r1)) / 2, HOB_Y + 0.024, z + (fz * (r0 + r1)) / 2);
+        finger.rotation.y = -a;
+        k.cyl(0.006, 0.024, iron, x + fx * (r1 - 0.006), HOB_Y, z + fz * (r1 - 0.006), 0.005, 6);
+      }
     }
     return k.g;
   },
@@ -167,14 +194,13 @@ const stove: FurnitureDef = {
     sym(ctx, () => {
       drawBase(ctx, c, 0.6);
       D.rr(ctx, 0, -0.005, 0.56, 0.5, 0.01, '#d5d8dc');
-      for (const [x, z, r] of [
-        [-0.135, -0.125, 0.085],
-        [0.135, -0.125, 0.07],
-        [-0.135, 0.11, 0.07],
-        [0.135, 0.11, 0.095],
-      ]) {
+      for (const [x, z, r] of BURNERS) {
         D.circle(ctx, x, z, r, '#f3f4f5', undefined, LINE_THIN);
-        D.circle(ctx, x, z, r * 0.45, null, INK_SOFT, 0.007);
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+          D.line(ctx, x + Math.cos(a) * r * 0.5, z + Math.sin(a) * r * 0.5, x + Math.cos(a) * (r + 0.02), z + Math.sin(a) * (r + 0.02), INK_SOFT, 0.009);
+        }
+        D.circle(ctx, x, z, r * 0.5, '#55585d', undefined, 0.007);
       }
     }),
 };
@@ -185,6 +211,7 @@ const dishwasher: FurnitureDef = {
   category: 'kitchen',
   size: { w: 0.6, d: BASE_D, h: BASE_H },
   colors: [slot('body', 'חזית', '#c9ccce'), slot('top', 'משטח', PAL.stone)],
+  interact: [{ kind: 'appliance', sound: 'washing' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.6;

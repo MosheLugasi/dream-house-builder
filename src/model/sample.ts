@@ -159,6 +159,8 @@ export function sampleHouse(): Building {
   put('play-tent', 11.15, 8.15, N);
   put('ceiling-light', 9.4, 7.45);
 
+  put('pet-cat', 2.2, 5.3, 0.8);
+
   // ---- garden ----
   put('tree', -3.6, 1.6);
   put('tree-fruit', 15.2, 7.8, 1.2);

@@ -84,6 +84,8 @@ const deskComputer: FurnitureDef = {
   category: 'office',
   size: { w: DESK_W, d: DESK_D, h: 1.24 },
   colors: DESK_COLORS,
+  // picture = the monitor glass (0.6 × 0.35, front face at z = -0.1885), 1.5 mm in front of it
+  interact: [{ kind: 'screen', x: 0, y: DESK_H + 0.2975, z: -0.187, w: 0.596, h: 0.346, ry: 0 }],
   build: ({ colors }) => buildDesk(colors, true),
   draw2d: (ctx, colors) => drawDesk(ctx, colors, true),
 };

@@ -201,6 +201,13 @@ function windowBuilder(cols: number, rows: number, frame: THREE.Material = mats.
   };
 }
 
+/** Windows glow warmly after dark. `night` is 0…1. */
+export function setWindowGlow(night: number): void {
+  mats.glass.emissive.set('#ffc98a');
+  mats.glass.emissiveIntensity = night * 0.55;
+  mats.glass.opacity = 0.2 + night * 0.25;
+}
+
 export const OPENINGS: OpeningDef[] = [
   {
     id: 'door-interior',

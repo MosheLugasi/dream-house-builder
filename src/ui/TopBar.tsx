@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { exportProjectFile, importProjectFile } from '../io/storage';
 import { useStore, type Mode } from '../store/store';
+import { CHALLENGES, useProgress } from '../game/progress';
+import { hasAvatarCreator } from './GameHud';
 import { Icon } from './icons';
 
 const MODES: { mode: Mode; label: string; icon: string }[] = [
@@ -10,7 +12,18 @@ const MODES: { mode: Mode; label: string; icon: string }[] = [
   { mode: 'walk', label: 'סיור', icon: 'walk' },
 ];
 
-export function TopBar({ onProjects, onHelp }: { onProjects: () => void; onHelp: () => void }) {
+export function TopBar({
+  onProjects,
+  onHelp,
+  onChallenges,
+  onAvatar,
+}: {
+  onProjects: () => void;
+  onHelp: () => void;
+  onChallenges: () => void;
+  onAvatar: () => void;
+}) {
+  const stickers = useProgress((s) => s.done.length);
   const mode = useStore((s) => s.mode);
   const setMode = useStore((s) => s.setMode);
   const name = useStore((s) => s.project.name);
@@ -58,6 +71,14 @@ export function TopBar({ onProjects, onHelp }: { onProjects: () => void; onHelp:
           <Icon name="undo" />
         </button>
         <span className="sep" />
+        <button className="text-btn stickers-btn" onClick={onChallenges} title="אתגרים ומדבקות">
+          ⭐ {stickers}/{CHALLENGES.length}
+        </button>
+        {hasAvatarCreator && (
+          <button className="text-btn" onClick={onAvatar} title="עיצוב הדמות">
+            👤
+          </button>
+        )}
         <button className="text-btn" onClick={onProjects}>
           <Icon name="folder" size={18} />
           הפרויקטים שלי

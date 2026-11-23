@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Audio preview – Dream House Builder</title>
+    <style>
+      body { margin: 0; background: #eef0f3; font-family: system-ui, sans-serif; color: #222; font-size: 13px; }
+      header { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid #d5d9df; padding: 8px 14px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+      header h1 { font-size: 15px; margin: 0 8px 0 0; }
+      main { padding: 10px 14px 40px; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
+      section { background: #fff; border: 1px solid #d5d9df; border-radius: 8px; padding: 10px 12px; }
+      section.wide { grid-column: 1 / -1; }
+      h2 { font-size: 13px; margin: 0 0 8px; color: #456; text-transform: uppercase; letter-spacing: 0.04em; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 4px 0; }
+      button { font: inherit; padding: 5px 9px; border: 1px solid #b9c0ca; border-radius: 6px; background: #f6f7f9; cursor: pointer; }
+      button:hover { background: #e9edf3; }
+      button.on { background: #2a6fdb; color: #fff; border-color: #2a6fdb; }
+      label { display: inline-flex; gap: 6px; align-items: center; }
+      input[type='range'] { width: 130px; }
+      #meter { width: 220px; height: 12px; background: #dde1e7; border-radius: 6px; overflow: hidden; position: relative; }
+      #meter i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #3aa657, #c9c13b 75%, #d2553f); width: 0; }
+      #meter b { position: absolute; top: 0; bottom: 0; width: 2px; background: #222; left: 0; }
+      .keys { display: flex; height: 90px; user-select: none; }
+      .keys div { flex: 1; border: 1px solid #99a; border-radius: 0 0 4px 4px; background: #fff; cursor: pointer; font-size: 10px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; }
+      .keys div.black { background: #333; color: #ccc; height: 58%; flex: 0.6; margin: 0 -0.3%; z-index: 1; }
+      table { border-collapse: collapse; font: 12px ui-monospace, monospace; }
+      td, th { padding: 2px 8px; text-align: right; border-bottom: 1px solid #eef; white-space: nowrap; }
+      td:first-child, th:first-child, td:nth-child(2), th:nth-child(2) { text-align: left; }
+      tr.fail td { background: #ffe1dc; }
+      #status { color: #567; }
+      .hint { color: #789; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Audio preview</h1>
+      <button id="unlock">unlock audio</button>
+      <label><input type="checkbox" id="mute" /> mute</label>
+      <label>volume <input type="range" id="vol" min="0" max="1" step="0.01" /></label>
+      <div id="meter"><i></i><b></b></div>
+      <span id="level"></span>
+      <button id="silence">silence()</button>
+      <span id="status"></span>
+    </header>
+    <main id="app"></main>
+    <script type="module" src="/tools/audio-preview/main.ts"></script>
+  </body>
+</html>

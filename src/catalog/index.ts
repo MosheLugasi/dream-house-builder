@@ -16,6 +16,7 @@ import { PLAYGROUND } from './items/playground';
 import { STREET } from './items/street';
 import { PUBLIC } from './items/public';
 import { VEHICLES } from './items/vehicles';
+import { PETS } from './items/pets';
 
 export * from './types';
 
@@ -75,7 +76,7 @@ function wrap(raw: FurnitureDef): FurnitureDef {
   return def;
 }
 
-const RAW: FurnitureDef[] = [...LIVING, ...DINING, ...KITCHEN, ...BEDROOM, ...BATHROOM, ...OFFICE, ...KIDS, ...LIGHTING, ...DECOR, ...OUTDOOR, ...STRUCTURE, ...PLAYGROUND, ...STREET, ...PUBLIC, ...VEHICLES];
+const RAW: FurnitureDef[] = [...LIVING, ...DINING, ...KITCHEN, ...BEDROOM, ...BATHROOM, ...OFFICE, ...KIDS, ...LIGHTING, ...DECOR, ...OUTDOOR, ...STRUCTURE, ...PLAYGROUND, ...STREET, ...PUBLIC, ...VEHICLES, ...PETS];
 
 export const FURNITURE: FurnitureDef[] = RAW.map(wrap);
 

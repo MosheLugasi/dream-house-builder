@@ -1,10 +1,14 @@
 import * as THREE from 'three';
-import type { FurnitureDef } from '../types';
+import type { FurnitureDef, RideRuntime } from '../types';
 import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, darken, extrudeZ, lighten, roundedRectShape, sym, tint, type V3 } from '../kit';
+import { BALLS } from './_balls';
 import { slot } from './_parts';
+import { Rocker, Spinner, Teeter, bakedPart, partKey, push01, seatNode, substeps } from './_ride';
 import { axisCyl, canvasMat, coilGeo, extrudeX, faceGeo, netMat, planarUV, polyShape, speckleMat, sweepYZ } from './_street_shared';
 
 /** Playground equipment and sports items for parks and school yards. */
+
+type Colors = Record<string, string>;
 
 const DECK_GREY = '#5a6068';
 
@@ -32,12 +36,34 @@ function slidePath(): Array<[number, number]> {
   return c.getPoints(18).map((p) => [p.z, p.y] as [number, number]);
 }
 
+/** z of the ladder's foot and of step i (1…4): the steps climb to the deck edge */
+const SL_LADDER_Z = SL.z0 - 0.52;
+const slStep = (i: number): { y: number; z: number } => ({ y: (SL.deckY * i) / 5, z: SL_LADDER_Z + ((SL.z0 - 0.03 - SL_LADDER_Z) * i) / 5 });
+
+/**
+ * The way of a child over the slide: ground at the ladder → the four steps → across the deck →
+ * (from `slideFrom`) down the bed of the chute → landing on the ground 0.4 m past its lip.
+ */
+const SLIDE_ROUTE = ((): { path: Array<{ x: number; y: number; z: number }>; slideFrom: number } => {
+  const path: Array<{ x: number; y: number; z: number }> = [{ x: 0, y: 0, z: SL_LADDER_Z - 0.02 }];
+  for (let i = 1; i <= 4; i++) path.push({ x: 0, y: +(slStep(i).y + 0.015).toFixed(4), z: +slStep(i).z.toFixed(4) });
+  path.push({ x: 0, y: SL.deckY, z: SL.z0 + 0.04 }, { x: 0, y: SL.deckY, z: SL.z1 - 0.16 });
+  const slideFrom = path.length;
+  // the sweep path of the chute is its bed surface: take every second cross-section
+  const bed = slidePath();
+  for (let i = 0; i < bed.length; i += 2) path.push({ x: 0, y: +bed[i][1].toFixed(4), z: +bed[i][0].toFixed(4) });
+  const end = bed[bed.length - 1];
+  path.push({ x: 0, y: 0, z: +(end[0] + 0.4).toFixed(4) });
+  return { path, slideFrom };
+})();
+
 const slide: FurnitureDef = {
   id: 'slide',
   name: 'מגלשה',
   category: 'playground',
   size: { w: SL.w, d: SL.d, h: SL.h },
   colors: [slot('slide', 'מגלשה', '#f2b824'), slot('frame', 'מסגרת', '#2f6fb7'), slot('panel', 'לוחות', '#e0483e')],
+  slide: SLIDE_ROUTE,
   build: ({ colors: c }) => {
     const k = new Kit();
     const { deckY, z0, z1, px } = SL;
@@ -81,7 +107,7 @@ const slide: FurnitureDef = {
       { seg: 20, radial: 8 },
     );
     // ladder: stringers that become hand rails, flat steps
-    const lz = SL.z0 - 0.52;
+    const lz = SL_LADDER_Z;
     for (const s of [-1, 1]) {
       k.tube(
         [
@@ -96,10 +122,7 @@ const slide: FurnitureDef = {
         { seg: 14, radial: 6, tension: 0.3 },
       );
     }
-    for (let i = 1; i <= 4; i++) {
-      const t = i / 5;
-      k.rbox(0.6, 0.03, 0.13, 0.008, grey, 0, deckY * t - 0.015, lz + (z0 - 0.03 - lz) * t, 1);
-    }
+    for (let i = 1; i <= 4; i++) k.rbox(0.6, 0.03, 0.13, 0.008, grey, 0, slStep(i).y - 0.015, slStep(i).z, 1);
     // chute
     const prof: Array<[number, number]> = [
       [-0.33, 0.17],
@@ -160,7 +183,87 @@ const slide: FurnitureDef = {
 
 /* ------------------------------------------------------------------ seesaw */
 
-const SEE = { w: 3.0, d: 0.58, h: 0.96, beamY: 0.5, seatX: 1.24 };
+const SEE = { w: 3.0, d: 0.58, h: 0.96, beamY: 0.5, seatX: 1.24, seatY: 0.62, tyreX: 1.21, tyreR: 0.14, tyreT: 0.055 };
+/** the beam turns on the axle through its middle */
+const SEE_PIVOT_Y = SEE.beamY + 0.035;
+/** tilt at which the underside of the beam lands on a tyre bumper (sunk 4 mm into the rubber), ≈ 14° */
+const SEE_MAX = ((): number => {
+  const gap = SEE.tyreR + SEE.tyreT - 0.004 + (SEE_PIVOT_Y - SEE.beamY);
+  let lo = 0;
+  let hi = 0.5;
+  for (let i = 0; i < 40; i++) {
+    const m = (lo + hi) / 2;
+    if (SEE_PIVOT_Y * Math.cos(m) - SEE.tyreX * Math.sin(m) > gap) lo = m;
+    else hi = m;
+  }
+  return lo;
+})();
+
+/** pivot stand + tyre bumpers (never move) */
+function seesawBase(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const { beamY } = SEE;
+  const frame = M.metal(c.frame, 0.45, 0.35);
+  // two hoops and an axle
+  for (const s of [-1, 1]) {
+    const z = s * 0.14;
+    k.tube(
+      [
+        [-0.3, 0.02, z * 1.6],
+        [-0.2, beamY * 0.75, z],
+        [0, beamY + 0.02, z],
+        [0.2, beamY * 0.75, z],
+        [0.3, 0.02, z * 1.6],
+      ],
+      0.028,
+      frame,
+      { seg: 16, radial: 8, tension: 0.4 },
+    );
+    for (const sx of [-1, 1]) k.cyl(0.06, 0.012, frame, sx * 0.3, 0, z * 1.6, 0.06, 10);
+  }
+  axisCyl(k, 0.03, 0.36, M.steel(), 0, SEE_PIVOT_Y, 0, 'z', 0.03, 12);
+  // half-buried tyre bumpers under the seats
+  for (const s of [-1, 1]) k.geo(new THREE.TorusGeometry(SEE.tyreR, SEE.tyreT, 8, 14, Math.PI), M.rubber('#2b2c2e'), s * SEE.tyreX, 0, 0);
+  return k.g;
+}
+
+/** beam with seats and grab hoops, built around the pivot (origin = axle center) */
+function seesawBeam(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const { seatX } = SEE;
+  const by = SEE.beamY - SEE_PIVOT_Y; // underside of the beam
+  const beam = M.paint(c.beam, 0.4);
+  const seat = M.plastic(c.seat);
+  const steel = M.steel();
+  k.rbox(SEE.w - 0.06, 0.07, 0.15, 0.02, beam, 0, by, 0, 2);
+  // bearing blocks hugging the axle
+  for (const s of [-1, 1]) k.rbox(0.12, 0.085, 0.02, 0.006, steel, 0, by - 0.0075, s * 0.085, 1);
+  for (const s of [-1, 1]) {
+    // moulded seat with a low back
+    k.rbox(0.36, SEE.seatY - SEE.beamY - 0.07, 0.32, 0.02, seat, s * seatX, by + 0.07, 0, 2);
+    const back = k.rbox(0.05, 0.2, 0.3, 0.02, seat, s * (seatX + 0.2), by + 0.08, 0, 2);
+    back.rotation.z = -s * 0.2;
+    // grab hoop
+    const hx = s * (seatX - 0.3);
+    k.tube(
+      [
+        [hx, by + 0.04, -0.045],
+        [hx, by + 0.2, -0.06],
+        [hx, by + 0.36, -0.13],
+        [hx, by + 0.43, -0.07],
+        [hx, by + 0.44, 0],
+        [hx, by + 0.43, 0.07],
+        [hx, by + 0.36, 0.13],
+        [hx, by + 0.2, 0.06],
+        [hx, by + 0.04, 0.045],
+      ],
+      0.016,
+      steel,
+      { seg: 24, radial: 6 },
+    );
+  }
+  return k.g;
+}
 
 const seesaw: FurnitureDef = {
   id: 'seesaw',
@@ -169,64 +272,37 @@ const seesaw: FurnitureDef = {
   size: { w: SEE.w, d: SEE.d, h: SEE.h },
   colors: [slot('beam', 'קורה', '#e0483e'), slot('seat', 'מושבים', '#f2b824'), slot('frame', 'בסיס', '#2f6fb7')],
   seats: [
-    { x: -SEE.seatX, z: 0, height: 0.62, facing: Math.PI / 2, kind: 'sit' },
-    { x: SEE.seatX, z: 0, height: 0.62, facing: -Math.PI / 2, kind: 'sit' },
+    { x: -SEE.seatX, z: 0, height: SEE.seatY, facing: Math.PI / 2, kind: 'sit' },
+    { x: SEE.seatX, z: 0, height: SEE.seatY, facing: -Math.PI / 2, kind: 'sit' },
   ],
+  noBake: true,
+  ride: { kind: 'seesaw', prompt: 'להתנדנד בנדנדה' },
   build: ({ colors: c }) => {
-    const k = new Kit();
-    const { beamY, seatX } = SEE;
-    const beam = M.paint(c.beam, 0.4);
-    const seat = M.plastic(c.seat);
-    const frame = M.metal(c.frame, 0.45, 0.35);
-    const steel = M.steel();
-    // pivot stand: two hoops and an axle
-    for (const s of [-1, 1]) {
-      const z = s * 0.14;
-      k.tube(
-        [
-          [-0.3, 0.02, z * 1.6],
-          [-0.2, beamY * 0.75, z],
-          [0, beamY + 0.02, z],
-          [0.2, beamY * 0.75, z],
-          [0.3, 0.02, z * 1.6],
-        ],
-        0.028,
-        frame,
-        { seg: 16, radial: 8, tension: 0.4 },
-      );
-      for (const sx of [-1, 1]) k.cyl(0.06, 0.012, frame, sx * 0.3, 0, z * 1.6, 0.06, 10);
-    }
-    axisCyl(k, 0.03, 0.36, steel, 0, beamY + 0.035, 0, 'z', 0.03, 12);
-    // beam
-    k.rbox(SEE.w - 0.06, 0.07, 0.15, 0.02, beam, 0, beamY, 0, 2);
-    for (const s of [-1, 1]) {
-      // moulded seat with a low back
-      k.rbox(0.36, 0.045, 0.32, 0.02, seat, s * seatX, beamY + 0.07, 0, 2);
-      const back = k.rbox(0.05, 0.2, 0.3, 0.02, seat, s * (seatX + 0.2), beamY + 0.08, 0, 2);
-      back.rotation.z = -s * 0.2;
-      // grab hoop
-      const hx = s * (seatX - 0.3);
-      k.tube(
-        [
-          [hx, beamY + 0.04, -0.045],
-          [hx, beamY + 0.2, -0.06],
-          [hx, beamY + 0.36, -0.13],
-          [hx, beamY + 0.43, -0.07],
-          [hx, beamY + 0.44, 0],
-          [hx, beamY + 0.43, 0.07],
-          [hx, beamY + 0.36, 0.13],
-          [hx, beamY + 0.2, 0.06],
-          [hx, beamY + 0.04, 0.045],
-        ],
-        0.016,
-        steel,
-        { seg: 24, radial: 6 },
-      );
-      // half-buried tyre bumper
-      const tyre = new THREE.TorusGeometry(0.2, 0.075, 8, 14, Math.PI);
-      k.geo(tyre, M.rubber('#2b2c2e'), s * (seatX - 0.03), 0, 0);
-    }
-    return k.g;
+    const root = new THREE.Group();
+    root.add(bakedPart(partKey('seesaw-base', c, ['frame']), () => seesawBase(c)));
+    // the beam tilts around Z: rotation.z > 0 lifts the +X end
+    const pivot = new THREE.Group();
+    pivot.name = 'beam';
+    pivot.position.set(0, SEE_PIVOT_Y, 0);
+    pivot.add(bakedPart(partKey('seesaw-beam', c, ['beam', 'seat']), () => seesawBeam(c)));
+    root.add(pivot);
+    const sy = SEE.seatY - SEE_PIVOT_Y;
+    const seatNodes = [seatNode(pivot, -SEE.seatX, sy, 0, Math.PI / 2), seatNode(pivot, SEE.seatX, sy, 0, -Math.PI / 2)];
+    const body = new Teeter(SEE_MAX);
+    const ride: RideRuntime = {
+      seatNodes,
+      update(dt, push, riders) {
+        const p = push01(push);
+        const left = riders.includes(0);
+        const right = riders.includes(1);
+        const [n, h] = substeps(dt);
+        for (let i = 0; i < n; i++) body.step(h, p, left, right);
+        pivot.rotation.z = body.theta;
+        return body.moving;
+      },
+    };
+    root.userData.ride = ride;
+    return root;
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
@@ -244,7 +320,62 @@ const seesaw: FurnitureDef = {
 
 /* ------------------------------------------------------------------ carousel */
 
-const CAR = { R: 1.08, deckY: 0.2, h: 1.12, seatR: 0.66 };
+const CAR = { R: 1.08, deckY: 0.2, h: 1.12, seatR: 0.66, seatY: 0.52 };
+
+/** ground hub + fixed centre post with the hand wheel the riders pull on (never move) */
+function carouselHub(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const { deckY } = CAR;
+  const rails = M.metal(c.rails, 0.45, 0.35);
+  k.cyl(0.24, deckY - 0.06, M.metal('#3a3d42', 0.6, 0.5), 0, 0, 0, 0.3, 20);
+  k.cyl(0.05, 0.86 + 0.06, rails, 0, deckY - 0.06, 0, 0.05, 14);
+  k.ring(0.2, 0.018, rails, 0, deckY + 0.78, 0, 24);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2;
+    k.rod([0, deckY + 0.78, 0], [Math.cos(a) * 0.2, deckY + 0.78, Math.sin(a) * 0.2], 0.012, rails, 0.012, 6);
+  }
+  k.sphere(0.06, M.paint(c.b, 0.4), 0, deckY + 0.86, 0, 1, 0.8, 1, 12);
+  return k.g;
+}
+
+/** the turning part: deck, grab rails on a collar around the post, seats (origin on the axis, on the ground) */
+function carouselDeck(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const { R, deckY } = CAR;
+  const rails = M.metal(c.rails, 0.45, 0.35);
+  const steel = M.metal('#8d9399', 0.5, 0.8);
+  // deck with coloured sectors and a steel rim
+  k.cyl(R - 0.01, 0.05, steel, 0, deckY - 0.06, 0, R - 0.01, 32);
+  k.ring(R - 0.02, 0.022, steel, 0, deckY - 0.02, 0, 32);
+  const cols = [M.paint(c.a, 0.6), M.paint(c.b, 0.6)];
+  for (let i = 0; i < 8; i++) {
+    const g = new THREE.CylinderGeometry(R - 0.045, R - 0.045, 0.012, 6, 1, false, (i / 8) * Math.PI * 2 + Math.PI / 8, Math.PI / 4);
+    k.geo(g, cols[i % 2], 0, deckY - 0.004, 0);
+  }
+  // bearing collars around the fixed post
+  k.cyl(0.085, 0.03, steel, 0, deckY + 0.002, 0, 0.07, 16);
+  k.cyl(0.068, 0.07, steel, 0, deckY + 0.585, 0, 0.068, 16);
+  // four radial grab rails
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    const p = (rad: number, y: number): V3 => [Math.cos(a) * rad, y, Math.sin(a) * rad];
+    k.tube([p(0.06, deckY + 0.62), p(0.45, deckY + 0.68), p(R - 0.2, deckY + 0.64), p(R - 0.08, deckY + 0.5), p(R - 0.07, deckY)], 0.022, rails, { seg: 14, radial: 6, tension: 0.4 });
+  }
+  // four curved seats between the rails
+  const seatShape = new THREE.Shape();
+  seatShape.absarc(0, 0, 0.86, -0.52, 0.52, false);
+  seatShape.absarc(0, 0, 0.48, 0.52, -0.52, true);
+  seatShape.closePath();
+  const seatH = 0.045;
+  const legH = CAR.seatY - seatH - deckY + 0.005;
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const m = k.slab(seatShape, seatH, M.plastic(i % 2 ? c.a : c.b), 0, CAR.seatY - seatH, 0, 0.01, 5);
+    m.rotation.y = -a;
+    for (const da of [-0.3, 0.3]) k.cyl(0.02, legH, steel, Math.cos(a + da) * 0.67, deckY, Math.sin(a + da) * 0.67, 0.02, 8);
+  }
+  return k.g;
+}
 
 const carousel: FurnitureDef = {
   id: 'carousel',
@@ -254,48 +385,35 @@ const carousel: FurnitureDef = {
   colors: [slot('a', 'צבע ראשי', '#e0483e'), slot('b', 'צבע משני', '#f2b824'), slot('rails', 'מעקות', '#2f6fb7')],
   seats: [0, 1, 2, 3].map((i) => {
     const a = (i / 4) * Math.PI * 2;
-    return { x: +(Math.cos(a) * CAR.seatR).toFixed(3), z: +(Math.sin(a) * CAR.seatR).toFixed(3), height: 0.52, facing: Math.atan2(Math.cos(a), Math.sin(a)), kind: 'sit' as const };
+    return { x: +(Math.cos(a) * CAR.seatR).toFixed(3), z: +(Math.sin(a) * CAR.seatR).toFixed(3), height: CAR.seatY, facing: Math.atan2(Math.cos(a), Math.sin(a)), kind: 'sit' as const };
   }),
+  noBake: true,
+  ride: { kind: 'spin', prompt: 'להסתובב בקרוסלה' },
   build: ({ colors: c }) => {
-    const k = new Kit();
-    const { R, deckY } = CAR;
-    const rails = M.metal(c.rails, 0.45, 0.35);
-    const steel = M.metal('#8d9399', 0.5, 0.8);
-    // hub + deck with coloured sectors and a steel rim
-    k.cyl(0.24, deckY - 0.06, M.metal('#3a3d42', 0.6, 0.5), 0, 0, 0, 0.3, 20);
-    k.cyl(R - 0.01, 0.05, steel, 0, deckY - 0.06, 0, R - 0.01, 32);
-    k.ring(R - 0.02, 0.022, steel, 0, deckY - 0.02, 0, 32);
-    const cols = [M.paint(c.a, 0.6), M.paint(c.b, 0.6)];
-    for (let i = 0; i < 8; i++) {
-      const g = new THREE.CylinderGeometry(R - 0.045, R - 0.045, 0.012, 6, 1, false, (i / 8) * Math.PI * 2 + Math.PI / 8, Math.PI / 4);
-      k.geo(g, cols[i % 2], 0, deckY - 0.004, 0);
-    }
-    // centre post with a turning wheel
-    k.cyl(0.05, 0.86, rails, 0, deckY, 0, 0.05, 14);
-    k.ring(0.2, 0.018, rails, 0, deckY + 0.78, 0, 24);
-    for (let i = 0; i < 3; i++) {
-      const a = (i / 3) * Math.PI * 2;
-      k.rod([0, deckY + 0.78, 0], [Math.cos(a) * 0.2, deckY + 0.78, Math.sin(a) * 0.2], 0.012, rails, 0.012, 6);
-    }
-    k.sphere(0.06, M.paint(c.b, 0.4), 0, deckY + 0.86, 0, 1, 0.8, 1, 12);
-    // four radial grab rails
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      const p = (rad: number, y: number): V3 => [Math.cos(a) * rad, y, Math.sin(a) * rad];
-      k.tube([p(0.05, deckY + 0.62), p(0.45, deckY + 0.68), p(R - 0.2, deckY + 0.64), p(R - 0.08, deckY + 0.5), p(R - 0.07, deckY)], 0.022, rails, { seg: 14, radial: 6, tension: 0.4 });
-    }
-    // four curved seats between the rails
-    const seatShape = new THREE.Shape();
-    seatShape.absarc(0, 0, 0.86, -0.52, 0.52, false);
-    seatShape.absarc(0, 0, 0.48, 0.52, -0.52, true);
-    seatShape.closePath();
-    for (let i = 0; i < 4; i++) {
+    const root = new THREE.Group();
+    root.add(bakedPart(partKey('carousel-hub', c, ['b', 'rails']), () => carouselHub(c)));
+    // everything the riders stand / sit on turns around the vertical axis
+    const deck = new THREE.Group();
+    deck.name = 'deck';
+    deck.add(bakedPart(partKey('carousel-deck', c, ['a', 'b', 'rails']), () => carouselDeck(c)));
+    root.add(deck);
+    const seatNodes = [0, 1, 2, 3].map((i) => {
       const a = (i / 4) * Math.PI * 2;
-      const m = k.slab(seatShape, 0.045, M.plastic(i % 2 ? c.a : c.b), 0, deckY + 0.265, 0, 0.01, 5);
-      m.rotation.y = -a;
-      for (const da of [-0.3, 0.3]) k.cyl(0.02, 0.27, steel, Math.cos(a + da) * 0.67, deckY, Math.sin(a + da) * 0.67, 0.02, 8);
-    }
-    return k.g;
+      return seatNode(deck, Math.cos(a) * CAR.seatR, CAR.seatY, Math.sin(a) * CAR.seatR, Math.atan2(Math.cos(a), Math.sin(a)));
+    });
+    const body = new Spinner(1.6);
+    const ride: RideRuntime = {
+      seatNodes,
+      update(dt, push) {
+        const p = push01(push);
+        const [n, h] = substeps(dt);
+        for (let i = 0; i < n; i++) body.step(h, p);
+        deck.rotation.y = body.angle;
+        return body.moving;
+      },
+    };
+    root.userData.ride = ride;
+    return root;
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
@@ -438,44 +556,148 @@ function horseShape(): THREE.Shape {
   return new THREE.Shape(curve.getPoints(72).map((p) => new THREE.Vector2(p.x, p.y)));
 }
 
+/** the body rocks about the top of the ground plate; the coil spring bends between the two */
+const SPR = { pivotY: 0.02, coilY: 0.015, coilH: 0.4, seatY: 0.66, seatZ: -0.13 };
+
+/** ground plate (never moves) */
+function springBase(): THREE.Object3D {
+  const k = new Kit();
+  k.cyl(0.17, SPR.pivotY, M.metal('#3a3d42', 0.5, 0.7), 0, 0, 0, 0.17, 18);
+  return k.g;
+}
+
+/** animal + seat + handles, in item coordinates (the caller shifts it onto the pivot) */
+function springBody(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const body = M.plastic(c.body);
+  const seat = M.plastic(c.seat);
+  const steel = M.metal('#3a3d42', 0.5, 0.7);
+  // saddle bracket on top of the spring
+  k.box(0.2, 0.03, 0.26, steel, 0, 0.405, 0);
+  // two silhouette panels
+  const panel = extrudeX(horseShape(), 0.022, 0.004, 4);
+  for (const s of [-1, 1]) {
+    k.geo(panel, body, s * 0.125, 0, 0);
+    // eye, nostril, mane stripe
+    axisCyl(k, 0.026, 0.004, M.paint('#ffffff', 0.4), s * 0.139, 0.875, 0.31, 'x', 0.026, 12);
+    axisCyl(k, 0.013, 0.004, M.paint('#1c1d20', 0.4), s * 0.142, 0.875, 0.317, 'x', 0.013, 10);
+    axisCyl(k, 0.009, 0.004, M.paint('#1c1d20', 0.4), s * 0.139, 0.77, 0.43, 'x', 0.009, 8);
+  }
+  // seat, spacer blocks
+  k.rbox(0.23, 0.035, 0.34, 0.012, seat, 0, 0.625, -0.14, 1);
+  k.rbox(0.23, 0.16, 0.03, 0.01, seat, 0, 0.56, -0.345, 1);
+  k.box(0.23, 0.2, 0.3, M.plastic(darken(c.body, 0.25)), 0, 0.435, 0);
+  // handle bar + foot rests with grips
+  const grip = M.rubber('#26272a');
+  axisCyl(k, 0.014, 0.5, steel, 0, 0.83, 0.21, 'x', 0.014, 8);
+  axisCyl(k, 0.014, 0.52, steel, 0, 0.46, 0.1, 'x', 0.014, 8);
+  for (const s of [-1, 1]) {
+    axisCyl(k, 0.021, 0.1, grip, s * 0.215, 0.83, 0.21, 'x', 0.021, 8);
+    axisCyl(k, 0.024, 0.1, grip, s * 0.22, 0.46, 0.1, 'x', 0.024, 8);
+  }
+  return k.g;
+}
+
+let springCoil: { geo: THREE.BufferGeometry; pos: Float32Array; nor: Float32Array; t: Float32Array } | null = null;
+
+/** rest shape of the coil (item coordinates) + per-vertex bend weight: 0 at the plate, 1 at the bracket */
+function coilRest(): NonNullable<typeof springCoil> {
+  if (!springCoil) {
+    const geo = coilGeo(0.085, 0.016, 5, SPR.coilH);
+    geo.translate(0, SPR.coilY, 0);
+    const pos = (geo.getAttribute('position').array as Float32Array).slice();
+    const nor = (geo.getAttribute('normal').array as Float32Array).slice();
+    const t = new Float32Array(pos.length / 3);
+    for (let i = 0; i < t.length; i++) {
+      const u = Math.min(1, Math.max(0, (pos[i * 3 + 1] - SPR.coilY - 0.03) / (SPR.coilH - 0.06)));
+      t[i] = u * u * (3 - 2 * u);
+    }
+    springCoil = { geo, pos, nor, t };
+  }
+  return springCoil;
+}
+
+/** Bend a coil instance so that its top follows the body (rotation `pitch` about X, then `roll` about Z, around the pivot). */
+function bendCoil(geo: THREE.BufferGeometry, pitch: number, roll: number): void {
+  const { pos, nor, t } = coilRest();
+  const p = geo.getAttribute('position') as THREE.BufferAttribute;
+  const nm = geo.getAttribute('normal') as THREE.BufferAttribute;
+  const pa = p.array as Float32Array;
+  const na = nm.array as Float32Array;
+  const py = SPR.pivotY;
+  for (let i = 0; i < t.length; i++) {
+    const j = i * 3;
+    // same order as Euler XYZ (matrix = Rx · Rz): roll first, then pitch
+    const cz = Math.cos(roll * t[i]);
+    const sz = Math.sin(roll * t[i]);
+    const cx = Math.cos(pitch * t[i]);
+    const sx = Math.sin(pitch * t[i]);
+    // position (relative to the pivot)
+    let x = pos[j];
+    let y = pos[j + 1] - py;
+    let z = pos[j + 2];
+    let y1 = x * sz + y * cz;
+    pa[j] = x * cz - y * sz;
+    pa[j + 1] = y1 * cx - z * sx + py;
+    pa[j + 2] = y1 * sx + z * cx;
+    // normal
+    x = nor[j];
+    y = nor[j + 1];
+    z = nor[j + 2];
+    y1 = x * sz + y * cz;
+    na[j] = x * cz - y * sz;
+    na[j + 1] = y1 * cx - z * sx;
+    na[j + 2] = y1 * sx + z * cx;
+  }
+  p.needsUpdate = true;
+  nm.needsUpdate = true;
+  geo.computeBoundingSphere();
+}
+
 const springRider: FurnitureDef = {
   id: 'spring-rider',
   name: 'סוס קפיץ',
   category: 'playground',
   size: { w: 0.56, d: 0.98, h: 0.99 },
   colors: [slot('body', 'גוף', '#e0483e'), slot('seat', 'מושב', '#f2b824')],
-  seats: [{ x: 0, z: -0.13, height: 0.66, facing: 0, kind: 'sit' }],
+  seats: [{ x: 0, z: SPR.seatZ, height: SPR.seatY, facing: 0, kind: 'sit' }],
+  noBake: true,
+  ride: { kind: 'rock', prompt: 'להתנדנד' },
   build: ({ colors: c }) => {
-    const k = new Kit();
-    const body = M.plastic(c.body);
-    const seat = M.plastic(c.seat);
-    const steel = M.metal('#3a3d42', 0.5, 0.7);
-    // ground plate + coil spring + saddle bracket
-    k.cyl(0.17, 0.02, steel, 0, 0, 0, 0.17, 18);
-    k.geo(coilGeo(0.085, 0.016, 5, 0.4), steel, 0, 0.015, 0);
-    k.box(0.2, 0.03, 0.26, steel, 0, 0.405, 0);
-    // two silhouette panels
-    const panel = extrudeX(horseShape(), 0.022, 0.004, 4);
-    for (const s of [-1, 1]) {
-      k.geo(panel, body, s * 0.125, 0, 0);
-      // eye, nostril, mane stripe
-      axisCyl(k, 0.026, 0.004, M.paint('#ffffff', 0.4), s * 0.139, 0.875, 0.31, 'x', 0.026, 12);
-      axisCyl(k, 0.013, 0.004, M.paint('#1c1d20', 0.4), s * 0.142, 0.875, 0.317, 'x', 0.013, 10);
-      axisCyl(k, 0.009, 0.004, M.paint('#1c1d20', 0.4), s * 0.139, 0.77, 0.43, 'x', 0.009, 8);
-    }
-    // seat, spacer blocks
-    k.rbox(0.23, 0.035, 0.34, 0.012, seat, 0, 0.625, -0.14, 1);
-    k.rbox(0.23, 0.16, 0.03, 0.01, seat, 0, 0.56, -0.345, 1);
-    k.box(0.23, 0.2, 0.3, M.plastic(darken(c.body, 0.25)), 0, 0.435, 0);
-    // handle bar + foot rests with grips
-    const grip = M.rubber('#26272a');
-    axisCyl(k, 0.014, 0.5, steel, 0, 0.83, 0.21, 'x', 0.014, 8);
-    axisCyl(k, 0.014, 0.52, steel, 0, 0.46, 0.1, 'x', 0.014, 8);
-    for (const s of [-1, 1]) {
-      axisCyl(k, 0.021, 0.1, grip, s * 0.215, 0.83, 0.21, 'x', 0.021, 8);
-      axisCyl(k, 0.024, 0.1, grip, s * 0.22, 0.46, 0.1, 'x', 0.024, 8);
-    }
-    return k.g;
+    const root = new THREE.Group();
+    root.add(bakedPart('spring-base', springBase));
+    // the coil has its own (tiny) geometry per instance: it bends while the body rocks
+    const coilG = coilRest().geo.clone();
+    const coil = new THREE.Mesh(coilG, M.metal('#3a3d42', 0.5, 0.7));
+    coil.castShadow = coil.receiveShadow = true;
+    root.add(coil);
+    // body pivot on the ground plate: rotation.x = pitch (nose down), rotation.z = roll
+    const pivot = new THREE.Group();
+    pivot.name = 'body';
+    pivot.position.set(0, SPR.pivotY, 0);
+    const bodyPart = bakedPart(partKey('spring-body', c, ['body', 'seat']), () => springBody(c));
+    bodyPart.position.y = -SPR.pivotY;
+    pivot.add(bodyPart);
+    root.add(pivot);
+    const seat = seatNode(pivot, 0, SPR.seatY - SPR.pivotY, SPR.seatZ, 0);
+    const body = new Rocker(0.3, 0.05);
+    const ride: RideRuntime = {
+      seatNodes: [seat],
+      update(dt, push, riders) {
+        const p = riders.length ? push01(push) : 0;
+        const [n, h] = substeps(dt);
+        const was = body.moving;
+        for (let i = 0; i < n; i++) body.step(h, p);
+        if (was || body.moving) {
+          pivot.rotation.x = body.pitch;
+          pivot.rotation.z = body.roll;
+          bendCoil(coilG, body.pitch, body.roll);
+        }
+        return body.moving;
+      },
+    };
+    root.userData.ride = ride;
+    return root;
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
@@ -982,6 +1204,8 @@ const drinkingFountain: FurnitureDef = {
   category: 'playground',
   size: { w: 0.46, d: 0.46, h: 1.04 },
   colors: [slot('body', 'גוף', '#4f8f86')],
+  // bubbler nozzle tip, falling into the bowl below it
+  interact: [{ kind: 'water', x: 0, y: 1.012, z: DF_Z - 0.058, fall: 0.116, sound: 'tap' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const body = M.metal(c.body, 0.5, 0.4);
@@ -1034,16 +1258,6 @@ const drinkingFountain: FurnitureDef = {
       { seg: 12, radial: 8 },
     );
     k.cyl(0.03, 0.03, M.chrome(), 0, 0.9, z - 0.13, 0.024, 12);
-    k.tube(
-      [
-        [0, 1.008, z - 0.055],
-        [0, 0.99, z - 0.02],
-        [0, 0.94, z + 0.03],
-      ],
-      0.005,
-      M.glass('#e8f8ff', 0.55),
-      { seg: 8, radial: 5 },
-    ).castShadow = false;
     axisCyl(k, 0.034, 0.03, M.chrome(), 0, 0.72, z + 0.115, 'z', 0.034, 14);
     axisCyl(k, 0.045, 0.012, body, 0, 0.72, z + 0.103, 'z', 0.045, 14);
     return k.g;
@@ -1072,4 +1286,5 @@ export const PLAYGROUND: FurnitureDef[] = [
   pingPong,
   rubberMat,
   drinkingFountain,
+  ...BALLS,
 ];

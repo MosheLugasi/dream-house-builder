@@ -783,3 +783,244 @@ kbd {
   width: 100%;
   margin: 10px 0;
 }
+
+/* ---- time of day ---- */
+.time-control {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow);
+  direction: ltr;
+}
+.time-control input[type='range'] {
+  width: 130px;
+  accent-color: var(--accent);
+}
+.time-icon {
+  font-size: 16px;
+  width: 18px;
+  text-align: center;
+  color: var(--accent-dark);
+}
+.time-label {
+  font: 600 13px ui-monospace, monospace;
+  min-width: 42px;
+}
+.time-auto {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.time-auto.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.mode-walk .time-control {
+  top: 56px;
+}
+
+/* ---- play: HUD, toasts, stickers ---- */
+.walk-tools {
+  position: absolute;
+  top: 100px;
+  inset-inline-end: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 360px;
+}
+.star-count {
+  background: #fff7dd;
+  border-color: #f1d27a;
+  cursor: default;
+}
+.speedometer {
+  position: absolute;
+  bottom: 86px;
+  inset-inline-start: 18px;
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(30, 32, 36, 0.72);
+  color: #fff;
+  border: 3px solid rgba(255, 255, 255, 0.7);
+  line-height: 1;
+}
+.speedometer strong {
+  font: 700 26px ui-monospace, monospace;
+  margin-top: 14px;
+}
+.speedometer small {
+  font-size: 11px;
+  margin-bottom: 14px;
+  opacity: 0.8;
+}
+.sleep-fade {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #05060c;
+  color: #dfe5ff;
+  font-size: 26px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1.2s ease;
+}
+.sleep-fade.on {
+  opacity: 1;
+}
+.shutter {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  animation: shutter 0.35s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes shutter {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.flash-message {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 9px 22px;
+  border-radius: 999px;
+  background: rgba(30, 32, 36, 0.82);
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+  z-index: 40;
+  animation: pop 0.25s ease-out;
+  pointer-events: none;
+}
+.challenge-toast {
+  position: fixed;
+  bottom: 28px;
+  inset-inline-start: 28px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 12px 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 2px solid #f1d27a;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.25);
+  z-index: 60;
+  cursor: pointer;
+  animation: pop 0.35s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.challenge-toast small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.challenge-toast strong {
+  font-size: 16px;
+}
+.sticker {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fff3c9;
+  font-size: 26px;
+  flex: none;
+}
+@keyframes pop {
+  from {
+    transform: translateX(-50%) scale(0.7);
+    opacity: 0;
+  }
+}
+.challenge-toast {
+  transform-origin: bottom;
+}
+@keyframes pop-plain {
+  from {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+}
+.challenge-toast {
+  animation-name: pop-plain;
+}
+.wide-modal {
+  width: min(760px, calc(100vw - 32px));
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.sticker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 14px;
+  border: 1.5px dashed var(--line);
+  text-align: center;
+  color: var(--muted);
+}
+.sticker-card .sticker {
+  background: var(--panel-2);
+  color: #c4bfb3;
+  font-weight: 700;
+}
+.sticker-card strong {
+  font-size: 13.5px;
+  color: var(--text);
+}
+.sticker-card small {
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.sticker-card.done {
+  border-style: solid;
+  border-color: #f1d27a;
+  background: #fffaf0;
+}
+.sticker-card.done .sticker {
+  background: #fff3c9;
+}
+.sticker-card .bar {
+  width: 80%;
+  height: 5px;
+  margin-top: 4px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.sticker-card .bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.stickers-btn {
+  font-weight: 700;
+  color: var(--accent-dark);
+}

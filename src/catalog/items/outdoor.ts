@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import type { FurnitureDef } from '../types';
+import type { FurnitureDef, RideRuntime } from '../types';
 import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, blobGeo, darken, latheGeo, lighten, mix, noise3, organicGeo, rng, roundedBoxGeo, roundedRectShape, ellipseShape, sym, tint, type Ctx2D } from '../kit';
 import { barHandle, slot } from './_parts';
+import { Pendulum, bakedPart, partKey, push01, seatNode, substeps } from './_ride';
 
 type Colors = Record<string, string>;
 
@@ -516,6 +517,53 @@ const flowerBed: FurnitureDef = {
 /* ------------------------------------------------------------------ swing set */
 
 const SWING = { w: 2.5, d: 1.9, h: 2.2 };
+/** y of the top beam's center line, of the swing pivots (eye bolts under the beam) and of the seat surface */
+const SW = { top: SWING.h - 0.05, pivotY: SWING.h - 0.05 - 0.09, seatY: 0.5, xs: [-0.5, 0.5], half: 0.2 };
+
+/** A-frame + top beam + eye bolts (never moves). */
+function swingFrame(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const wood = M.wood(c.frame, 0.7);
+  const { w, d } = SWING;
+  const { top, pivotY } = SW;
+  const ax = w / 2 - 0.08;
+  for (const s of [-1, 1]) {
+    for (const sz of [-1, 1]) k.beam([s * (ax + 0.03), 0.0115, sz * (d / 2 - 0.045)], [s * ax, top, sz * 0.03], 0.075, 0.075, wood, 0.01);
+    k.beam([s * (ax + 0.022), 0.55, -(d / 2 - 0.05) * 0.74], [s * (ax + 0.022), 0.55, (d / 2 - 0.05) * 0.74], 0.06, 0.035, wood, 0.006);
+  }
+  k.beam([-w / 2 + 0.01, top + 0.0, 0], [w / 2 - 0.01, top, 0], 0.09, 0.09, wood, 0.012);
+  const metal = M.steel();
+  for (const sx of SW.xs) {
+    for (const s of [-1, 1]) {
+      const x = sx + s * SW.half;
+      // eye bolt through the beam: plate, shank, eye
+      k.box(0.05, 0.004, 0.05, metal, x, top - 0.049, 0);
+      k.cyl(0.007, 0.034, metal, x, pivotY + 0.012, 0, 0.007, 8);
+      const eye = new THREE.TorusGeometry(0.012, 0.004, 6, 12);
+      k.geo(eye, metal, x, pivotY, 0);
+    }
+  }
+  return k.g;
+}
+
+/** One swing (ropes + seat) built around its pivot axis: the origin is on the pivot line, the seat hangs at -L. */
+function swingSeat(c: Colors): THREE.Object3D {
+  const k = new Kit();
+  const metal = M.steel();
+  const rope = M.matte('#d8cdb6');
+  const L = SW.pivotY - SW.seatY;
+  for (const s of [-1, 1]) {
+    const x = s * SW.half;
+    // shackle hanging in the eye bolt, rope, clamp under the seat
+    const link = new THREE.TorusGeometry(0.013, 0.0035, 6, 12);
+    link.rotateY(Math.PI / 2);
+    k.geo(link, metal, x, -0.019, 0);
+    k.rod([x, -L - 0.03, 0], [x, -0.03, 0], 0.007, rope, 0.007, 6);
+    k.cyl(0.012, 0.012, metal, x, -L - 0.042, 0, 0.012, 8);
+  }
+  k.rbox(0.46, 0.03, 0.17, 0.012, M.plastic(c.seat), 0, -L - 0.03, 0, 1);
+  return k.g;
+}
 
 const swingSet: FurnitureDef = {
   id: 'swing-set',
@@ -523,33 +571,47 @@ const swingSet: FurnitureDef = {
   category: 'outdoor',
   size: SWING,
   colors: [slot('frame', 'מסגרת', PAL.teak), slot('seat', 'מושבים', PAL.terracotta)],
-  seats: [
-    { x: -0.5, z: 0, height: 0.5, facing: 0, kind: 'sit' },
-    { x: 0.5, z: 0, height: 0.5, facing: 0, kind: 'sit' },
-  ],
+  seats: SW.xs.map((x) => ({ x, z: 0, height: SW.seatY, facing: 0, kind: 'sit' as const })),
+  noBake: true,
+  ride: { kind: 'swing', prompt: 'להתנדנד' },
   build: ({ colors: c }) => {
-    const k = new Kit();
-    const wood = M.wood(c.frame, 0.7);
-    const { w, d, h } = SWING;
-    const ax = w / 2 - 0.08;
-    const top = h - 0.05;
-    for (const s of [-1, 1]) {
-      for (const sz of [-1, 1]) k.beam([s * (ax + 0.03), 0.0115, sz * (d / 2 - 0.045)], [s * ax, top, sz * 0.03], 0.075, 0.075, wood, 0.01);
-      k.beam([s * (ax + 0.022), 0.55, -(d / 2 - 0.05) * 0.74], [s * (ax + 0.022), 0.55, (d / 2 - 0.05) * 0.74], 0.06, 0.035, wood, 0.006);
-    }
-    k.beam([-w / 2 + 0.01, top + 0.0, 0], [w / 2 - 0.01, top, 0], 0.09, 0.09, wood, 0.012);
-    const metal = M.steel();
-    const rope = M.matte('#d8cdb6');
-    const seat = M.plastic(c.seat);
-    for (const sx of [-0.5, 0.5]) {
-      for (const s of [-1, 1]) {
-        const x = sx + s * 0.2;
-        k.cyl(0.012, 0.05, metal, x, top - 0.09, 0, 0.012, 8);
-        k.rod([x, 0.5, 0], [x, top - 0.06, 0], 0.007, rope, 0.007, 6);
-      }
-      k.rbox(0.46, 0.03, 0.17, 0.012, seat, sx, 0.475, 0, 1);
-    }
-    return k.g;
+    const root = new THREE.Group();
+    root.add(bakedPart(partKey('swing-frame', c, ['frame']), () => swingFrame(c)));
+    const L = SW.pivotY - SW.seatY;
+    const swings = SW.xs.map((x) => {
+      // pivot node on the eye-bolt axis; rotation.x = -angle swings the seat towards +Z
+      const pivot = new THREE.Group();
+      pivot.name = 'swing';
+      pivot.position.set(x, SW.pivotY, 0);
+      pivot.add(bakedPart(partKey('swing-seat', c, ['seat']), () => swingSeat(c)));
+      root.add(pivot);
+      return { pivot, seat: seatNode(pivot, 0, -L, 0, 0), body: new Pendulum(L, 0.92) };
+    });
+    const ride: RideRuntime = {
+      seatNodes: swings.map((s) => s.seat),
+      update(dt, push, riders) {
+        const p = push01(push);
+        const [n, h] = substeps(dt);
+        for (let i = 0; i < n; i++) {
+          swings.forEach((s, j) => {
+            // the frame shakes a little: an empty swing sways along with a busy neighbour
+            let ext = 0;
+            swings.forEach((o, m) => {
+              if (m !== j) ext -= 0.012 * o.body.alpha;
+            });
+            s.body.step(h, riders.includes(j) ? p : 0, ext);
+          });
+        }
+        let moving = false;
+        for (const s of swings) {
+          s.pivot.rotation.x = -s.body.theta;
+          moving = moving || s.body.moving;
+        }
+        return moving;
+      },
+    };
+    root.userData.ride = ride;
+    return root;
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
@@ -561,7 +623,7 @@ const swingSet: FurnitureDef = {
         for (const sz of [-1, 1]) D.rr(ctx, s * (w / 2 - 0.05), sz * (d / 2 - 0.05), 0.085, 0.085, 0.01, f, undefined, LINE_THIN);
       }
       D.rr(ctx, 0, 0, w - 0.02, 0.09, 0.01, f);
-      for (const sx of [-0.5, 0.5]) {
+      for (const sx of SW.xs) {
         D.rr(ctx, sx, 0, 0.46, 0.17, 0.02, tint(c.seat, 0.35));
         // swing arc hint
         ctx.setLineDash([0.05, 0.04]);
@@ -573,7 +635,8 @@ const swingSet: FurnitureDef = {
 
 /* ------------------------------------------------------------------ trampoline */
 
-const TR = { r: 1.5, h: 2.5, deck: 0.75 };
+/** `gap`: half-angle of the entrance slit in the net, which faces +Z */
+const TR = { r: 1.5, h: 2.5, deck: 0.75, gap: 0.26 };
 
 const trampoline: FurnitureDef = {
   id: 'trampoline',
@@ -581,6 +644,8 @@ const trampoline: FurnitureDef = {
   category: 'outdoor',
   size: { w: 3.08, d: 3.08, h: TR.h },
   colors: [slot('pad', 'ריפוד', PAL.dustyBlue)],
+  // the black jumping mat inside the spring pad (the way in is the slit in the net at +Z)
+  bounce: { radius: TR.r - 0.27, surfaceY: TR.deck + 0.005, boost: 2.2 },
   build: ({ colors: c }) => {
     const k = new Kit();
     const steel = M.metal('#b9bcbf', 0.4, 0.9);
@@ -607,12 +672,18 @@ const trampoline: FurnitureDef = {
       k.rod(p(a, r + 0.0, deck - 0.3), p(a, r + 0.0, TR.h - 0.02), 0.03, foam, 0.03, 8);
       k.sphere(0.036, M.plastic('#2b2c2f'), ...p(a, r, TR.h - 0.036), 1, 1, 1, 8);
     }
-    // safety net
-    const net = new THREE.CylinderGeometry(r - 0.02, r - 0.02, TR.h - deck - 0.1, 40, 1, true);
+    // safety net with an entrance slit at the front (+Z), between two poles
+    const gap = TR.gap;
+    const net = new THREE.CylinderGeometry(r - 0.02, r - 0.02, TR.h - deck - 0.1, 40, 1, true, gap, Math.PI * 2 - 2 * gap);
     const netMat = M.glass('#3a3f45', 0.16);
     const nm = k.geo(net, netMat, 0, deck + (TR.h - deck - 0.1) / 2 + 0.04, 0);
     nm.castShadow = false;
     k.ring(r - 0.02, 0.012, M.plastic('#2b2c2f'), 0, TR.h - 0.07, 0, 40);
+    for (const s of [-1, 1]) {
+      const x = Math.sin(s * gap) * (r - 0.02);
+      const z = Math.cos(gap) * (r - 0.02);
+      k.rod([x, deck + 0.04, z], [x, TR.h - 0.07, z], 0.009, M.plastic('#2b2c2f'), 0.009, 6);
+    }
     return k.g;
   },
   draw2d: (ctx, c) =>
@@ -620,6 +691,8 @@ const trampoline: FurnitureDef = {
       D.circle(ctx, 0, 0, 1.52, tint(c.pad, 0.35));
       D.circle(ctx, 0, 0, 1.23, '#c9ccd0', undefined, LINE_THIN);
       D.circle(ctx, 0, 0, 1.0, null, INK_SOFT, 0.007);
+      // entrance slit in the net
+      for (const s of [-1, 1]) D.line(ctx, Math.sin(s * TR.gap) * 1.36, Math.cos(TR.gap) * 1.36, Math.sin(s * TR.gap) * 1.52, Math.cos(TR.gap) * 1.52, undefined, 0.02);
       for (let i = 0; i < 6; i++) {
         const a = (i / 6) * Math.PI * 2;
         D.circle(ctx, Math.cos(a) * 1.5, Math.sin(a) * 1.5, 0.03, '#ffffff', undefined, 0.008);
@@ -748,6 +821,7 @@ const gardenLamp: FurnitureDef = {
   size: { w: 0.4, d: 0.4, h: 2.6 },
   colors: [slot('metal', 'מתכת', '#2f3235')],
   light: { x: 0, y: 2.3, z: 0, color: '#ffdca8', intensity: 90, distance: 10 },
+  interact: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const metal = M.metal(c.metal, 0.55, 0.6);

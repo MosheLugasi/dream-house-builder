@@ -1,9 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Engine } from '../render3d/Engine';
 import { useStore } from '../store/store';
+import { WalkHud } from './GameHud';
 import { Icon } from './icons';
 
-export function View3D({ active }: { active: boolean }) {
+const clock = (h: number) => `${String(Math.floor(h) % 24).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
+
+/** Time of day: slider, clock and a "let time run" switch. */
+function TimeControl() {
+  const time = useStore((s) => s.view.timeOfDay);
+  const auto = useStore((s) => s.view.autoTime);
+  const setView = useStore((s) => s.setView);
+  const icon = time >= 6 && time < 18.5 ? '☀' : '☾';
+  return (
+    <div className="time-control" title="שעה ביום">
+      <span className="time-icon">{icon}</span>
+      <input
+        type="range"
+        min={0}
+        max={24}
+        step={0.25}
+        value={time}
+        aria-label="שעה ביום"
+        onChange={(e) => setView({ timeOfDay: parseFloat(e.target.value) })}
+      />
+      <span className="time-label">{clock(time)}</span>
+      <button className={`time-auto ${auto ? 'on' : ''}`} onClick={() => setView({ autoTime: !auto })} title="הזמן רץ מעצמו">
+        {auto ? '❚❚' : '▶'}
+      </button>
+    </div>
+  );
+}
+
+export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +87,7 @@ export function View3D({ active }: { active: boolean }) {
     <div className="viewport" style={{ display: active ? 'block' : 'none' }}>
       <div ref={hostRef} className="three-host" />
       {error && <div className="viewport-error">{error}</div>}
+      {!error && <TimeControl />}
       {mode === 'view3d' && (
         <div className="view-controls">
           <button className="chip" onClick={() => engineRef.current?.frameAll()} title="מרכוז המבט">
@@ -98,7 +128,10 @@ export function View3D({ active }: { active: boolean }) {
               <kbd>Shift</kbd> – ריצה · גרירת עכבר – מבט · גלגלת – מרחק
             </div>
             <div>
-              <kbd>E</kbd> – לשבת / לקום / לעלות על רכב · <kbd>V</kbd> – מבט מהעיניים
+              <kbd>E</kbd> – לשבת / לרכוב / להתגלש · <kbd>F</kbd> – להפעיל (אור, ברז, טלוויזיה, ליטוף)
+            </div>
+            <div>
+              <kbd>רווח</kbd> – קפיצה · <kbd>G</kbd> – נפנוף · <kbd>V</kbd> – מבט מהעיניים
             </div>
           </div>
           <div className="view-controls">
@@ -111,6 +144,7 @@ export function View3D({ active }: { active: boolean }) {
             </button>
           </div>
           {hint && <div className="walk-hint">{hint}</div>}
+          <WalkHud onAvatar={onAvatar} />
         </>
       )}
     </div>

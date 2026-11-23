@@ -22,8 +22,8 @@ const SITE_TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'buildings', label: 'מבנים', icon: 'building' },
   { id: 'props', label: 'רחוב, גינה ורכב', icon: 'tree' },
 ];
-const BUILDING_CATEGORIES: FurnitureCategory[] = ['living', 'dining', 'kitchen', 'bedroom', 'bathroom', 'office', 'kids', 'lighting', 'decor', 'public', 'outdoor', 'playground'];
-const SITE_CATEGORIES: FurnitureCategory[] = ['vehicle', 'street', 'playground', 'outdoor'];
+const BUILDING_CATEGORIES: FurnitureCategory[] = ['living', 'dining', 'kitchen', 'bedroom', 'bathroom', 'office', 'kids', 'pet', 'lighting', 'decor', 'public', 'outdoor', 'playground'];
+const SITE_CATEGORIES: FurnitureCategory[] = ['vehicle', 'street', 'playground', 'outdoor', 'pet'];
 
 export const PAINT_COLORS = [
   '#ffffff', '#f4f1ea', '#ebe5d9', '#ddd3c2', '#c9bca7', '#a89a85',

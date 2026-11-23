@@ -16,6 +16,7 @@ const streetLamp: FurnitureDef = {
   size: { w: 0.4, d: 1.7, h: 6.2 },
   colors: [slot('metal', 'עמוד', '#59616a')],
   light: { x: 0, y: 5.95, z: 0.5, color: '#ffe3b5', intensity: 450, distance: 22 },
+  interact: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const metal = M.metal(c.metal, 0.5, 0.75);

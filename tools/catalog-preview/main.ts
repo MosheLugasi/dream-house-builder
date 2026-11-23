@@ -7,13 +7,20 @@
  *   ?az=35&el=22                                  camera azimuth / elevation in degrees
  *   ?tile=480x380&cols=4                          tile size / columns
  *   ?mode=row                                     all selected items side by side at true scale
+ *   ?seats=1 / ?lights=1                          show seat anchors / light positions
+ *   ?marks=1                                      markers for the interactive metadata: `interact` (screen rectangle,
+ *                                                 water spout + fall line, flame points), `slide.path` (red = climb,
+ *                                                 green = slide), the `bounce` disc and the axes of `ride.seatNodes`
+ *                                                 (blue = facing); `&xray=1` draws them through the geometry
+ *   ?ride=push&t=2.5&riders=0,1&coast=1           advance ride physics before rendering: `update(1/60, 1, riders)` for
+ *                                                 t seconds, then `coast` seconds without pushing (`ride=idle`: no push)
  *
  * After rendering, `window.__report` holds per-item bbox / triangle stats and `window.__ready` is true.
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { FURNITURE, resolveColors } from '/src/catalog/index.ts';
-import type { FurnitureDef } from '/src/catalog/types.ts';
+import type { FurnitureDef, RideRuntime } from '/src/catalog/types.ts';
 import { CATEGORY_LABELS } from '/src/catalog/types.ts';
 
 const q = new URLSearchParams(location.search);
@@ -153,6 +160,17 @@ function place(def: FurnitureDef): { root: THREE.Group; box: THREE.Box3; rep: Re
       root.add(g);
     }
   }
+  // advance the ride physics deterministically
+  const rideRt = obj.userData.ride as RideRuntime | undefined;
+  if (rideRt && q.has('ride')) {
+    const riders = (q.get('riders') ?? '0').split(',').filter((v) => v !== '').map(Number);
+    const push = q.get('ride') === 'push' ? 1 : 0;
+    let moving = false;
+    for (let i = 0; i < Math.round(Number(q.get('t') ?? 2) * 60); i++) moving = rideRt.update(1 / 60, push, riders);
+    for (let i = 0; i < Math.round(Number(q.get('coast') ?? 0) * 60); i++) moving = rideRt.update(1 / 60, 0, riders);
+    rep.notes.push(moving ? 'ride: moving' : 'ride: at rest');
+  }
+  if (q.has('marks')) addMarks(def, obj, root);
   if (def.light && q.has('lights')) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.04), new THREE.MeshBasicMaterial({ color: '#ff00ff' }));
     m.position.set(def.light.x, def.light.y, def.light.z);
@@ -161,6 +179,117 @@ function place(def: FurnitureDef): { root: THREE.Group; box: THREE.Box3; rep: Re
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj, true);
   return { root, box, rep };
+}
+
+const xray = q.has('xray');
+const markMat = (color: string, opacity = 1): THREE.MeshBasicMaterial =>
+  new THREE.MeshBasicMaterial({ color, transparent: opacity < 1 || xray, opacity, depthTest: !xray, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+const lineMat = (color: string): THREE.LineBasicMaterial => new THREE.LineBasicMaterial({ color, depthTest: !xray, transparent: xray, toneMapped: false });
+function dot(parent: THREE.Object3D, x: number, y: number, z: number, color: string, r = 0.012): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 8), markMat(color));
+  m.position.set(x, y, z);
+  m.renderOrder = 10;
+  parent.add(m);
+  return m;
+}
+function polyline(parent: THREE.Object3D, pts: THREE.Vector3[], color: string, loop = false): void {
+  const g = new THREE.BufferGeometry().setFromPoints(pts);
+  const l = loop ? new THREE.LineLoop(g, lineMat(color)) : new THREE.Line(g, lineMat(color));
+  l.renderOrder = 10;
+  parent.add(l);
+}
+
+/** Markers for the interactive metadata of an item (see the header comment). */
+function addMarks(def: FurnitureDef, obj: THREE.Object3D, root: THREE.Object3D): void {
+  const g = new THREE.Group();
+  g.position.copy(obj.position);
+  root.add(g);
+  for (const it of def.interact ?? []) {
+    if (it.kind === 'screen') {
+      const s = new THREE.Group();
+      s.position.set(it.x, it.y, it.z);
+      s.rotation.y = it.ry ?? 0;
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(it.w, it.h), markMat('#28e0ff', 0.55));
+      plane.renderOrder = 9;
+      s.add(plane);
+      const hw = it.w / 2;
+      const hh = it.h / 2;
+      polyline(s, [new THREE.Vector3(-hw, -hh, 0), new THREE.Vector3(hw, -hh, 0), new THREE.Vector3(hw, hh, 0), new THREE.Vector3(-hw, hh, 0)], '#ff00d0', true);
+      polyline(s, [new THREE.Vector3(-hw, -hh, 0), new THREE.Vector3(hw, hh, 0)], '#ff00d0');
+      polyline(s, [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0.15)], '#ff00d0');
+      g.add(s);
+    } else if (it.kind === 'water') {
+      dot(g, it.x, it.y, it.z, '#ff2020', 0.008);
+      polyline(g, [new THREE.Vector3(it.x, it.y, it.z), new THREE.Vector3(it.x, it.y - it.fall, it.z)], '#0080ff');
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.012, 0.02, 16), markMat('#0080ff'));
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(it.x, it.y - it.fall + 0.001, it.z);
+      ring.renderOrder = 10;
+      g.add(ring);
+    } else if (it.kind === 'flame') {
+      for (const p of it.points) {
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.045, 10), markMat('#ff7a00'));
+        cone.position.set(p.x, p.y + 0.0225, p.z);
+        cone.renderOrder = 10;
+        g.add(cone);
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.004, 0.008, 12), markMat('#ff00d0'));
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.set(p.x, p.y + 0.0005, p.z);
+        ring.renderOrder = 10;
+        g.add(ring);
+      }
+    }
+  }
+  if (def.slide) {
+    const { path, slideFrom } = def.slide;
+    const v = path.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+    polyline(g, v.slice(0, slideFrom + 1), '#ff2020');
+    polyline(g, v.slice(slideFrom), '#00c040');
+    v.forEach((p, i) => dot(g, p.x, p.y, p.z, i < slideFrom ? '#ff2020' : '#00c040', 0.022));
+  }
+  if (def.bounce) {
+    const { radius, surfaceY } = def.bounce;
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i < 64; i++) pts.push(new THREE.Vector3(Math.cos((i / 64) * Math.PI * 2) * radius, surfaceY + 0.002, Math.sin((i / 64) * Math.PI * 2) * radius));
+    polyline(g, pts, '#ff00d0', true);
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(radius, 48), markMat('#28e0ff', 0.4));
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = surfaceY + 0.002;
+    disc.renderOrder = 9;
+    g.add(disc);
+  }
+  if (def.ball) {
+    // the contact point and the declared sphere
+    dot(g, 0, 0, 0, '#ff2020', 0.006);
+    const wire = new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.SphereGeometry(def.ball.radius * 1.004, 12, 8)), lineMat('#ff00d0'));
+    wire.position.y = def.ball.radius;
+    g.add(wire);
+  }
+  const ride = obj.userData.ride as RideRuntime | undefined;
+  if (ride) {
+    // a seated dummy on every seat node: hips at the node origin, facing its +Z (blue axis)
+    const mat = new THREE.MeshStandardMaterial({ color: '#8d9aa8', roughness: 0.8, transparent: true, opacity: q.has('dummy') ? 0.9 : 0 });
+    for (const n of ride.seatNodes) {
+      const ax = new THREE.AxesHelper(0.3);
+      (ax.material as THREE.LineBasicMaterial).depthTest = !xray;
+      (ax.material as THREE.LineBasicMaterial).toneMapped = false;
+      ax.renderOrder = 10;
+      n.add(ax);
+      dot(n, 0, 0, 0, '#ff00d0', 0.015);
+      if (q.has('dummy')) {
+        const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.13, 0.3, 4, 10), mat);
+        torso.position.set(0, 0.36, 0);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 12, 10), mat);
+        head.position.set(0, 0.78, 0);
+        const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 4, 8), mat);
+        thigh.rotation.x = Math.PI / 2;
+        thigh.position.set(0, 0.07, 0.2);
+        const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), mat);
+        shin.position.set(0, -0.14, 0.4);
+        n.add(torso, head, thigh, shin);
+      }
+    }
+  }
 }
 
 function frame(box: THREE.Box3, aspect: number, elev: number = el): void {
@@ -299,4 +428,6 @@ declare global {
   }
 }
 window.__report = report;
+// for scripted checks (Playwright): the catalog and the three.js instance it was built with
+(window as unknown as Record<string, unknown>).__catalog = { THREE, FURNITURE, resolveColors };
 window.__ready = true;

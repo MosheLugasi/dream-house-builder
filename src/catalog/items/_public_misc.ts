@@ -219,6 +219,8 @@ const receptionDesk: FurnitureDef = {
   size: { w: RC.w, d: RC.d, h: RC.h },
   colors: [slot('front', 'חזית', PAL.oak), slot('top', 'משטח', '#f1efe9'), slot('seat', 'כיסא', '#3d5166')],
   seats: [{ x: 0, z: RC.chairZ, height: 0.48, facing: 0, kind: 'sit' }],
+  // the brass desk bell on the transaction shelf
+  interact: [{ kind: 'sfx', sound: 'bell' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { cz, Ro, half, deskY, topY, chairZ } = RC;
@@ -775,6 +777,7 @@ const piano: FurnitureDef = {
   size: { w: PN.w, d: PN.d, h: PN.h },
   colors: [slot('body', 'גוף', '#1b1b1d'), slot('seat', 'ריפוד', '#26272a')],
   seats: [{ x: 0, z: PN.stoolZ, height: 0.5, facing: Math.PI, kind: 'sit' }],
+  interact: [{ kind: 'instrument', instrument: 'piano' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { w, h, zb, bodyD, keyY, stoolZ } = PN;
@@ -856,6 +859,8 @@ const waterCooler: FurnitureDef = {
   category: 'public',
   size: { w: 0.4, d: 0.4, h: 1.43 },
   colors: [slot('body', 'גוף', '#f1f1ee')],
+  // the cold (blue) tap nozzle down to the drip-tray grille
+  interact: [{ kind: 'water', x: -0.095, y: 0.785, z: 0.17, fall: 0.172, sound: 'tap' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const body = M.plastic(c.body);

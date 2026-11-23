@@ -3,6 +3,7 @@ import type { FurnitureDef } from '../types';
 import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, darken, latheGeo, lighten, noise3, roundedRectShape, smoothProfile, sym, tint } from '../kit';
 import { bedding, drawBedding } from './bedroom';
 import { legs4, slot } from './_parts';
+import { KIDS_TOYS } from './_kids_toys';
 
 /* ------------------------------------------------------------------ bunk bed */
 
@@ -375,4 +376,4 @@ const playTent: FurnitureDef = {
     }),
 };
 
-export const KIDS: FurnitureDef[] = [bunkBed, kidsDesk, kidsChair, toyChest, beanBag, playTent];
+export const KIDS: FurnitureDef[] = [bunkBed, kidsDesk, kidsChair, toyChest, beanBag, playTent, ...KIDS_TOYS];

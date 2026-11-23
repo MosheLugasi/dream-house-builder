@@ -1,4 +1,6 @@
+import { audio } from '../audio';
 import { getFurniture } from '../catalog';
+import { report } from '../game/progress';
 import type { FurnitureDef } from '../catalog/types';
 import { buildTemplate } from '../model/templates';
 import { getOpeningDef } from '../catalog/openings';
@@ -23,6 +25,7 @@ export const level = (): Level => currentLevel(S().project, S().levelIndex);
 
 /** Adds wall segments, skipping stretches already covered by an existing collinear wall. */
 export function addWalls(segments: [Vec2, Vec2][], thickness: number): void {
+  const roomsBefore = getGraph(level().walls).rooms.length;
   S().update((d) => {
     const lvl = draftLevel(d);
     for (const [a, b] of segments) {
@@ -31,6 +34,9 @@ export function addWalls(segments: [Vec2, Vec2][], thickness: number): void {
       }
     }
   });
+  const added = getGraph(level().walls).rooms.length - roomsBefore;
+  if (added > 0) report('room-built', added);
+  audio.play('place', { volume: 0.6 });
 }
 
 export function addRoomRect(p0: Vec2, p1: Vec2, thickness: number): void {
@@ -91,11 +97,14 @@ export function addFurniture(catalogId: string, pos: Vec2, rotation: number): st
   S().update((d) => {
     draftLevel(d).furniture.push(item);
   });
+  report('furniture-placed');
+  audio.play('place');
   return id;
 }
 
 export function deleteSelection(sel: Selection | null = S().selection): void {
   if (!sel || sel.kind === 'room') return;
+  audio.play('delete', { volume: 0.7 });
   if (sel.kind === 'building') {
     deleteBuilding(sel.id);
     return;
@@ -215,6 +224,10 @@ export function setRoomStyle(point: Vec2, patch: Partial<RoomStyle>): void {
     }
     Object.assign(style, patch);
   });
+  if (patch.floor || patch.wall) {
+    report('room-painted');
+    audio.play('click');
+  }
 }
 
 export function setExterior(finish: string): void {
@@ -303,6 +316,8 @@ export function addLevel(): void {
     });
   });
   S().setLevelIndex(index);
+  report('level-added');
+  audio.play('success', { volume: 0.6 });
 }
 
 export function removeLevel(index: number): void {
@@ -315,6 +330,7 @@ export function removeLevel(index: number): void {
 }
 
 export function updateRoof(patch: Partial<Roof>): void {
+  if (patch.type && patch.type !== currentBuilding(S().project).roof.type) report('roof-changed');
   S().update((d) => {
     Object.assign(currentBuilding(d).roof, patch);
   });
@@ -326,6 +342,8 @@ export function updateRoof(patch: Partial<Roof>): void {
 const TRUNK_ONLY = /tree|palm|lamp|flagpole|sign|traffic-light|patio-table|basketball|swing-set|monkey-bars|goal/;
 export function collisionFootprint(def: FurnitureDef): { w: number; d: number } | null {
   if (def.walkable || def.mount === 'ceiling' || def.mount === 'wall') return null;
+  // things you walk onto, kick around, or that move by themselves
+  if (def.bounce || def.ball || def.pet || def.id === 'football-goal') return null;
   if (TRUNK_ONLY.test(def.id)) return { w: 0.4, d: 0.4 };
   return { w: def.size.w, d: def.size.d };
 }
@@ -337,6 +355,8 @@ export function addProp(catalogId: string, pos: Vec2, rotation: number): string 
   S().update((d) => {
     d.site.props.push({ id, catalogId, x: pos.x, y: pos.y, rotation, elevation: def.mount === 'wall' ? (def.elevation ?? 1.2) : 0 });
   });
+  report('furniture-placed');
+  audio.play('place');
   return id;
 }
 
@@ -368,6 +388,8 @@ export function addBuilding(template: string, pos: Vec2): string | null {
   S().update((d) => {
     d.buildings.push(b);
   });
+  report('building-added');
+  audio.play('place');
   return b.id;
 }
 
@@ -386,6 +408,7 @@ export function deleteBuilding(id: string): void {
 }
 
 export function setRoad(i: number, j: number, on: boolean, transient = false): void {
+  const before = S().project.site.roads.length;
   S().update(
     (d) => {
       const at = d.site.roads.findIndex(([a, b]) => a === i && b === j);
@@ -394,6 +417,7 @@ export function setRoad(i: number, j: number, on: boolean, transient = false): v
     },
     { transient },
   );
+  if (on && S().project.site.roads.length > before) report('road-built');
 }
 
 export function addArea(a: Vec2, b: Vec2, finish: string): string | null {

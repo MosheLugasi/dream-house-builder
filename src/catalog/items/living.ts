@@ -233,6 +233,8 @@ const tvConsole: FurnitureDef = {
   category: 'living',
   size: { w: 1.8, d: 0.42, h: 1.32 },
   colors: [slot('wood', 'גוף', PAL.oak), slot('fronts', 'חזיתות', PAL.white)],
+  // picture = the glass (1.214 × 0.694, front face at z = -0.0195), 1.5 mm in front of it
+  interact: [{ kind: 'screen', x: 0, y: 0.955, z: -0.018, w: 1.21, h: 0.69, ry: 0 }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.wood(c.wood);

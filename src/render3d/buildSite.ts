@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { finishes } from '../materials/finishes';
 import { ROAD_CELL, ROAD_SIDEWALK, type Site } from '../model/types';
+import { waterMaterial } from './effects';
 import { MeshBuilder, type V3 } from './MeshBuilder';
 
 export const SIDEWALK_HEIGHT = 0.12;
@@ -122,7 +123,7 @@ export function buildSite(site: Site): THREE.Group {
       side(x1, y0, x1, y1, [1, 0, 0]);
     }
   }
-  const group = mb.build((key) => (key === MARK ? markMaterial : finishes.material(key)));
+  const group = mb.build((key) => (key === MARK ? markMaterial : key === 'water' ? waterMaterial() : finishes.material(key)));
   group.traverse((o) => {
     o.castShadow = false;
   });
