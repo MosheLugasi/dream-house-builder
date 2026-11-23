@@ -13,6 +13,7 @@ export function View3D({ active }: { active: boolean }) {
   const hint = useStore((s) => s.hint);
   const [engine, setEngine] = useState<Engine | null>(null);
   const setView = useStore((s) => s.setView);
+  const scope = useStore((s) => s.scope);
 
   // create the engine the first time the 3D view is shown
   useEffect(() => {
@@ -64,14 +65,18 @@ export function View3D({ active }: { active: boolean }) {
           <button className="chip" onClick={() => engineRef.current?.frameAll()} title="מרכוז המבט">
             <Icon name="fit" size={16} />
           </button>
-          <label className={`chip toggle ${view.wallsLow ? 'on' : ''}`}>
-            <input type="checkbox" checked={view.wallsLow} onChange={(e) => setView({ wallsLow: e.target.checked })} />
-            קירות נמוכים
-          </label>
-          <label className={`chip toggle ${view.showRoof ? 'on' : ''}`}>
-            <input type="checkbox" checked={view.showRoof} onChange={(e) => setView({ showRoof: e.target.checked })} />
-            גג
-          </label>
+          {scope === 'building' && (
+            <>
+              <label className={`chip toggle ${view.wallsLow ? 'on' : ''}`}>
+                <input type="checkbox" checked={view.wallsLow} onChange={(e) => setView({ wallsLow: e.target.checked })} />
+                קירות נמוכים
+              </label>
+              <label className={`chip toggle ${view.showRoof ? 'on' : ''}`}>
+                <input type="checkbox" checked={view.showRoof} onChange={(e) => setView({ showRoof: e.target.checked })} />
+                כל הבניין עם הגג
+              </label>
+            </>
+          )}
           <TimeOfDayChips />
           <label className={`chip toggle ${view.quality === 'high' ? 'on' : ''}`}>
             <input

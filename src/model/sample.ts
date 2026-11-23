@@ -1,9 +1,10 @@
 import { getFurniture } from '../catalog';
-import { emptyProject } from './defaults';
+import { emptyBuilding, emptyProject } from './defaults';
 import {
   DEFAULT_WALL_THICKNESS,
   EXTERIOR_WALL_THICKNESS,
   newId,
+  type Building,
   type Opening,
   type Project,
   type Wall,
@@ -15,10 +16,10 @@ const N = Math.PI;
 const E = -Math.PI / 2;
 const W = Math.PI / 2;
 
-/** A furnished starter house so that a first-time player immediately has something to explore. */
-export function sampleProject(): Project {
-  const p = emptyProject('בית לדוגמה');
-  const b = p.buildings[0];
+/** A furnished single-storey family house (12 x 9 m) with a small garden. */
+export function sampleHouse(): Building {
+  const b = emptyBuilding();
+  b.name = 'בית משפחה';
   const lvl = b.levels[0];
   b.exterior = 'jerusalem-stone';
   const EXT = EXTERIOR_WALL_THICKNESS;
@@ -173,5 +174,5 @@ export function sampleProject(): Project {
   put('sun-lounger', -3.4, 9.6, 0.4);
   put('garden-lamp', 4.6, 10.6);
 
-  return p;
+  return b;
 }

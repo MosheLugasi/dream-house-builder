@@ -86,6 +86,38 @@ const paths: Record<string, ReactNode> = {
   ),
   home: <path d="M3 11l9-8 9 8M5 10v10h14V10M10 20v-6h4v6" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
+  map: (
+    <>
+      <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z" />
+      <path d="M9 4v14M15 6v14" />
+    </>
+  ),
+  road: (
+    <>
+      <path d="M7 3L4 21M17 3l3 18" />
+      <path d="M12 4v3M12 10.500v3M12 17v3" />
+    </>
+  ),
+  stairs: <path d="M3 20h5v-5h5v-5h5V5h3" />,
+  tree: (
+    <>
+      <path d="M12 21v-6" />
+      <path d="M12 3a5 5 0 00-4.500 7A4 4 0 009 16h6a4 4 0 001.500-6A5 5 0 0012 3z" />
+    </>
+  ),
+  building: (
+    <>
+      <path d="M4 21V5l8-2v18M12 9l8 2v10M2 21h20" />
+      <path d="M7 8v1M7 12v1M7 16v1M16 14v1M16 17.500v1" />
+    </>
+  ),
+  area: (
+    <>
+      <path d="M4 5h16v14H4z" strokeDasharray="3 2.500" />
+      <path d="M8 15c1-3 2-3 3 0s2 3 3 0" />
+    </>
+  ),
+  enter: <path d="M14 4h6v16h-6M4 12h11M11 8l4 4-4 4" />,
 };
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths | string; size?: number }) {

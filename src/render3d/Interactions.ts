@@ -31,8 +31,19 @@ interface InstState {
   feedT: number;
 }
 
+interface Pose {
+  /** world plan position of the item at rest */
+  x: number;
+  y: number;
+  /** absolute height of the floor it stands on */
+  floor: number;
+  /** plan rotation in site coordinates */
+  rot: number;
+}
+
 interface PetState {
   pos: Vec2;
+  home: Vec2;
   heading: number;
   mode: 'idle' | 'wander' | 'follow' | 'chase' | 'happy';
   target: Vec2 | null;
@@ -47,6 +58,7 @@ interface PetState {
 }
 
 interface BallState {
+  floor: number;
   p: THREE.Vector3;
   v: THREE.Vector3;
   r: number;
@@ -81,6 +93,10 @@ interface Inst {
   ball: BallState | null;
   fish: FishState[];
   act: Map<ActionKind, ActionSpec>;
+  /** holder height at rest (props stand on raised sidewalks) */
+  restY: number;
+  /** world yaw of the holder's parent (buildings can be rotated) */
+  parentYaw: number;
 }
 
 interface Choice {
@@ -258,6 +274,8 @@ export class Interactions {
       ball: null,
       fish: [],
       act,
+      restY: holder.position.y,
+      parentYaw: 0,
     };
     // fish
     for (const fp of parts.get('fish') ?? []) {
@@ -275,7 +293,10 @@ export class Interactions {
 
   updateItem(item: FurnitureItem): void {
     const inst = this.insts.get(item.id);
-    if (inst) inst.item = item;
+    if (inst) {
+      inst.item = item;
+      if (!inst.pet && !inst.ball) inst.restY = inst.holder.position.y;
+    }
   }
 
   unregister(id: string, keepState = false): void {
@@ -349,11 +370,15 @@ export class Interactions {
 
   private enterInst(inst: Inst): void {
     const def = inst.def;
+    inst.restY = inst.holder.position.y;
+    inst.parentYaw = this.parentYaw(inst);
+    const pose = this.pose(inst);
     if (has(def, 'pet')) {
       const v = inst.act.get('pet')?.variant ?? 'dog';
       inst.pet = {
-        pos: { x: inst.item.x, y: inst.item.y },
-        heading: -inst.item.rotation,
+        pos: { x: pose.x, y: pose.y },
+        home: { x: pose.x, y: pose.y },
+        heading: -pose.rot,
         mode: 'idle',
         target: null,
         timer: 1 + Math.random() * 3,
@@ -368,7 +393,7 @@ export class Interactions {
     }
     if (has(def, 'ball')) {
       const r = def.size.w / 2;
-      inst.ball = { p: new THREE.Vector3(inst.item.x, inst.item.elevation + r, inst.item.y), v: new THREE.Vector3(), r };
+      inst.ball = { floor: pose.floor, p: new THREE.Vector3(pose.x, pose.floor + inst.item.elevation + r, pose.y), v: new THREE.Vector3(), r };
     }
   }
 
@@ -395,7 +420,7 @@ export class Interactions {
     }
     inst.pet = null;
     inst.ball = null;
-    inst.holder.position.set(inst.item.x, inst.item.elevation, inst.item.y);
+    inst.holder.position.set(inst.item.x, inst.restY, inst.item.y);
     inst.holder.rotation.set(0, -inst.item.rotation, 0);
     inst.obj.quaternion.identity();
   }
@@ -413,15 +438,49 @@ export class Interactions {
     return { x: v.x, y: v.z };
   }
 
+  private parentYaw(inst: Inst): number {
+    const parent = inst.holder.parent;
+    if (!parent) return 0;
+    parent.updateWorldMatrix(true, false);
+    const q = parent.getWorldQuaternion(new THREE.Quaternion());
+    return new THREE.Euler().setFromQuaternion(q, 'YXZ').y;
+  }
+
+  /** where the item stands in the world (its rest place, in site coordinates) */
+  private pose(inst: Inst): Pose {
+    const parent = inst.holder.parent;
+    const item = inst.item;
+    if (!parent) return { x: item.x, y: item.y, floor: 0, rot: item.rotation };
+    parent.updateWorldMatrix(true, false);
+    const v = parent.localToWorld(new THREE.Vector3(item.x, inst.pet || inst.ball ? inst.restY : inst.holder.position.y, item.y));
+    return { x: v.x, y: v.z, floor: v.y - item.elevation, rot: item.rotation - this.parentYaw(inst) };
+  }
+
+  /** place a holder at a world position / heading (pets, balls) */
+  private placeHolder(inst: Inst, x: number, y: number, z: number, heading: number): void {
+    const parent = inst.holder.parent;
+    const v = new THREE.Vector3(x, y, z);
+    if (parent) parent.worldToLocal(v);
+    inst.holder.position.copy(v);
+    inst.holder.rotation.set(0, heading - inst.parentYaw, 0);
+  }
+
   /** world facing (character convention) of a local direction angle (0 = +Z) */
   private facingOf(inst: Inst, local: number): number {
-    return local - inst.item.rotation;
+    return local - this.pose(inst).rot;
+  }
+
+  private floorOf(inst: Inst): number {
+    return this.pose(inst).floor;
   }
 
   /** plan distance from p to the item's footprint */
   private footDist(inst: Inst, p: Vec2): number {
-    const pos = inst.pet ? inst.pet.pos : inst.ball ? { x: inst.ball.p.x, y: inst.ball.p.z } : { x: inst.item.x, y: inst.item.y };
-    const rot = inst.pet || inst.ball ? 0 : inst.item.rotation;
+    const pose = inst.pet || inst.ball ? null : this.pose(inst);
+    const pos = inst.pet ? inst.pet.pos : inst.ball ? { x: inst.ball.p.x, y: inst.ball.p.z } : { x: pose!.x, y: pose!.y };
+    const rot = pose ? pose.rot : 0;
+    // other floors are out of reach
+    if (this.walk && Math.abs((inst.pet ? this.floorOf(inst) : inst.ball ? inst.ball.floor : pose!.floor) - this.walk.y) > 1.2) return 99;
     const c = Math.cos(-rot);
     const s = Math.sin(-rot);
     const rx = p.x - pos.x;
@@ -460,6 +519,8 @@ export class Interactions {
   private buildChoices(): Choice[] {
     const walk = this.walk!;
     const out: Choice[] = [];
+    const vehicle = walk.vehicleAction();
+    if (walk.driving && vehicle) return [{ id: 'vehicle', label: vehicle.label, icon: '🚗', run: vehicle.run }];
     if (walk.occupation) {
       out.push({ id: 'end', label: 'לסיים', icon: ICON.stop!, run: () => walk.release() });
       return out;
@@ -485,6 +546,7 @@ export class Interactions {
       return out.slice(0, 4);
     }
     const p = walk.pos;
+    if (vehicle) out.push({ id: 'vehicle', label: vehicle.label, icon: '🚲', run: vehicle.run });
     const seat = walk.nearestSeat();
     if (seat) out.push({ id: `seat:${seat.pos.x.toFixed(2)},${seat.pos.y.toFixed(2)}`, label: `${seat.kind === 'lie' ? 'לשכב' : 'לשבת'} · ${seat.name}`, icon: seat.kind === 'lie' ? ICON.lie! : ICON.sit!, run: () => walk.sitOn(seat) });
     const cands: Array<{ d: number; c: Choice }> = [];
@@ -658,11 +720,11 @@ export class Interactions {
 
   private waterFloor(inst: Inst): number {
     const a = inst.act.get('water')?.at;
-    if (!a) return inst.item.elevation;
+    if (!a) return this.floorOf(inst) + inst.item.elevation;
     const from = this.world3(inst, a.x, a.y - 0.03, a.z);
     const rc = new THREE.Raycaster(from, new THREE.Vector3(0, -1, 0), 0, 4);
     const hit = rc.intersectObject(inst.obj, true)[0];
-    return hit ? hit.point.y + 0.01 : inst.item.elevation;
+    return hit ? hit.point.y + 0.01 : this.floorOf(inst) + inst.item.elevation;
   }
 
   private setScreen(inst: Inst, on: boolean, ch?: Channel): void {
@@ -743,7 +805,7 @@ export class Interactions {
     const walk = this.walk!;
     const t = textOf(inst.def);
     const drink = /קפה|coffee|espresso|קומקום|kettle|תה|tea|יין|wine|מים|water|כוס/.test(t);
-    walk.faceTo({ x: inst.item.x, y: inst.item.y });
+    walk.faceTo(this.pose(inst));
     if (inst.parts.has('door')) {
       inst.st.openTarget = 1;
       setTimeout(() => (inst.st.openTarget = 0), 2200);
@@ -775,7 +837,7 @@ export class Interactions {
     const walk = this.walk!;
     inst.st.on.computer = true;
     this.setScreen(inst, true, 'desktop');
-    if (!walk.seat) walk.faceTo({ x: inst.item.x, y: inst.item.y });
+    if (!walk.seat) walk.faceTo(this.pose(inst));
     walk.playFor('type', 12);
     const clackT = setInterval(() => sound.sfx('clack', 0.25), 140);
     setTimeout(() => clearInterval(clackT), 3000);
@@ -811,13 +873,13 @@ export class Interactions {
     let frame: OccupationFrame;
     if (seat && kind !== 'guitar') {
       const p = this.plan(inst, seat.x, seat.z);
-      frame = { x: p.x, y: p.y, facing: this.facingOf(inst, seat.facing), pose: 'sit', seatHeight: seat.height + inst.item.elevation };
+      frame = { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, seat.facing), pose: 'sit', seatHeight: seat.height + inst.item.elevation };
     } else if (kind === 'guitar') {
       const p = this.standInFront(inst, 0.45);
-      frame = { x: p.x, y: p.y, facing: this.facingOf(inst, 0), pose: 'stand' };
+      frame = { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, 0), pose: 'stand' };
     } else {
       const p = this.standInFront(inst, 0.3);
-      frame = { x: p.x, y: p.y, facing: this.facingOf(inst, Math.PI), pose: 'stand' };
+      frame = { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, Math.PI), pose: 'stand' };
     }
     const keyFn = (code: string, down: boolean): boolean => {
       if (!down) return code in PIANO_KEYS || code in GUITAR_CHORDS || code in DRUM_KEYS;
@@ -866,7 +928,7 @@ export class Interactions {
     sound.sfx('sizzle', 0.6);
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, facing: this.facingOf(inst, Math.PI), pose: 'stand' },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, Math.PI), pose: 'stand' },
         {
           activity: 'cook',
           prop: 'spoon',
@@ -898,7 +960,7 @@ export class Interactions {
     let woke = false;
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, facing: this.facingOf(inst, seat.facing), pose: 'lie', seatHeight: seat.height + inst.item.elevation },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, seat.facing), pose: 'lie', seatHeight: seat.height + inst.item.elevation },
         {
           activity: 'sleep',
           label: 'ישנים… Zzz',
@@ -936,6 +998,7 @@ export class Interactions {
         {
           x: p.x,
           y: p.y,
+          floor: this.floorOf(inst),
           facing: this.facingOf(inst, Math.PI),
           pose: kind === 'run' ? 'stand' : 'sit',
           seatHeight: at.y + inst.item.elevation,
@@ -976,7 +1039,7 @@ export class Interactions {
     let acc = 0;
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, facing: this.facingOf(inst, Math.PI), pose: 'stand', lift: Math.max(0, at.y) },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, Math.PI), pose: 'stand', lift: Math.max(0, at.y) },
         {
           activity,
           prop: activity === 'lift' ? 'dumbbells' : 'none',
@@ -999,6 +1062,7 @@ export class Interactions {
   private bounce(inst: Inst): void {
     const walk = this.walk!;
     const at = inst.act.get('bounce')?.at ?? { x: 0, y: 0.6, z: 0 };
+    const floor = this.floorOf(inst);
     const p = this.plan(inst, at.x, at.z);
     let t = 0;
     let amp = 0.4;
@@ -1034,7 +1098,7 @@ export class Interactions {
           }
         }
         const h = 4 * amp * ph * (1 - ph);
-        return { x: p.x, y: p.y, facing: walk.facing, pose: 'stand', lift: at.y + inst.item.elevation + h };
+        return { x: p.x, y: p.y, floor, facing: walk.facing, pose: 'stand', lift: at.y + inst.item.elevation + h };
       },
     });
   }
@@ -1076,6 +1140,7 @@ export class Interactions {
     const sp = new THREE.Vector3();
     const tiltSign = Math.cos(seat.facing);
     const exitP = this.plan(inst, seat.x + Math.sin(seat.facing) * 0.7, seat.z + Math.cos(seat.facing) * 0.7);
+    const floor = this.floorOf(inst);
     walk.occupy({
       activity: kind === 'swing' && seat.kind !== 'lie' ? 'swing' : 'none',
       label: kind === 'swing' ? 'מתנדנדים!' : 'מתנדנדים',
@@ -1097,10 +1162,11 @@ export class Interactions {
         return {
           x: w.x,
           y: w.z,
+          floor,
           facing: this.facingOf(inst, seat.facing),
           pose: seat.kind === 'lie' ? 'lie' : 'sit',
           seatHeight: seat.height + inst.item.elevation,
-          lift: w.y - (seat.height + inst.item.elevation),
+          lift: w.y - floor - (seat.height + inst.item.elevation),
           tilt: th * tiltSign,
         };
       },
@@ -1128,6 +1194,7 @@ export class Interactions {
     const facing = Math.atan2(dir.x, dir.z);
     const end = pts[pts.length - 1];
     const exit = { x: end.x + Math.sin(facing) * 0.6, y: end.z + Math.cos(facing) * 0.6 };
+    const floor = this.floorOf(inst);
     walk.occupy({
       activity: 'slide',
       label: 'גולשים!',
@@ -1137,7 +1204,7 @@ export class Interactions {
         if (t < 0.9) {
           // climb up
           const k = t / 0.9;
-          return { x: start.x, y: start.y, facing, pose: 'stand', lift: Math.max(0, pts[0].y - 0.3) * k };
+          return { x: start.x, y: start.y, floor, facing, pose: 'stand', lift: Math.max(0, pts[0].y - floor - 0.3) * k };
         }
         if (!whooshed) {
           whooshed = true;
@@ -1155,7 +1222,7 @@ export class Interactions {
         const p = pts[i - 1].clone().lerp(pts[i], k);
         const seg = new THREE.Vector3().subVectors(pts[i], pts[i - 1]);
         const tilt = -Math.atan2(-seg.y, Math.hypot(seg.x, seg.z)) * 0.6;
-        return { x: p.x, y: p.z, facing, pose: 'sit', seatHeight: 0.02, lift: p.y, tilt };
+        return { x: p.x, y: p.z, floor, facing, pose: 'sit', seatHeight: 0.02, lift: p.y - floor, tilt };
       },
     });
   }
@@ -1169,7 +1236,7 @@ export class Interactions {
     let beep = 0;
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, facing: this.facingOf(inst, Math.PI), pose: 'stand' },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, Math.PI), pose: 'stand' },
         {
           activity: 'game',
           label: 'משחקים!',
@@ -1205,13 +1272,13 @@ export class Interactions {
     const at = a.at ?? { x: 0, y: 0, z: inst.def.size.d / 2 + 0.3 };
     const p = this.plan(inst, at.x, at.z);
     const prop: Prop = /pool|billiard|ביליארד|סנוקר/.test(t) ? 'cue' : /ping|pong|טניס שולחן|פינג/.test(t) ? 'paddle' : 'none';
-    const center = { x: inst.item.x, y: inst.item.y };
+    const center = this.pose(inst);
     let time = 0;
     let hits = 0;
     if (inst.parts.has('spin')) inst.st.spinSpeed = 2.5;
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, facing: Math.atan2(center.x - p.x, center.y - p.y), pose: 'stand' },
+        { x: p.x, y: p.y, floor: center.floor, facing: Math.atan2(center.x - p.x, center.y - p.y), pose: 'stand' },
         {
           activity: /שחמט|chess|קלפים|poker|cards/.test(t) ? 'type' : 'play',
           prop,
@@ -1338,7 +1405,7 @@ export class Interactions {
         if (Math.random() < 0.55) {
           const a = Math.random() * Math.PI * 2;
           const r = 0.8 + Math.random() * 2;
-          pet.target = { x: inst.item.x + Math.cos(a) * r, y: inst.item.y + Math.sin(a) * r };
+          pet.target = { x: pet.home.x + Math.cos(a) * r, y: pet.home.y + Math.sin(a) * r };
           pet.mode = 'wander';
         } else {
           pet.target = null;
@@ -1366,7 +1433,8 @@ export class Interactions {
       pet.pos.x -= (me.x - pet.pos.x) * k;
       pet.pos.y -= (me.y - pet.pos.y) * k;
     }
-    if (this.world) collideCircle(this.world, pet.pos, pet.radius * 0.8, { ignore: inst.id });
+    const petFloor = this.floorOf(inst);
+    if (this.world) collideCircle(this.world, pet.pos, pet.radius * 0.8, petFloor, inst.id);
     // occasional noises
     pet.noiseT -= dt;
     if (pet.noiseT <= 0) {
@@ -1375,8 +1443,7 @@ export class Interactions {
     }
     // transform + animation
     if (!bird) {
-      inst.holder.position.set(pet.pos.x, inst.item.elevation, pet.pos.y);
-      inst.holder.rotation.set(0, pet.heading, 0);
+      this.placeHolder(inst, pet.pos.x, petFloor + inst.item.elevation, pet.pos.y, pet.heading);
     }
     const gait = pet.speed / (cat ? 1.6 : 2.8);
     pet.phase += dt * (3 + pet.speed * 5);
@@ -1434,7 +1501,7 @@ export class Interactions {
     const g = 9.8;
     b.v.y -= g * dt;
     b.p.addScaledVector(b.v, dt);
-    const floor = b.r;
+    const floor = b.floor + b.r;
     if (b.p.y < floor) {
       b.p.y = floor;
       if (b.v.y < -1.2) sound.sfx('bounce', Math.min(1, -b.v.y / 8));
@@ -1444,10 +1511,10 @@ export class Interactions {
       b.v.x *= fr;
       b.v.z *= fr;
     }
-    if (b.p.y > 2.6 - b.r && b.v.y > 0) b.v.y = -b.v.y * 0.5;
+    if (b.p.y > b.floor + 2.6 - b.r && b.v.y > 0) b.v.y = -b.v.y * 0.5;
     if (this.world) {
       const pos = { x: b.p.x, y: b.p.z };
-      const push = collideCircle(this.world, pos, b.r, { ignore, height: b.p.y - b.r });
+      const push = collideCircle(this.world, pos, b.r, b.p.y - b.r, ignore);
       const pl = Math.hypot(push.x, push.y);
       if (pl > 1e-6) {
         const nx = push.x / pl;
@@ -1522,7 +1589,7 @@ export class Interactions {
         arc: 0.9 + dist * 0.18,
         done: () => {
           this.effects.remove(mesh);
-          const b: BallState = { p: to.clone(), v: success ? new THREE.Vector3(0, -2.5, 0) : new THREE.Vector3((to.x - ring.x) * 8, 1.5, (to.z - ring.z) * 8), r: 0.12 };
+          const b: BallState = { floor: this.floorOf(inst), p: to.clone(), v: success ? new THREE.Vector3(0, -2.5, 0) : new THREE.Vector3((to.x - ring.x) * 8, 1.5, (to.z - ring.z) * 8), r: 0.12 };
           if (success) b.p.copy(ring);
           const m2 = basketball();
           this.effects.add(m2);
@@ -1604,7 +1671,7 @@ export class Interactions {
 
   private feedFish(inst: Inst): void {
     const walk = this.walk!;
-    walk.faceTo({ x: inst.item.x, y: inst.item.y });
+    walk.faceTo(this.pose(inst));
     walk.playFor('feed', 2);
     inst.st.feedT = 6;
     const area = inst.act.get('fish')?.area;
@@ -1676,8 +1743,9 @@ export class Interactions {
     const st = inst.st;
     const parts = inst.parts;
     // distance-based volume
-    if (listener) {
-      const d = Math.hypot(listener.x - inst.item.x, listener.z - inst.item.y);
+    if (listener && Object.keys(inst.voices).length) {
+      const pp = inst.pet ? inst.pet.pos : inst.ball ? { x: inst.ball.p.x, y: inst.ball.p.z } : this.pose(inst);
+      const d = Math.hypot(listener.x - pp.x, listener.z - pp.y) + Math.abs(listener.y - (inst.ball?.floor ?? this.floorOf(inst))) * 2;
       const vol = Math.max(0, 1 - d / 14);
       const v2 = vol * vol;
       inst.voices.music?.setVolume(v2 * 0.9);
@@ -1803,8 +1871,7 @@ export class Interactions {
       if (inst.pet) this.updatePet(inst, dt);
       if (inst.ball) {
         this.stepBall(inst.ball, dt, inst.id, inst.obj, 0);
-        inst.holder.position.set(inst.ball.p.x, inst.ball.p.y - inst.ball.r, inst.ball.p.z);
-        inst.holder.rotation.set(0, 0, 0);
+        this.placeHolder(inst, inst.ball.p.x, inst.ball.p.y - inst.ball.r, inst.ball.p.z, 0);
       }
     }
   }

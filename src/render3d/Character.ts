@@ -28,7 +28,7 @@ export const DEFAULT_LOOK: CharacterLook = {
   hairStyle: 'ponytail',
 };
 
-export type Pose = 'stand' | 'sit' | 'lie';
+export type Pose = 'stand' | 'sit' | 'lie' | 'ride';
 
 /** Body animations layered over the base pose. */
 export type Activity =
@@ -116,6 +116,10 @@ export class Character {
   private seatHeight = 0.45;
   private poseBlend = 0;
   private lieBlend = 0;
+  private rideBlend = 0;
+  private reachBlend = 0;
+  /** hold on to a handlebar while standing (kick scooter) */
+  reach = false;
   private activity: Activity = 'none';
   private actTime = 0;
   private actBlend = 0;
@@ -476,12 +480,15 @@ export class Character {
     this.moveBlend = damp(this.moveBlend, moving ? 1 : 0, 10, dt);
     this.poseBlend = damp(this.poseBlend, this.pose === 'stand' ? 0 : 1, 9, dt);
     this.lieBlend = damp(this.lieBlend, this.pose === 'lie' ? 1 : 0, 7, dt);
+    this.rideBlend = damp(this.rideBlend, this.pose === 'ride' ? 1 : 0, 9, dt);
+    this.reachBlend = damp(this.reachBlend, this.reach ? 1 : 0, 9, dt);
     this.actBlend = damp(this.actBlend, this.activity === 'none' || this.activity === 'run' ? 0 : 1, 10, dt);
     this.hit = Math.max(0, this.hit - dt * 7);
-    this.phase += dt * (4.2 + sp * 2.6) * (moving ? 1 : 0.25);
+    this.phase += this.pose === 'ride' ? dt * sp * 2.4 : dt * (4.2 + sp * 2.6) * (moving ? 1 : 0.25);
     const t = this.phase;
     const mb = this.moveBlend;
-    const sit = this.poseBlend * (1 - this.lieBlend);
+    const ride = this.rideBlend;
+    const sit = this.poseBlend * (1 - this.lieBlend) * (1 - ride);
     const stride = Math.min(0.75, 0.3 + sp * 0.14) * mb;
 
     const now = performance.now() / 1000;
@@ -490,12 +497,12 @@ export class Character {
 
     // ---- base pose (walk / sit) ----
     const j: Joints = {
-      hipY: THREE.MathUtils.lerp(this.legLen + bob, this.seatHeight + 0.09, sit),
+      hipY: THREE.MathUtils.lerp(this.legLen + bob, this.seatHeight + 0.09, Math.max(sit, ride)),
       hipZ: THREE.MathUtils.lerp(0, -0.02, sit),
-      chestX: 0.07 * mb + 0.04 * sit,
+      chestX: 0.07 * mb + 0.04 * sit + 0.42 * ride,
       chestY: Math.sin(t) * 0.08 * mb,
       chestZ: 0,
-      headX: 0,
+      headX: -0.3 * ride,
       headY: -Math.sin(t) * 0.05 * mb,
       legHip: [0, 0],
       legKnee: [0, 0],
@@ -507,12 +514,18 @@ export class Character {
       bodyRotX: 0,
     };
     for (let i = 0; i < 2; i++) {
-      const s = Math.sin(t + (i ? Math.PI : 0));
-      j.legHip[i] = THREE.MathUtils.lerp(-s * stride, -Math.PI / 2 + 0.06, sit);
-      j.legKnee[i] = THREE.MathUtils.lerp(Math.max(0, Math.cos(t + (i ? Math.PI : 0))) * stride * 1.5 + 0.04 * mb, Math.PI / 2 - 0.02, sit);
+      const ph = t + (i ? Math.PI : 0);
+      const s = Math.sin(ph);
+      const walkHip = THREE.MathUtils.lerp(-s * stride, -Math.PI / 2 + 0.06, sit);
+      const walkKnee = THREE.MathUtils.lerp(Math.max(0, Math.cos(ph)) * stride * 1.5 + 0.04 * mb, Math.PI / 2 - 0.02, sit);
+      // riding (bikes, scooters): the foot travels around a circle
+      j.legHip[i] = THREE.MathUtils.lerp(walkHip, -0.95 + Math.sin(ph) * 0.42, ride);
+      j.legKnee[i] = THREE.MathUtils.lerp(walkKnee, 1.25 - Math.cos(ph) * 0.5, ride);
       const a = Math.sin(t + (i ? 0 : Math.PI));
-      j.shX[i] = THREE.MathUtils.lerp(-a * stride * 0.85, -0.55, sit);
-      j.elbow[i] = THREE.MathUtils.lerp(-0.18 - Math.max(0, -a) * stride * 0.7 - 0.25 * mb, -0.75, sit);
+      const sh = THREE.MathUtils.lerp(THREE.MathUtils.lerp(-a * stride * 0.85, -0.55, sit), -1.05, ride);
+      const el = THREE.MathUtils.lerp(THREE.MathUtils.lerp(-0.18 - Math.max(0, -a) * stride * 0.7 - 0.25 * mb, -0.75, sit), -0.35, ride);
+      j.shX[i] = THREE.MathUtils.lerp(sh, -0.95, this.reachBlend);
+      j.elbow[i] = THREE.MathUtils.lerp(el, -0.5, this.reachBlend);
     }
 
     // ---- activity overlay ----

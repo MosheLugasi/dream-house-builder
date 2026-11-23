@@ -25,7 +25,12 @@ import { APPLIANCES } from './items/appliances';
 import { ENTERTAINMENT } from './items/entertainment';
 import { SPORTS } from './items/sports';
 import { PETS } from './items/pets';
+import { BACKYARD } from './items/backyard';
+import { STRUCTURE } from './items/structure';
 import { PLAYGROUND } from './items/playground';
+import { STREET } from './items/street';
+import { PUBLIC } from './items/public';
+import { VEHICLES } from './items/vehicles';
 
 export * from './types';
 
@@ -54,6 +59,11 @@ function wrap(raw: FurnitureDef): FurnitureDef {
     ...raw,
     build(ctx: BuildContext): THREE.Object3D {
       const colors = resolveColors(raw, ctx?.colors);
+      if (raw.noBake) {
+        const fresh = raw.build({ ...ctx, colors });
+        fresh.userData.furnitureId = raw.id;
+        return fresh;
+      }
       const key = `${raw.id}|${(raw.colors ?? []).map((s) => colors[s.key]).join(',')}`;
       let tpl = templates.get(key);
       if (!tpl) {
@@ -105,7 +115,12 @@ const RAW: FurnitureDef[] = [
   ...SPORTS,
   ...PETS,
   ...OUTDOOR,
+  ...BACKYARD,
+  ...STRUCTURE,
   ...PLAYGROUND,
+  ...STREET,
+  ...PUBLIC,
+  ...VEHICLES,
 ];
 
 if (import.meta.env?.DEV) {

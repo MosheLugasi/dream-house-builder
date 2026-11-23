@@ -25,7 +25,12 @@ export type FurnitureCategory =
   | 'entertainment'
   | 'sports'
   | 'pets'
-  | 'outdoor';
+  | 'outdoor'
+  | 'structure'
+  | 'playground'
+  | 'street'
+  | 'public'
+  | 'vehicle';
 
 export interface ColorSlot {
   /** key used in the `colors` record passed to build/draw2d */
@@ -142,6 +147,53 @@ export interface ActionSpec {
 export interface BuildContext {
   /** resolved colors: every ColorSlot key is present */
   colors: Record<string, string>;
+  /** floor-to-floor height (m); only meaningful for stairs */
+  rise?: number;
+}
+
+/** Stairs connect the level they stand on with the level above. Geometry lives in model/stairs.ts. */
+export interface StairSpec {
+  type: 'straight' | 'u';
+}
+
+/**
+ * A vehicle the character can ride or drive in walk mode.
+ *
+ * The object returned by `build` must NOT be baked (set `noBake: true`) and must expose its moving
+ * parts through `object.userData.wheels`: an array of `WheelPart`. The vehicle drives towards
+ * local +Z; wheels roll around their local X axis.
+ */
+export interface VehicleSpec {
+  kind: 'bicycle' | 'scooter' | 'car' | 'bus' | 'other';
+  /** top speed, m/s */
+  maxSpeed: number;
+  /** m/s² */
+  acceleration: number;
+  /** distance between front and rear axle, m */
+  wheelbase: number;
+  /** maximum steering angle of the front wheel(s), radians */
+  maxSteer: number;
+  /** collision radius around the vehicle's center, m */
+  radius: number;
+  /**
+   * Where the rider's hips go (local coords, y = height of the seat surface above the ground) and how
+   * the rider is posed: 'ride' = on a saddle leaning to the handlebar, pedalling; 'sit' = seated
+   * upright and visible (open or glazed cabin); 'stand' = standing on a deck (kick scooter).
+   */
+  rider: { x: number; y: number; z: number; pose: 'ride' | 'sit' | 'stand' };
+  /** preferred chase-camera distance, m */
+  cameraDistance?: number;
+  /** Hebrew verb phrase for the prompt, e.g. "לרכוב על האופניים" / "לנהוג במכונית" */
+  prompt: string;
+}
+
+export interface WheelPart {
+  /** node that spins around its local X axis as the vehicle rolls */
+  spin: THREE.Object3D;
+  /** wheel radius, m */
+  radius: number;
+  /** optional node that yaws (rotation.y) with the steering angle; the spin node is usually inside it */
+  steer?: THREE.Object3D;
 }
 
 export interface FurnitureDef {
@@ -166,6 +218,13 @@ export interface FurnitureDef {
   group?: string;
   /** extra Hebrew search words (materials, styles, synonyms) */
   tags?: string[];
+  stair?: StairSpec;
+  vehicle?: VehicleSpec;
+  /**
+   * true = hand out a freshly built, un-merged object on every `build` call (needed when parts move
+   * or when the geometry depends on more than the colors). Default: baked + cached per color set.
+   */
+  noBake?: boolean;
   /** Build the 3D object. Meshes should set castShadow/receiveShadow. */
   build(ctx: BuildContext): THREE.Object3D;
   /** Draw the plan symbol (see conventions above). Caller sets up transform; lineWidth is in meters. */
@@ -187,4 +246,9 @@ export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
   sports: 'ספורט ומשחק',
   pets: 'חיות מחמד',
   outdoor: 'חוץ וגינה',
+  structure: 'מדרגות',
+  playground: 'גן שעשועים',
+  street: 'רחוב',
+  public: 'מבני ציבור',
+  vehicle: 'כלי רכב',
 };

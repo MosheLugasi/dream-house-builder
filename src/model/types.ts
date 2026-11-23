@@ -68,28 +68,61 @@ export interface Level {
   roomStyles: RoomStyle[];
 }
 
+export type RoofType = 'flat' | 'gable' | 'hip' | 'shed' | 'none';
+
+export interface Roof {
+  type: RoofType;
+  finish: string;
+  /** slope in degrees (pitched roofs) */
+  pitch?: number;
+  /** eave overhang beyond the walls, meters (pitched roofs) */
+  overhang?: number;
+}
+
 export interface Building {
   id: string;
   name: string;
+  /** free label such as 'house' | 'school' | 'shop' – only used for display */
+  kind?: string;
+  /** position of the building's local origin on the site, and rotation (plan angle, radians) */
+  x: number;
+  y: number;
+  rotation: number;
   /** finish id for wall sides that face outdoors */
   exterior: string;
   /** default finishes for rooms that have no explicit style */
   defaultFloor: string;
   defaultWall: string;
-  roof: { type: 'flat' | 'none'; finish: string };
+  roof: Roof;
+  /** bottom to top; stairs are furniture items (catalog `stair`) of the level they start on */
   levels: Level[];
+}
+
+/** A rectangular patch of ground cover (park lawn, plaza, playground surface, pond…), site coordinates. */
+export interface SiteArea {
+  id: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  finish: string;
 }
 
 export interface Site {
   /** ground finish id */
   ground: string;
-  /** half-size of the square lot, meters */
+  /** half-size of the square neighborhood, meters */
   size: number;
+  /** road cells on a ROAD_CELL grid: [i, j] covers [i*C, (i+1)*C] x [j*C, (j+1)*C] */
+  roads: [number, number][];
+  areas: SiteArea[];
+  /** street furniture, trees, playground equipment and vehicles, in site coordinates */
+  props: FurnitureItem[];
 }
 
 export interface Project {
   format: 'dream-house-builder';
-  version: 1;
+  version: 2;
   id: string;
   name: string;
   createdAt: number;
@@ -101,6 +134,40 @@ export interface Project {
 export const DEFAULT_WALL_THICKNESS = 0.15;
 export const EXTERIOR_WALL_THICKNESS = 0.25;
 export const DEFAULT_LEVEL_HEIGHT = 2.7;
+/** thickness of the floor slab between two levels */
+export const SLAB = 0.3;
+/** size of one road grid cell, meters (6 m of asphalt + a 2 m sidewalk on each side) */
+export const ROAD_CELL = 10;
+export const ROAD_SIDEWALK = 2;
+
+/**
+ * Buildings stand on a low plinth so that their floors never fight for depth with the ground
+ * plane right under them.
+ */
+export const BUILDING_BASE = 0.04;
+
+/** Height of a level's floor above the ground. */
+export function levelElevation(building: Building, index: number): number {
+  let y = BUILDING_BASE;
+  for (let i = 0; i < index && i < building.levels.length; i++) y += building.levels[i].height + SLAB;
+  return y;
+}
+
+/** Building-local plan point -> site coordinates. */
+export function toSite(b: Pick<Building, 'x' | 'y' | 'rotation'>, p: Vec2): Vec2 {
+  const c = Math.cos(b.rotation);
+  const s = Math.sin(b.rotation);
+  return { x: b.x + p.x * c - p.y * s, y: b.y + p.x * s + p.y * c };
+}
+
+/** Site coordinates -> building-local plan point. */
+export function toLocal(b: Pick<Building, 'x' | 'y' | 'rotation'>, p: Vec2): Vec2 {
+  const c = Math.cos(b.rotation);
+  const s = Math.sin(b.rotation);
+  const dx = p.x - b.x;
+  const dy = p.y - b.y;
+  return { x: dx * c + dy * s, y: -dx * s + dy * c };
+}
 
 let idCounter = 0;
 export function newId(prefix: string): string {

@@ -1059,4 +1059,61 @@ kbd {
 .look-editor {
   min-width: 0;
   width: 380px;
+/* ---- levels ---- */
+.level-bar {
+  position: absolute;
+  bottom: 56px;
+  inset-inline-end: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow);
+}
+.level-bar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 92px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.level-bar button:hover {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.level-bar button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.level-bar .level-add {
+  color: var(--accent-dark);
+  border: 1.5px dashed #e7b89f;
+}
+.level-bar .level-remove {
+  color: #b3402e;
+}
+.wide {
+  grid-column: 1 / -1;
+}
+.card .tpl-thumb {
+  width: 100%;
+  aspect-ratio: 1.25;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+}
+.btn.block {
+  display: flex;
+  width: 100%;
+  margin: 10px 0;
 }
