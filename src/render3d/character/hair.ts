@@ -187,7 +187,7 @@ export function buildHair(b: Builder, h: HeadCtx, style: HairStyle, cap: boolean
     return info;
   }
 
-  const ts = [0.16, 0.32, 0.48, 0.64, 0.8, 0.92, 1.0];
+  const ts = [0.07, 0.18, 0.33, 0.48, 0.64, 0.8, 0.92, 1.0];
 
   if (style === 'short') {
     const line = curve([
@@ -237,7 +237,7 @@ export function buildHair(b: Builder, h: HeadCtx, style: HairStyle, cap: boolean
     ]);
     hairCap(b, h, {
       NA: 36,
-      ts: [0.12, 0.24, 0.36, 0.48, 0.6, 0.72, 0.84, 0.94, 1.0],
+      ts: [0.06, 0.14, 0.25, 0.36, 0.48, 0.6, 0.72, 0.84, 0.94, 1.0],
       cap,
       uRepeat: 3,
       line: (th) => line(Math.abs(th))[0],
@@ -440,7 +440,7 @@ export function buildHair(b: Builder, h: HeadCtx, style: HairStyle, cap: boolean
           const sw = smooth(0.35, 0.8, q);
           return [B.head, hw, B.chest, (1 - hw) * (1 - sw), bone, (1 - hw) * sw];
         },
-        22,
+        16,
         7,
         (q) => 0.012 * u * Math.sin(q * Math.PI * 7) * sx,
       );

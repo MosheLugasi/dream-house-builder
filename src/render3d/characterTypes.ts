@@ -20,6 +20,8 @@ export interface CharacterLook {
   eyes?: string;
   /** color of the cap / backpack / bow (optional; derived from the top color when missing) */
   accessoryColor?: string;
+  /** stature in meters (optional): scales the body type uniformly; its natural height when missing */
+  height?: number;
 }
 
 export const DEFAULT_LOOK: CharacterLook = {
@@ -36,6 +38,65 @@ export const DEFAULT_LOOK: CharacterLook = {
 };
 
 export type Pose = 'stand' | 'sit' | 'lie' | 'ride';
+
+/** Body animations layered over the base pose (looping until changed, except the one-shots: kick, shoot, throw, jump, flip, call). */
+export type Activity =
+  | 'none'
+  | 'wave'
+  | 'dance'
+  | 'clap'
+  | 'cheer'
+  | 'jump'
+  | 'type'
+  | 'piano'
+  | 'guitar'
+  | 'drums'
+  | 'cook'
+  | 'eat'
+  | 'drink'
+  | 'read'
+  | 'run'
+  | 'pedal'
+  | 'row'
+  | 'lift'
+  | 'punch'
+  | 'yoga'
+  | 'stretch'
+  | 'bounce'
+  | 'swing'
+  | 'kick'
+  | 'shoot'
+  | 'throw'
+  | 'pet'
+  | 'sleep'
+  | 'game'
+  | 'play'
+  | 'wash'
+  | 'feed'
+  | 'slide'
+  | 'call'
+  | 'photo'
+  | 'flip';
+
+/** Things held in the hands (the guitar hangs in front of the chest; dumbbells are in both hands). */
+export type Prop = 'book' | 'cup' | 'apple' | 'guitar' | 'controller' | 'dart' | 'dumbbells' | 'spoon' | 'phone' | 'ball' | 'paddle' | 'cue' | 'mic' | 'none';
+
+/**
+ * The older, simpler appearance model (still found in saved data and accepted by `Character.setLook`):
+ * convert with `normalizeLook`.
+ */
+export interface LegacyLook {
+  height: number;
+  skin: string;
+  hair: string;
+  shirt: string;
+  pants: string;
+  shoes: string;
+  longHair: boolean;
+  hairStyle?: HairStyle;
+  skirt?: boolean;
+  glasses?: boolean;
+}
 /** One-shot animations layered on top of the current pose. */
 export type Gesture = 'wave' | 'cheer' | 'pet' | 'kick';
 

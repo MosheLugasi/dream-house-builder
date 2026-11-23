@@ -143,6 +143,7 @@ export class Builder {
   private idx: Record<Slot, number[]> = Object.fromEntries(SLOTS.map((s) => [s, [] as number[]])) as Record<Slot, number[]>;
   private seams: [number, number][] = [];
   private fixedN = new Map<number, [number, number, number]>();
+  private blendN = new Map<number, [number, number, number, number]>();
   /** mirror X of everything added while set (used to build the right-hand side from the left) */
   mirror = false;
 
@@ -181,6 +182,12 @@ export class Builder {
   normal(i: number, x: number, y: number, z: number): void {
     const l = Math.hypot(x, y, z) || 1;
     this.fixedN.set(i, [(this.mirror ? -x : x) / l, y / l, z / l]);
+  }
+
+  /** Pull the shading normal of a vertex towards a direction (weight 0..1), after normals are computed. */
+  normalBlend(i: number, x: number, y: number, z: number, w: number): void {
+    const l = Math.hypot(x, y, z) || 1;
+    this.blendN.set(i, [(this.mirror ? -x : x) / l, y / l, z / l, w]);
   }
 
   /** Make two coincident vertices share one averaged normal. */
@@ -241,7 +248,11 @@ export class Builder {
    */
   sheet(slot: Slot, rows: number[][], towards: [number, number, number]): void {
     let flip = false;
-    outer: for (let i = 0; i < rows.length - 1; i++) {
+    // sample the quads from the middle outwards: edges are often degenerate or folded
+    const mi = Math.floor((rows.length - 1) / 2);
+    const mj = Math.floor((rows[0].length - 1) / 2);
+    let best = 0;
+    for (let i = 0; i < rows.length - 1; i++) {
       for (let j = 0; j < rows[i].length - 1; j++) {
         const a = this.p(rows[i][j]);
         const b = this.p(rows[i + 1][j]);
@@ -250,11 +261,14 @@ export class Builder {
         const e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
         const l = Math.hypot(n[0], n[1], n[2]);
-        if (l < 1e-12) continue;
+        if (l < 1e-14) continue;
+        // prefer large triangles near the middle of the sheet
+        const score = l / (1 + Math.abs(i - mi) + Math.abs(j - mj));
+        if (score <= best) continue;
+        best = score;
         // stored positions are mirrored and `tri` swaps the winding, which cancels out for the test below
         const d = (this.mirror ? -1 : 1) * (n[0] * (this.mirror ? -towards[0] : towards[0]) + n[1] * towards[1] + n[2] * towards[2]);
         flip = d < 0;
-        break outer;
       }
     }
     this.loft(slot, rows, flip);
@@ -298,6 +312,13 @@ export class Builder {
       const l = Math.hypot(x, y, z) || 1;
       nrm.setXYZ(a, x / l, y / l, z / l);
       nrm.setXYZ(b, x / l, y / l, z / l);
+    }
+    for (const [i, n] of this.blendN) {
+      const x = nrm.getX(i) * (1 - n[3]) + n[0] * n[3];
+      const y = nrm.getY(i) * (1 - n[3]) + n[1] * n[3];
+      const z = nrm.getZ(i) * (1 - n[3]) + n[2] * n[3];
+      const l = Math.hypot(x, y, z) || 1;
+      nrm.setXYZ(i, x / l, y / l, z / l);
     }
     for (const [i, n] of this.fixedN) nrm.setXYZ(i, n[0], n[1], n[2]);
     return g;

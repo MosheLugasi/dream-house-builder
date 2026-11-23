@@ -397,7 +397,7 @@ export class AmbienceSynth {
       if (now >= c.next) {
         const resting = r() < 0.22;
         c.level = resting ? 0 : rr(r, 0.35, 1);
-        c.gain.gain.setTargetAtTime(c.level * 0.22, now, resting ? 0.4 : 1.2);
+        c.gain.gain.setTargetAtTime(c.level * 0.15, now, resting ? 0.4 : 1.2);
         c.next = now + (resting ? rr(r, 1.5, 4) : rr(r, 3, 9));
       }
     }
@@ -433,7 +433,7 @@ export class AmbienceSynth {
         break;
       }
     }
-    const v = new Voice(g, t);
+    const v = b.patch.adopt(new Voice(g, t));
     const dist = r(); // 0 near … 1 far
     const level = v.gain((0.02 + 0.07 * Math.pow(1 - dist, 2)) * (bird.level ?? 1));
     const air = v.bq('lowpass', 7500 - 4200 * dist, 0.5);
@@ -444,7 +444,7 @@ export class AmbienceSynth {
   private spawnNight(b: Bed, t: number): void {
     const g = this.g;
     const r = g.rng;
-    const v = new Voice(g, t, r() < 0.5 ? 1 : 0.9);
+    const v = b.patch.adopt(new Voice(g, t, r() < 0.5 ? 1 : 0.9));
     const far = v.bq('lowpass', 1100, 0.5);
     const level = v.gain(1);
     chain(far, level, v.pan(rr(r, -0.7, 0.7)), b.night);

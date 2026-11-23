@@ -53,10 +53,10 @@ function getGeometry(b: Breed, rig: Rig, colors: Record<string, string>): { key:
       }
     }
     const built = buildPetGeometry(b, rig, colors);
-    // generous static bounds: the skinned pose never leaves them
-    const r = Math.max(b.h * 2.2, 0.5);
-    built.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, b.h * 0.6, 0), r);
-    built.geometry.boundingBox = new THREE.Box3(new THREE.Vector3(-r, 0, -r), new THREE.Vector3(r, r * 1.3, r));
+    // static bounds: a generous sphere for culling (the skinned pose never leaves it) and the tight box of
+    // the standing pose for framing / selection (SkinnedMesh would otherwise re-skin every vertex to get them)
+    built.geometry.computeBoundingBox();
+    built.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, b.h * 0.6, 0), Math.max(b.h * 2.2, 0.5));
     e = { geometry: built.geometry, triangles: built.triangles, refs: 0 };
     geoCache.set(key, e);
   }
@@ -132,7 +132,10 @@ interface LegRig {
   /** inverse (transpose) of the rest bases of the two upper segments */
   m1: THREE.Matrix4;
   m2: THREE.Matrix4;
-  poleZ: number;
+  /** +1: the middle joint bends backwards (elbow), -1: forwards (knee) */
+  bend: number;
+  /** clearance the middle joint keeps above the ground */
+  jointR: number;
 }
 
 const _a = new THREE.Vector3();
@@ -141,7 +144,6 @@ const _d = new THREE.Vector3();
 const _k = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const _pp = new THREE.Vector3();
-const _pole = new THREE.Vector3();
 const _t = new THREE.Vector3();
 const _x = new THREE.Vector3();
 const _m = new THREE.Matrix4();
@@ -149,8 +151,13 @@ const _e = new THREE.Euler();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
 
-/** two-bone IK: finds the middle joint; `c` is pulled into reach. Returns the bend-plane normal in `n`. */
-function solve2(a: THREE.Vector3, c: THREE.Vector3, L1: number, L2: number, pole: THREE.Vector3, knee: THREE.Vector3, n: THREE.Vector3): void {
+/**
+ * Two-bone IK: finds the middle joint; `c` is pulled into reach. The joint bends towards the leg
+ * direction turned a quarter turn in the sagittal plane (`bend` = +1: backwards like an elbow,
+ * -1: forwards like a knee) plus the sideways / upward bias (ex, ey) – a rule that never flips,
+ * however far the leg reaches forward or back. Returns the bend-plane normal in `n`.
+ */
+function solve2(a: THREE.Vector3, c: THREE.Vector3, L1: number, L2: number, bend: number, ex: number, ey: number, minY: number, knee: THREE.Vector3, n: THREE.Vector3): void {
   _d.subVectors(c, a);
   let dist = _d.length();
   const maxR = (L1 + L2) * 0.9985;
@@ -166,11 +173,29 @@ function solve2(a: THREE.Vector3, c: THREE.Vector3, L1: number, L2: number, pole
   _d.subVectors(c, a).divideScalar(dist);
   const cosA = clamp((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist), -1, 1);
   const sinA = Math.sqrt(1 - cosA * cosA);
-  _pp.copy(pole).addScaledVector(_d, -pole.dot(_d));
-  if (_pp.lengthSq() < 1e-10) _pp.set(0, 0, 1);
+  // (the small constant term keeps the direction well defined when the leg is folded up sideways)
+  _pp.set(ex, ey - bend * _d.z, bend * _d.y - bend * 0.2);
+  _pp.addScaledVector(_d, -_pp.dot(_d));
+  if (_pp.lengthSq() < 1e-10) _pp.set(0, 0, -bend);
   _pp.normalize();
-  knee.copy(a).addScaledVector(_d, L1 * cosA).addScaledVector(_pp, L1 * sinA);
   n.crossVectors(_d, _pp).normalize();
+  // keep the joint above `minY`: swing it around the hip–ankle line by the smallest angle that clears the ground
+  const rho = L1 * sinA;
+  const my = a.y + _d.y * L1 * cosA;
+  if (my + rho * _pp.y < minY && rho > 1e-5) {
+    const A = Math.hypot(_pp.y, n.y);
+    if (A > 1e-5) {
+      const th0 = Math.atan2(n.y, _pp.y);
+      const q = clamp((minY - my) / (rho * A), -1, 1);
+      const th = th0 - Math.sign(th0 || 1) * Math.acos(q);
+      const cs = Math.cos(th);
+      const sn = Math.sin(th);
+      _x.copy(_pp).multiplyScalar(cs).addScaledVector(n, sn);
+      n.multiplyScalar(cs).addScaledVector(_pp, -sn);
+      _pp.copy(_x);
+    }
+  }
+  knee.copy(a).addScaledVector(_d, L1 * cosA).addScaledVector(_pp, rho);
 }
 
 /** rotation whose columns are (n, d, n × d) */
@@ -178,9 +203,6 @@ function basis(n: THREE.Vector3, d: THREE.Vector3, out: THREE.Matrix4): THREE.Ma
   _x.crossVectors(n, d);
   return out.makeBasis(n, d, _x);
 }
-
-/** the middle joint (elbow / knee) bends towards (0, POLE_Y, ∓1): stable for legs reaching far forward or back */
-const POLE_Y = -0.5;
 
 let instanceCounter = 0;
 
@@ -276,7 +298,6 @@ export class Pet implements PetRuntime {
     this.root.add(mesh);
 
     // ---- leg rigs
-    const pole = new THREE.Vector3();
     for (let l = 0; l < 4; l++) {
       const front = l < 2;
       const side = l % 2 === 0 ? 1 : -1;
@@ -285,12 +306,11 @@ export class Pet implements PetRuntime {
       const L1 = J[0].distanceTo(J[1]);
       const L2 = J[1].distanceTo(J[2]);
       const L3 = J[2].distanceTo(J[3]);
-      const poleZ = front ? -1 : 1;
-      pole.set(0, POLE_Y, poleZ);
+      const bend = front ? 1 : -1;
       const c = J[2].clone();
       const knee = new THREE.Vector3();
       const n = new THREE.Vector3();
-      solve2(J[0], c, L1, L2, pole, knee, n);
+      solve2(J[0], c, L1, L2, bend, 0, 0, -1, knee, n);
       const d1 = J[1].clone().sub(J[0]).normalize();
       const d2 = J[2].clone().sub(J[1]).normalize();
       this.legs.push({
@@ -307,7 +327,8 @@ export class Pet implements PetRuntime {
         rest: J,
         m1: basis(n, d1, new THREE.Matrix4()).transpose(),
         m2: basis(n, d2, new THREE.Matrix4()).transpose(),
-        poleZ,
+        bend,
+        jointR: (front ? 0.04 : 0.042) * b.legR,
       });
     }
     this.legLen = b.front.j[0][1];
@@ -424,9 +445,12 @@ export class Pet implements PetRuntime {
     const j = new THREE.Vector3();
     this.jointFor(p, fl, j);
     // sphinx: elbow on the ground behind the shoulder, forearm flat on the ground
-    const dy = Math.max(0, j.y - fl.hp);
-    const back = Math.sqrt(Math.max(0, fl.L1 * fl.L1 - dy * dy));
-    p.front = { x: fl.rest[3].x * (cat ? 0.8 : 1.0), z: j.z - back + (fl.L2 + fl.L3) * (cat ? 0.9 : 0.985), phi: 1.5, poleX: cat ? 0.5 : 0.15, poleY: -0.7, yaw: 0 };
+    const elbowY = Math.max(fl.hp, 0.05 * b.legR);
+    const phiF = 1.5;
+    const wristY = fl.hp + fl.L3 * Math.cos(phiF);
+    const back = Math.sqrt(Math.max(0, fl.L1 * fl.L1 - (j.y - elbowY) ** 2));
+    const fore = Math.sqrt(Math.max(0, fl.L2 * fl.L2 - (elbowY - wristY) ** 2));
+    p.front = { x: fl.rest[3].x * (cat ? 0.8 : 1.0), z: j.z - back + (fore + fl.L3 * Math.sin(phiF)) * (cat ? 0.92 : 0.995), phi: phiF, poleX: cat ? 0.5 : 0.15, poleY: -0.2, yaw: 0 };
     this.jointFor(p, hl, j);
     // folded flat beside the body: hock a little outside and behind the hip, knee forward and out
     const k = hl.L1;
@@ -464,18 +488,21 @@ export class Pet implements PetRuntime {
     const move = sstep(0.03, 0.4, v);
     const Fr = v / Math.sqrt(9.81 * this.legLen);
     const gaitT = sstep(b.anim.trotAt - 0.25, b.anim.trotAt + 0.25, v) + sstep(b.anim.gallopAt - 0.45, b.anim.gallopAt + 0.45, v);
-    this.gait = damp(this.gait, gaitT, 5, dt);
+    this.gait = damp(this.gait, gaitT, 12, dt);
     const g = this.gait;
     const g01 = clamp(g, 0, 1);
     const g12 = clamp(g - 1, 0, 1);
     const duty = g <= 1 ? lerp(0.62, 0.46, g01) : lerp(0.46, 0.27, g12);
     let stride = this.legLen * (0.95 + 0.95 * Fr + 0.09 * Fr * Fr);
     const drop = this.legLen * (cat ? 0.05 + 0.05 * Math.min(1, Fr) : 0.02 + 0.045 * Math.min(1.2, Fr)) * move;
-    if (stride * duty > this.maxStance) stride = this.maxStance / duty;
-    const freq = v / stride;
+    const maxL = this.maxStance * (1 - 0.12 * g12);
+    if (stride * duty > maxL) stride = maxL / duty;
+    // below a slow amble the steps get shorter instead of slower, so starting and stopping never pops
+    stride *= Math.min(1, v / (0.9 * this.legLen));
+    const freq = v > 1e-3 ? v / stride : 0;
     this.phase = frac(this.phase + freq * dt);
     const ph = this.phase;
-    const L = v > 1e-4 ? stride * duty : 0;
+    const L = v > 1e-3 ? stride * duty : 0;
     // phase offsets: FL, FR, HL, HR
     const off = (walk: number, trot: number, gal: number) => (g <= 1 ? lerp(walk, trot, g01) : lerp(trot, gal, g12));
     const offs = [off(0.25, 0.5, 0.52), off(0.75, 1.0, 0.64), 0, off(0.5, 0.5, 0.12)];
@@ -488,8 +515,10 @@ export class Pet implements PetRuntime {
       w[1] = damp(w[1], w[0], rate, dt);
       return w[1];
     };
-    const wSit = two(this.wSit, mood === 'sit' && speed < 0.05 ? 1 : 0, 7.5);
-    const wLie = two(this.wLie, mood === 'lie' && speed < 0.05 ? 1 : 0, 6.5);
+    // (getting up is quicker when the pet has to start moving)
+    const hurry = speed > 0.05 ? 2 : 1;
+    const wSit = two(this.wSit, mood === 'sit' && speed < 0.05 ? 1 : 0, 7.5 * hurry);
+    const wLie = two(this.wLie, mood === 'lie' && speed < 0.05 ? 1 : 0, 6.5 * hurry);
     const wHappy = two(this.wHappy, mood === 'happy' ? 1 : 0, 8);
     const wDown = clamp(wSit + wLie, 0, 1);
     const wStand = 1 - wDown;
@@ -569,27 +598,27 @@ export class Pet implements PetRuntime {
     // gait oscillators
     const bobF = Math.cos(2 * TAU * (lp[0] - duty / 2));
     const bobH = Math.cos(2 * TAU * (lp[2] - duty / 2));
-    const bobAmp = this.legLen * lerp(0.022, -0.03, g01) * (1 - g12) * move;
+    const bobAmp = this.legLen * lerp(0.022, -0.03, g01) * (1 - g12) * move * wStand;
     const flex = Math.cos(TAU * (ph - 0.9));
-    const G = g12 * move;
+    const G = g12 * move * wStand;
     const galY = G * this.legLen * (0.07 * Math.cos(TAU * (ph - 0.95)) + 0.03 * Math.cos(2 * TAU * (ph - 0.45)));
-    const swayAmp = move * (1 - 0.45 * g01) * (1 - 0.8 * g12);
+    const swayAmp = move * wStand * (1 - 0.45 * g01) * (1 - 0.8 * g12);
 
     let pelX = 0.012 * K * swayAmp * Math.cos(TAU * (lp[2] - duty / 2)) + rub * 0.03 * K * rubS;
     let pelY = P.pelY - drop * wStand + bobAmp * bobH + galY;
     const pelZ = P.pelZ;
-    let pelPitch = P.pelPitch + G * 0.3 * flex;
+    let pelPitch = P.pelPitch + G * (cat ? 0.4 : 0.3) * flex;
     let pelYaw = -0.075 * swayAmp * Math.cos(TAU * lp[2]) * (cat ? 1.3 : 1);
     const pelRoll = -0.03 * swayAmp * Math.cos(TAU * (lp[2] - (1 + duty) / 2));
     let spineAng = this.spineAng0 + P.spineAng + G * 0.075 * Math.cos(TAU * (ph - 0.12)) + hop * 0.11;
     let chestPitch = P.chestPitch - G * 0.12 * flex + hop * 0.1;
     let chestYaw = -0.05 * swayAmp * Math.cos(TAU * lp[0]);
     const chestRoll = -0.025 * swayAmp * Math.cos(TAU * (lp[0] - (1 + duty) / 2)) + rub * 0.12 * rubS;
-    let arch = G * 0.035 * flex * this.spineLen;
-    let chestDY = (bobAmp * bobF - bobAmp * bobH) * 1.0;
+    let arch = G * (cat ? 0.06 : 0.035) * flex * this.spineLen;
+    let chestDY = bobAmp * (bobF - bobH);
     let spineYaw = 0;
     // happy wag wiggles the hips
-    this.wag = damp(this.wag, cat ? 0 : Math.max(wHappy, 0.0), 6, dt);
+    this.wag = damp(this.wag, cat ? 0 : wHappy, 6, dt);
     const wagF = cat ? 0 : lerp(1.2, 5.6, this.wag);
     this.wagPhase += dt * TAU * wagF;
     const wagS = Math.sin(this.wagPhase);
@@ -629,7 +658,10 @@ export class Pet implements PetRuntime {
     spine.scale.set(1 + (breathScale - 1) * 0.6, 1 + (breathScale - 1) * 0.6, 1);
 
     /* ---- legs */
-    const amp = sstep(0.02, 0.35, v);
+    // steps only as far as the pet is on its feet (it may be told to move while still getting up)
+    const up = wStand * wStand;
+    const amp = sstep(0.02, 0.35, v) * up;
+    const ampP = amp;
     const liftH = this.legLen * (cat ? 0.1 + 0.07 * Fr : 0.1 + 0.085 * Fr) * amp;
     const kSwing = Math.min((1 - duty) / duty, 1.0);
     for (let l = 0; l < 4; l++) {
@@ -649,23 +681,24 @@ export class Pet implements PetRuntime {
       const zc = L * (leg.front ? 0.2 + 0.1 * g12 : 0.1 + 0.3 * g12);
       if (p < duty) {
         const s = p / duty;
-        dz = zc + L * (0.5 - s);
+        dz = (zc + L * (0.5 - s)) * up;
         const offT = sstep(0.72, 1, s);
-        phi += amp * (0.1 * (1 - sstep(0, 0.3, s)) - 0.45 * offT);
-        psi = amp * 0.55 * offT;
+        phi += ampP * (0.1 * (1 - sstep(0, 0.3, s)) - 0.45 * offT);
+        psi = ampP * 0.55 * offT;
       } else {
         const s = (p - duty) / (1 - duty);
         const s2 = s * s;
         const s3 = s2 * s;
         const hz = 3 * s2 - 2 * s3 - kSwing * (s3 - 2 * s2 + s + s3 - s2);
-        dz = zc + L * (hz - 0.5);
+        dz = (zc + L * (hz - 0.5)) * up;
         const bell = Math.sin(Math.PI * Math.pow(s, 0.8)) ** 2;
         const early = 1 - sstep(0, 0.45, s);
         // hind paws stay lower (a tightly folded hind leg would push the knee above the hip)
         lift = liftH * bell * (leg.front ? 1 : 0.85 - 0.35 * g12);
-        phi += amp * (-0.45 * early - (leg.front ? 0.85 : 0.6) * Math.sin(Math.PI * Math.pow(s, 0.7)) ** 2 + 0.1 * sstep(0.75, 1, s));
-        psi = amp * (0.55 * early + (leg.front ? 0.9 : 0.7) * Math.sin(Math.PI * Math.pow(s, 0.65)) ** 2);
+        phi += ampP * (-0.45 * early - (leg.front ? 0.85 : 0.6) * Math.sin(Math.PI * Math.pow(s, 0.7)) ** 2 + 0.1 * sstep(0.75, 1, s));
+        psi = ampP * (0.55 * early + (leg.front ? 0.9 : 0.7) * Math.sin(Math.PI * Math.pow(s, 0.65)) ** 2);
       }
+      phi = clamp(phi, -1.45, 1.5);
       // happy hops (front paws)
       if (leg.front) lift += (leg.side > 0 ? hop : hopR) * 0.085 * K;
 
@@ -674,7 +707,7 @@ export class Pet implements PetRuntime {
       const sp = Math.sin(psi);
       const jy = lift + Math.max(hp * cp + b.paw.toe * sp, hp * cp - b.paw.heel * sp);
       const jz = pose.z + dz + (psi >= 0 ? b.paw.toe * (1 - cp) + hp * sp : hp * sp - b.paw.heel * (1 - cp));
-      const jx = pose.x * leg.side + pelX * (leg.front ? 0 : 0) + 0;
+      const jx = pose.x * leg.side;
       const yaw = pose.yaw * leg.side;
       // ankle from the pastern lean (rotated by the paw yaw)
       const sy = Math.sin(yaw);
@@ -684,8 +717,7 @@ export class Pet implements PetRuntime {
       const wantX = _c.x;
       const wantY = _c.y;
       const wantZ = _c.z;
-      _pole.set(pose.poleX * leg.side, POLE_Y + pose.poleY, leg.poleZ);
-      solve2(_a, _c, leg.L1, leg.L2, _pole, _k, _n);
+      solve2(_a, _c, leg.L1, leg.L2, leg.bend, pose.poleX * leg.side, pose.poleY, leg.jointR, _k, _n);
       const upper = bones[leg.bone];
       const lower = bones[leg.bone + 1];
       const pastern = bones[leg.bone + 2];
@@ -764,10 +796,10 @@ export class Pet implements PetRuntime {
     }
 
     /* ---- tail */
-    this.updateTail(dt, wSit, wLie, wHappy, move, g01, g12, pelPitch - S.pelPitch, pelYaw, wagS, ph, lp[2]);
+    this.updateTail(dt, wSit, wLie, wHappy, move, g12, pelPitch - S.pelPitch, pelYaw, lp[2]);
   }
 
-  private updateTail(dt: number, wSit: number, wLie: number, wHappy: number, move: number, g01: number, g12: number, pelPitch: number, pelYaw: number, wagS: number, ph: number, hindPhase: number): void {
+  private updateTail(dt: number, wSit: number, wLie: number, wHappy: number, move: number, g12: number, pelPitch: number, pelYaw: number, hindPhase: number): void {
     const b = this.breed;
     const n = b.tail.n;
     const t = this.time;
@@ -798,7 +830,7 @@ export class Pet implements PetRuntime {
         yaw = (1 - wDown) * (0.1 * u * Math.sin(t * 0.9 + u * 2.4) + move * 0.07 * Math.sin(TAU * hindPhase - u * 2.5));
         yaw += wHappy * 0.05 * Math.sin(t * 21 + i * 0.7) * u;
         // sitting / lying: the tail curls around the body
-        yaw += wDown * (1 - 0.5 * wHappy) * (0.2 + 0.26 * u + 0.04 * Math.sin(t * 0.7 + u * 3) * u);
+        yaw += wDown * (1 - 0.5 * wHappy) * (0.26 + 0.3 * u + 0.04 * Math.sin(t * 0.7 + u * 3) * u);
       } else {
         const walk = rest + (short ? 0.1 : 0.32 - 0.1 * u);
         const run = short ? rest - 0.5 : lerp(0.0, 0.12, u);
@@ -809,13 +841,10 @@ export class Pet implements PetRuntime {
         // slow idle sway, counter-swing with the hind legs, and the wag: a wave travelling to the tip
         const idle = 0.1 * Math.sin(t * 1.4 - u * 1.6) * (1 - move) * (1 - this.wag);
         const sway = move * (0.12 - 0.07 * g12) * Math.sin(TAU * hindPhase + 1.2 - u * 1.8);
-        const wagA = this.wag * (short ? 0.5 : 0.34) * (0.55 + 0.6 * u);
+        const wagA = this.wag * (short ? 0.55 : 0.46) * (0.55 + 0.6 * u);
         yaw = idle + sway + wagA * Math.sin(this.wagPhase - u * 1.9 - 0.4);
-        void wagS;
       }
       target -= pelPitch * (1 - 0.6 * u) * (1 - wDown);
-      void g01;
-      void ph;
       this.tailPitch[i] = dt > 0 ? damp(this.tailPitch[i], target, rate, dt) : target;
       this.tailYaw[i] = dt > 0 ? damp(this.tailYaw[i], yaw, 14, dt) : yaw;
       yawAcc += this.tailYaw[i];

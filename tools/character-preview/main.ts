@@ -18,7 +18,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Character } from '/src/render3d/Character.ts';
-import { DEFAULT_LOOK, type BodyType, type CharacterLook, type Gesture } from '/src/render3d/characterTypes.ts';
+import { DEFAULT_LOOK, type Activity, type BodyType, type CharacterLook, type Gesture, type Prop } from '/src/render3d/characterTypes.ts';
 import { randomLook } from '/src/render3d/character/options.ts';
 
 const q = new URLSearchParams(location.search);
@@ -41,7 +41,8 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.55;
 const sun = new THREE.DirectionalLight('#fff1dc', 2.6);
-sun.castShadow = true;
+sun.castShadow = q.get('noshadow') !== '1';
+if (q.get('nb')) sun.shadow.normalBias = Number(q.get('nb'));
 sun.shadow.mapSize.set(4096, 4096);
 sun.shadow.bias = -0.0003;
 sun.shadow.normalBias = 0.02;
@@ -261,6 +262,74 @@ if (mode === 'lineup') {
     }
   }
   spacing = 1.05;
+} else if (mode === 'activities') {
+  // every activity of the game's interaction runtime, in the pose / with the prop it is used with
+  type Row = [Activity, { pose?: 'sit' | 'lie'; seat?: number; prop?: Prop; t?: number; strike?: number; lift?: (t: number) => number; box?: [number, number, number] }];
+  const hop = (t: number) => Math.max(0, 2.2 * t - 4.9 * t * t) * 1.6;
+  const list: Row[] = [
+    ['wave', {}],
+    ['dance', { t: 1.3 }],
+    ['clap', { t: 1.05 }],
+    ['cheer', { t: 1.4 }],
+    ['jump', { t: 0.22, lift: hop }],
+    ['type', { pose: 'sit', box: [0.45, 0.45, 0.45] }],
+    ['piano', { pose: 'sit', strike: 1, box: [0.45, 0.45, 0.45] }],
+    ['guitar', { prop: 'guitar', strike: 0 }],
+    ['drums', { pose: 'sit', strike: -1, box: [0.4, 0.45, 0.4] }],
+    ['cook', { prop: 'spoon' }],
+    ['eat', { pose: 'sit', prop: 'apple', t: 1.6, box: [0.45, 0.45, 0.45] }],
+    ['drink', { prop: 'cup', t: 2.0 }],
+    ['read', { pose: 'sit', prop: 'book', box: [0.45, 0.45, 0.45] }],
+    ['run', { t: 1.5 }],
+    ['pedal', { pose: 'sit', seat: 0.8, box: [0.2, 0.8, 0.25] }],
+    ['row', { pose: 'sit', seat: 0.3, t: 1.25, box: [0.3, 0.3, 0.3] }],
+    ['lift', { prop: 'dumbbells', t: 1.4 }],
+    ['punch', { t: 1.02 }],
+    ['yoga', { t: 2 }],
+    ['stretch', { t: 2.2 }],
+    ['bounce', { t: 0.2, lift: (t) => 0.4 + hop(t) }],
+    ['swing', { pose: 'sit', seat: 0.5, box: [0.45, 0.03, 0.2] }],
+    ['kick', { t: 0.3, prop: 'none' }],
+    ['shoot', { t: 0.42, prop: 'ball' }],
+    ['throw', { t: 0.16, prop: 'dart' }],
+    ['pet', { t: 1.5 }],
+    ['sleep', { pose: 'lie', seat: 0.4, box: [0.9, 0.4, 1.9] }],
+    ['game', { prop: 'controller' }],
+    ['play', { prop: 'paddle' }],
+    ['wash', {}],
+    ['feed', {}],
+    ['slide', { pose: 'sit', seat: 0.02 }],
+    ['call', { t: 0.6 }],
+    ['photo', { prop: 'phone' }],
+    ['flip', { t: 0.3, lift: hop }],
+    ['none', { prop: 'mic' }],
+    ['none', { prop: 'cue' }],
+  ];
+  const per = Number(q.get('per') ?? 9);
+  const page = Number(q.get('page') ?? 0);
+  for (const [act, o] of list.slice(page * per, page * per + per)) {
+    const c = new Character(lookOf(body));
+    if (o.pose) c.setPose(o.pose, o.seat ?? 0.45);
+    run(c, 1.2);
+    if (o.prop) c.setProp(o.prop);
+    c.setActivity(act);
+    const T = o.t ?? 1.2;
+    const steps = Math.round(T / DT);
+    for (let i = 0; i < steps; i++) {
+      if (o.lift) c.lift = o.lift(i * DT);
+      if (o.strike !== undefined && i === steps - 4) c.strike(o.strike);
+      c.update(DT, 0);
+    }
+    const props: THREE.Object3D[] = [];
+    if (o.box) {
+      const bx = box(o.box[0], o.box[1], o.box[2], 0, 0, act === 'sleep' ? 0 : -0.03);
+      if (act === 'swing') bx.position.y = (o.seat ?? 0.5) - 0.03;
+      if (act === 'pedal') bx.position.z = -0.12;
+      props.push(bx);
+    }
+    actors.push({ c, label: `${act}${o.prop && o.prop !== 'none' ? ' + ' + o.prop : ''} (${c.getActivity()})`, x: actors.length, props });
+  }
+  spacing = 1.25;
 } else if (mode === 'face') {
   const variants: [string, number, (c: Character) => void][] = [
     ['front', 0, (c) => run(c, 0.2)],
@@ -309,7 +378,8 @@ function skinnedMinY(c: Character): { minY: number; maxY: number } {
     if (!m.isSkinnedMesh) return;
     m.skeleton.update();
     const n = m.geometry.attributes.position.count;
-    for (let i = 0; i < n; i++) {
+    const stride = Number(q.get('vstride') ?? 1);
+    for (let i = 0; i < n; i += stride) {
       m.getVertexPosition(i, v);
       v.applyMatrix4(m.matrixWorld);
       if (v.y < minY) minY = v.y;
@@ -319,7 +389,7 @@ function skinnedMinY(c: Character): { minY: number; maxY: number } {
   return { minY, maxY };
 }
 if (mode === 'metrics') {
-  for (const b of ALL) {
+  for (const b of q.get('only') ? [q.get('only') as BodyType] : ALL) {
     const c = new Character(lookOf(b));
     run(c, 2);
     const idle = skinnedMinY(c);
@@ -330,26 +400,31 @@ if (mode === 'metrics') {
       let hi = -Infinity;
       let steps = 0;
       c.onFootstep = () => steps++;
-      const bones: Record<string, THREE.Object3D> = {};
-      c.root.traverse((o) => ((bones[o.uuid] = o), 0));
-      const toes = (c.root.children[0] as THREE.SkinnedMesh).skeleton.bones.slice(28, 30);
+      let skinned: THREE.SkinnedMesh | null = null;
+      c.root.traverse((o) => {
+        if ((o as THREE.SkinnedMesh).isSkinnedMesh) skinned = o as THREE.SkinnedMesh;
+      });
+      const toes = (skinned as unknown as THREE.SkinnedMesh).skeleton.bones.slice(28, 30);
       // slip: horizontal speed of a planted ball-of-foot relative to the ground while it is low
       let slip = 0;
       let slipN = 0;
       const prev = toes.map(() => new THREE.Vector3());
+      // the ball of a planted foot sits at its rest height (half the sole)
+      const plantY = 0.0165;
       const cur = new THREE.Vector3();
       const dt = 1 / 120;
-      const frames = Math.round(2 / dt);
+      const seconds = Number(q.get('secs') ?? 2);
+      const frames = Math.round(seconds / dt);
       for (let i = 0; i < frames; i++) {
         c.update(dt, speed);
-        if (i % 6 === 0) {
+        if (i % 8 === 0) {
           const mm = skinnedMinY(c);
           lo = Math.min(lo, mm.minY);
           hi = Math.max(hi, mm.minY);
         } else c.root.updateMatrixWorld(true);
         toes.forEach((t, j) => {
           cur.setFromMatrixPosition(t.matrixWorld);
-          if (i > 0 && cur.y < 0.03 && prev[j].y < 0.03) {
+          if (i > 0 && cur.y < plantY && prev[j].y < plantY) {
             // ground speed of the foot = (dz / dt) + body speed; should be 0 while planted
             slip += Math.abs((cur.z - prev[j].z) / dt + speed);
             slipN++;
@@ -358,7 +433,7 @@ if (mode === 'metrics') {
         });
       }
       c.onFootstep = undefined;
-      out[name] = { minYlow: +lo.toFixed(4), minYhigh: +hi.toFixed(4), stepsPerSec: steps / 2, plantedSlip_mps: +(slip / Math.max(1, slipN)).toFixed(4), plantedSamples: slipN };
+      out[name] = { minYlow: +lo.toFixed(4), minYhigh: +hi.toFixed(4), stepsPerSec: steps / seconds, plantedSlip_mps: +(slip / Math.max(1, slipN)).toFixed(4), plantedSamples: slipN };
     }
     metrics[b] = out;
     c.dispose();
@@ -368,6 +443,8 @@ if (mode === 'metrics') {
 
 // ---- layout + camera ----------------------------------------------------------------------------------------------
 const cols = Number(q.get('cols') ?? 99);
+const alignHeads = mode === 'faces';
+const tallest = Math.max(...actors.map((a) => a.c.stats.height), 0);
 let maxH = 0;
 actors.forEach((a, i) => {
   const col = i % cols;
@@ -375,6 +452,7 @@ actors.forEach((a, i) => {
   a.x = col * spacing;
   a.z = -row * 2.2;
   a.c.root.position.set(a.x, 0, a.z);
+  if (alignHeads) a.c.root.position.y = tallest - a.c.stats.height;
   a.c.root.rotation.y = a.yaw ?? baseYaw;
   scene.add(a.c.root);
   for (const p of a.props ?? []) {

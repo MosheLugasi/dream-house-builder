@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { CharacterMotion, Gesture, Pose } from '../characterTypes';
+import type { Activity, CharacterMotion, Gesture, Pose } from '../characterTypes';
 import type { BodyBuild } from './assemble';
 import { B, clamp01, lerp, smooth } from './builder';
 
@@ -50,6 +50,14 @@ const I = {
 
 const TAU = Math.PI * 2;
 const G = 9.81;
+
+/** One-shot activities and their duration (seconds); the others loop until changed. */
+export const ONE_SHOT: Partial<Record<Activity, number>> = { kick: 0.55, shoot: 0.8, throw: 0.6, jump: 0.75, flip: 0.9, call: 1.2 };
+/** activities that change the pose through `overlay` (the rest only drive locomotion / jumping / the eyes) */
+const OVERLAID = new Set<string>([
+  'wave', 'dance', 'clap', 'cheer', 'type', 'piano', 'guitar', 'drums', 'cook', 'eat', 'drink', 'read', 'pedal', 'row', 'lift', 'punch',
+  'yoga', 'stretch', 'swing', 'pet', 'sleep', 'game', 'play', 'wash', 'feed', 'slide', 'photo',
+]);
 
 /** Critically damped spring (implicit integration, stable for any dt). */
 class Spring {
@@ -159,7 +167,23 @@ export class Animator {
   private blinkAt = 1.5;
   private blink = 0;
   private seed: number;
-  private gest: { kind: Gesture; t: number; dur: number } | null = null;
+  private gest: { kind: string; t: number; dur: number } | null = null;
+  /** looping activity requested / the one currently blended in */
+  private loopKind: Activity = 'none';
+  private shown: Activity = 'none';
+  private shownT = 0;
+  private wAct = new Spring(0);
+  /** one-shot activity in progress (reported by `activity`) */
+  private shot: Activity | null = null;
+  private shotLeft = 0;
+  private hit = 0;
+  private hitSide = 0;
+  /** vertical offset of the whole body set by the game (jumps, trampolines, rides) */
+  lift = 0;
+  private prevLift = 0;
+  private liftBase = 0;
+  /** body rotation of a flip in progress (radians about X) */
+  flipAngle = 0;
   private P = new Float32Array(I.N);
   private T = new Float32Array(I.N);
 
@@ -209,6 +233,30 @@ export class Animator {
     this.gest = { kind: g, t: 0, dur };
   }
 
+  get activity(): Activity {
+    return this.shot ?? this.loopKind;
+  }
+
+  /** Start an activity; one-shot ones return to the previous looping activity afterwards. */
+  setActivity(a: Activity): void {
+    const dur = ONE_SHOT[a];
+    if (dur === undefined) {
+      this.loopKind = a;
+      this.shot = null;
+      return;
+    }
+    this.shot = a;
+    this.shotLeft = dur;
+    this.liftBase = this.lift;
+    if (a !== 'jump' && a !== 'flip') this.gest = { kind: a, t: 0, dur: Math.max(dur, a === 'kick' ? 0.7 : dur) };
+  }
+
+  /** a hit (instrument key, drum…) on a side: -1 right, 1 left, 0 both */
+  strike(side = 0): void {
+    this.hit = 1;
+    this.hitSide = side;
+  }
+
   private rnd(): number {
     this.seed = (this.seed * 16807) % 2147483647;
     return this.seed / 2147483647;
@@ -220,6 +268,26 @@ export class Animator {
     this.time += dt;
     const pose = this.pose;
     const standing = pose === 'stand';
+    // one-shot activities run out
+    if (this.shot) {
+      this.shotLeft -= dt;
+      if (this.shotLeft <= 0) this.shot = null;
+    }
+    this.hit = Math.max(0, this.hit - dt * 7);
+    const act = this.activity;
+    // a flip turns the whole body once (backwards) while it is in the air
+    if (act === 'flip') this.flipAngle = -smooth(0, 0.75, ONE_SHOT.flip! - this.shotLeft) * TAU;
+    else this.flipAngle = 0;
+    // games that only move `lift` (no motion info): work out whether we are in the air from it
+    const jumping = act === 'jump' || act === 'bounce' || act === 'flip';
+    const liftV = dt > 0 ? (this.lift - this.prevLift) / dt : 0;
+    this.prevLift = this.lift;
+    if (!jumping) this.liftBase = this.lift;
+    else this.liftBase = Math.min(this.liftBase, this.lift);
+    if (motion.airborne === undefined && jumping && this.lift - this.liftBase > 0.03) motion = { ...motion, airborne: true, vy: motion.vy ?? liftV };
+    if (act === 'sleep' && motion.asleep === undefined) motion = { ...motion, asleep: true };
+    // 'run' = on a treadmill: run on the spot
+    if (act === 'run' && standing) speed = Math.max(speed, 3.4);
     const v = standing ? Math.max(0, speed) : 0;
     this.vs.step(v, 9, dt);
     this.turn.step(motion.turn ?? 0, 8, dt);
@@ -270,7 +338,7 @@ export class Animator {
       this.layerRide(T, dt, speed);
       add(wRide);
     }
-    this.applyGesture(P, dt, wStand);
+    this.applyOverlays(P, dt, wStand);
     this.apply(P, dt, v, wStand, motion);
   }
 
@@ -294,7 +362,7 @@ export class Animator {
     const vs = Math.max(0, this.vs.x);
     const Fr = (vs * vs) / (G * L);
     const run = smooth(0.62, 1.12, Fr);
-    const stride = L * Math.min(3.4, 2.35 * Math.pow(Math.max(Fr, 1e-5), 0.3));
+    const stride = L * Math.min(3.4, 2.28 * Math.pow(Math.max(Fr, 1e-5), 0.3));
     const amp = clamp01(stride / (1.4 * L));
     const duty = lerp(0.63, 0.36, run);
     const freq = stride > 0.02 ? v / stride : 0;
@@ -332,7 +400,7 @@ export class Animator {
     const hs = -(0.36 - 0.27 * run) * amp;
     const to = (0.92 + 0.12 * run) * amp;
     const hoff = lerp(0.5, 0.34, run);
-    const heel = -0.24 * fl;
+    const heel = -0.262 * fl;
     const ball = 0.42 * fl;
     const anY = s.ankleY;
     /** ankle offset caused by pitching the foot about its heel (pitch < 0) or ball (pitch > 0): returns [dy, dz] */
@@ -389,11 +457,13 @@ export class Animator {
         const u2 = u * u;
         const u3 = u2 * u;
         az = (2 * u3 - 3 * u2 + 1) * st.sw.z + (u3 - 2 * u2 + u) * mT + (-2 * u3 + 3 * u2) * z1 + (u3 - u2) * mT;
-        const lift = L * (0.035 * amp + 0.3 * run) + 0.01 * k * amp;
+        const lift = L * (0.06 * amp + 0.3 * run) + 0.012 * k * amp;
         ay = lerp(st.sw.y, y1, smooth(0, 1, u)) + lift * Math.sin(Math.PI * Math.pow(u, lerp(1, 0.82, run)));
         ax = lerp(st.sw.x, x, smooth(0, 0.7, u));
-        pitch = lerp(st.sw.pitch, hs, smooth(0.08, 0.85, u)) + 0.35 * run * Math.sin(Math.PI * u) * amp;
-        toe = lerp(st.sw.toe, 0, smooth(0, 0.3, u));
+        pitch = lerp(st.sw.pitch, hs, smooth(0.0, 0.62, u)) + 0.35 * run * Math.sin(Math.PI * u) * amp;
+        // the toes stay bent back until the foot has cleared the ground
+        toe = Math.min(0, lerp(st.sw.toe, 0, smooth(0.25, 0.6, u)));
+        if (pitch > 0) toe = Math.min(toe, -Math.min(pitch, 0.95) * smooth(0.6, 0.3, u));
         contact = smooth(0.72, 1, u);
       }
       st.last = { x: ax, y: ay, z: az, pitch, toe };
@@ -689,131 +759,464 @@ export class Animator {
   }
 
   // =====================================================================================================
-  // one-shot gestures, layered over the blended pose
+  // activities and gestures, layered over the blended pose
   // =====================================================================================================
-  private applyGesture(P: Float32Array, dt: number, wStand: number): void {
-    const g = this.gest;
-    if (!g) return;
-    g.t += dt;
-    if (g.t >= g.dur) {
-      this.gest = null;
-      return;
+  private applyOverlays(P: Float32Array, dt: number, wStand: number): void {
+    // looping activity: fade the old one out before the new one comes in (no popping)
+    const want = this.loopKind;
+    if (this.shown !== want && this.wAct.x < 0.03) {
+      this.shown = want;
+      this.shownT = 0;
     }
+    const target = this.shown === want && OVERLAID.has(want) ? 1 : 0;
+    this.wAct.step(target, target ? 9 : 15, dt);
+    this.shownT += dt;
+    const w = clamp01(this.wAct.x);
+    if (w > 0.002 && OVERLAID.has(this.shown)) this.overlay(P, this.shown, this.shownT, 0, w, wStand);
+    // one-shot on top
+    const g = this.gest;
+    if (g) {
+      g.t += dt;
+      if (g.t >= g.dur) this.gest = null;
+      else {
+        const fade = Math.min(0.28, g.dur * 0.3);
+        const env = smooth(0, fade, g.t) * smooth(g.dur, g.dur - Math.min(0.38, g.dur * 0.35), g.t);
+        this.overlay(P, g.kind, g.t, g.dur, env, wStand);
+      }
+    }
+  }
+
+  /**
+   * Pose changes of one activity. `tl` = time since it started, `dur` > 0 for one-shots, `w` blend weight.
+   * Hand positions are IK targets in character space, relative to the shoulders so they work standing and seated.
+   */
+  private overlay(P: Float32Array, kind: string, tl: number, dur: number, w: number, wStand: number): void {
     const s = this.bb.spec;
     const k = this.k;
     const L = this.legLen;
-    const t = g.t;
-    const w = smooth(0, 0.28, t) * smooth(g.dur, g.dur - 0.38, t);
+    const a = this.armLen;
+    const now = this.time;
+    const h = this.hit;
+    const hs = this.hitSide;
+    const ws = w * wStand;
+    const torso = s.shoulderY - s.hipY;
+    const S = P[I.hip + 1] + torso; // shoulder height
+    const Z = P[I.hip + 2];
+    const X = P[I.hip];
+    const headTop = S + (s.H - s.shoulderY);
+    const mouthY = S + (s.chinY + 0.2 * s.headH - s.shoulderY);
+    const eyeY = S + (this.bb.eyeHeight - s.shoulderY);
+    const faceZ = Z + 0.42 * s.headH + 0.012 * k;
     const mix = (i: number, target: number, ww = w) => {
       P[i] = lerp(P[i], target, ww);
     };
-    const noIk = (side: 'L' | 'R', ww = w) => {
-      const ik = side === 'L' ? I.ikL : I.ikR;
-      const pole = side === 'L' ? I.poleL : I.poleR;
-      const palm = side === 'L' ? I.palmL : I.palmR;
-      for (let i = 0; i < 4; i++) P[ik + i] *= 1 - ww;
+    const idx = (side: number) =>
+      side > 0
+        ? { sh: I.shL, el: I.elL, wr: I.wrL, ik: I.ikL, pole: I.poleL, palm: I.palmL, grip: I.gripL, clav: I.clavL }
+        : { sh: I.shR, el: I.elR, wr: I.wrR, ik: I.ikR, pole: I.poleR, palm: I.palmR, grip: I.gripR, clav: I.clavR };
+    const fadeIk = (side: number, ww: number) => {
+      const q = idx(side);
+      for (let i = 0; i < 4; i++) P[q.ik + i] *= 1 - ww;
       for (let i = 0; i < 3; i++) {
-        P[pole + i] *= 1 - ww;
-        P[palm + i] *= 1 - ww;
+        P[q.pole + i] *= 1 - ww;
+        P[q.palm + i] *= 1 - ww;
       }
     };
-    if (g.kind === 'wave') {
-      // right arm up, forearm swinging from the elbow
-      noIk('R');
-      const osc = Math.sin(t * 9.5);
-      mix(I.shR, -0.25);
-      mix(I.shR + 1, 1.45);
-      mix(I.shR + 2, -1.75);
-      mix(I.elR, -1.05 + 0.42 * osc);
-      mix(I.wrR + 2, 0.12 * osc);
-      mix(I.gripR, -0.1);
-      mix(I.clavR, 0.2);
-      P[I.head + 2] += -0.08 * w;
-      P[I.chest + 2] += 0.03 * w;
-      P[I.head + 1] += -0.06 * w;
-    } else if (g.kind === 'cheer') {
-      noIk('L');
-      noIk('R');
-      const ws = w * wStand;
-      // two hops
-      const hopT = t - 0.22;
-      const hopDur = 0.5;
-      let hop = 0;
-      let crouch = 0;
-      if (hopT > 0 && hopT < hopDur * 2) {
-        const u = (hopT % hopDur) / hopDur;
-        hop = 4 * u * (1 - u) * (hopT < hopDur ? 1 : 0.7);
+    /** forward-kinematic arm: swing (− = forward), twist, abduction (+ = away from the body), elbow (− = bent) */
+    const arm = (side: number, sx: number, sy: number, sz: number, el: number, ww = w, grip?: number) => {
+      const q = idx(side);
+      fadeIk(side, ww);
+      mix(q.sh, sx, ww);
+      mix(q.sh + 1, side * sy, ww);
+      mix(q.sh + 2, side * sz, ww);
+      mix(q.el, el, ww);
+      if (grip !== undefined) mix(q.grip, grip, ww);
+    };
+    /** put a wrist at a point (character space); `palm` = direction the palm should face, `pole` = elbow direction */
+    const hand = (side: number, x: number, y: number, z: number, palm: [number, number, number] | null, ww = w, grip?: number, pole: [number, number, number] = [side * 0.7, -0.6, -0.4]) => {
+      const q = idx(side);
+      fadeIk(side, ww);
+      P[q.ik] += x * ww;
+      P[q.ik + 1] += y * ww;
+      P[q.ik + 2] += z * ww;
+      P[q.ik + 3] += ww;
+      for (let i = 0; i < 3; i++) {
+        P[q.pole + i] += pole[i] * ww;
+        if (palm) P[q.palm + i] += palm[i] * ww;
       }
-      crouch = smooth(0.02, 0.2, t) * smooth(0.3, 0.2, t) + 0.6 * gaussLike(t - (0.22 + hopDur), 0.07) + 0.5 * gaussLike(t - (0.22 + hopDur * 2), 0.09);
-      const up = 0.13 * L * hop * ws;
-      P[I.hip + 1] += up - 0.07 * L * crouch * ws;
-      for (const f of [I.footL, I.footR]) P[f + 1] += up * 1.0 + 0.05 * L * hop * ws;
-      for (const fr of [I.footLr, I.footRr]) P[fr] += 0.5 * hop * ws;
-      const shake = Math.sin(t * 13) * 0.07;
-      for (const [sh, el, side] of [[I.shL, I.elL, 1], [I.shR, I.elR, -1]] as number[][]) {
-        mix(sh, -0.25);
-        mix(sh + 1, side * 0.5);
-        mix(sh + 2, side * (2.55 + shake));
-        mix(el, -0.38 - 0.2 * crouch);
+      // a sensible FK pose underneath so partial weights look right
+      mix(q.sh, -0.6, ww);
+      mix(q.el, -1.0, ww);
+      if (grip !== undefined) mix(q.grip, grip, ww);
+    };
+    const R = -1;
+    const Lf = 1;
+    const inward = (side: number): [number, number, number] => [-side, 0, 0];
+    const down: [number, number, number] = [0, -1, 0];
+
+    switch (kind) {
+      case 'wave': {
+        const osc = Math.sin(tl * 9.5);
+        arm(R, -0.25, 1.45, 1.75, -1.05 + 0.42 * osc, w, -0.1);
+        mix(I.wrR + 2, 0.12 * osc);
+        mix(I.clavR, 0.2);
+        P[I.head + 2] += -0.08 * w;
+        P[I.chest + 2] += 0.03 * w;
+        P[I.head + 1] += -0.06 * w;
+        break;
       }
-      mix(I.clavL, 0.3);
-      mix(I.clavR, 0.3);
-      mix(I.gripL, 0.9);
-      mix(I.gripR, 0.9);
-      P[I.chest] += -0.08 * w;
-      P[I.head] += -0.14 * w;
-    } else if (g.kind === 'pet') {
-      const ws = w * wStand;
-      noIk('R', ws);
-      // bend the knees and hinge forward, right hand strokes something at knee height in front
-      P[I.hip + 1] -= 0.16 * L * ws;
-      P[I.hip + 2] -= 0.12 * L * ws;
-      P[I.hipR] += 0.62 * ws;
-      P[I.spine] += 0.34 * ws;
-      P[I.chest] += 0.22 * ws;
-      P[I.neck] += -0.25 * ws;
-      P[I.head] += -0.1 * ws;
-      const stroke = Math.sin(t * 5.2);
-      const ik = I.ikR;
-      const tx = -0.07 * k;
-      const ty = s.kneeY * 0.98 + 0.02 * k * Math.cos(t * 5.2);
-      const tz = 0.47 * L + 0.07 * k * stroke;
-      // blend the IK target in (weights are premultiplied)
-      P[ik] += tx * ws;
-      P[ik + 1] += ty * ws;
-      P[ik + 2] += tz * ws;
-      P[ik + 3] += ws;
-      P[I.poleR] += -0.7 * ws;
-      P[I.poleR + 1] += 0.1 * ws;
-      P[I.poleR + 2] += -0.6 * ws;
-      P[I.palmR + 1] += -ws;
-      mix(I.gripR, 0.05, ws);
-      // left hand on the left knee for support
-      mix(I.shL, -0.35, ws);
-      mix(I.elL, -0.5, ws);
-    } else if (g.kind === 'kick') {
-      const ws = wStand;
-      const u = t / g.dur;
-      // wind up → strike → follow through → back
-      const back = gaussLike(u - 0.2, 0.13);
-      const fwd = gaussLike(u - 0.5, 0.15);
-      const e = smooth(0, 0.12, u) * smooth(1, 0.8, u);
-      const f = I.footR;
-      P[f + 2] += (-0.33 * L * back + 0.62 * L * fwd) * ws;
-      P[f + 1] += (0.16 * L * back + 0.3 * L * fwd + 0.03 * L * e) * ws;
-      P[I.footRr] += (0.5 * back + 0.75 * fwd) * ws;
-      P[I.hip] += 0.035 * k * e * ws;
-      P[I.hipR] += (0.1 * back - 0.2 * fwd) * ws;
-      P[I.hipR + 1] += (-0.12 * back + 0.22 * fwd) * ws;
-      P[I.spine] += (0.05 * back + 0.06 * fwd) * ws;
-      P[I.chest + 1] += (0.12 * back - 0.28 * fwd) * ws;
-      // arms counterbalance
-      P[I.shL] += (0.35 * back - 0.75 * fwd) * ws;
-      P[I.shR] += (-0.3 * back + 0.6 * fwd) * ws;
-      P[I.shL + 2] += 0.35 * e * ws;
-      P[I.shR + 2] -= 0.4 * e * ws;
-      P[I.elL] -= 0.4 * e * ws;
-      P[I.elR] -= 0.3 * e * ws;
+      case 'cheer': {
+        // little hops of joy with both arms up
+        const hopT = dur > 0 ? tl - 0.22 : tl;
+        const hopDur = 0.5;
+        let hop = 0;
+        if (hopT > 0 && (dur === 0 || hopT < hopDur * 2)) {
+          const u = (hopT % hopDur) / hopDur;
+          hop = 4 * u * (1 - u) * (dur > 0 && hopT >= hopDur ? 0.7 : 1);
+        }
+        const crouch = dur > 0 ? smooth(0.02, 0.2, tl) * smooth(0.3, 0.2, tl) + 0.6 * gaussLike(tl - (0.22 + hopDur), 0.07) + 0.5 * gaussLike(tl - (0.22 + hopDur * 2), 0.09) : 0.5 * Math.pow(1 - hop, 6);
+        const up = 0.11 * L * hop * ws;
+        P[I.hip + 1] += up - 0.07 * L * crouch * ws;
+        for (const f of [I.footL, I.footR]) P[f + 1] += up + 0.05 * L * hop * ws;
+        for (const fr of [I.footLr, I.footRr]) P[fr] += 0.5 * hop * ws;
+        const shake = Math.sin(tl * 13) * 0.07;
+        for (const side of [Lf, R]) arm(side, -0.25, -0.5, 2.55 + shake, -0.38 - 0.2 * crouch, w, 0.9);
+        mix(I.clavL, 0.3);
+        mix(I.clavR, 0.3);
+        P[I.chest] += -0.08 * w;
+        P[I.head] += -0.14 * w;
+        break;
+      }
+      case 'pet': {
+        // bend the knees and hinge forward, the right hand strokes something at knee height in front
+        P[I.hip + 1] -= 0.16 * L * ws;
+        P[I.hip + 2] -= 0.12 * L * ws;
+        P[I.hipR] += 0.62 * ws;
+        P[I.spine] += 0.34 * ws;
+        P[I.chest] += 0.22 * ws;
+        P[I.neck] += -0.25 * ws;
+        P[I.head] += -0.1 * ws;
+        const stroke = Math.sin(tl * 5.2);
+        hand(R, -0.07 * k, s.kneeY * 0.98 + 0.02 * k * Math.cos(tl * 5.2), 0.47 * L + 0.07 * k * stroke, down, ws, 0.05, [-0.7, 0.1, -0.6]);
+        arm(Lf, -0.35, 0, this.restAbduct, -0.5, ws);
+        break;
+      }
+      case 'kick': {
+        const u = tl / (dur || 0.95);
+        // wind up → strike → follow through → back
+        const back = gaussLike(u - 0.2, 0.13);
+        const fwd = gaussLike(u - 0.5, 0.15);
+        const e = smooth(0, 0.12, u) * smooth(1, 0.8, u);
+        const f = I.footR;
+        const kw = wStand;
+        P[f + 2] += (-0.33 * L * back + 0.62 * L * fwd) * kw;
+        P[f + 1] += (0.16 * L * back + 0.3 * L * fwd + 0.03 * L * e) * kw;
+        P[I.footRr] += (0.5 * back + 0.75 * fwd) * kw;
+        P[I.hip] += 0.035 * k * e * kw;
+        P[I.hipR] += (0.1 * back - 0.2 * fwd) * kw;
+        P[I.hipR + 1] += (-0.12 * back + 0.22 * fwd) * kw;
+        P[I.spine] += (0.05 * back + 0.06 * fwd) * kw;
+        P[I.chest + 1] += (0.12 * back - 0.28 * fwd) * kw;
+        P[I.shL] += (0.35 * back - 0.75 * fwd) * kw;
+        P[I.shR] += (-0.3 * back + 0.6 * fwd) * kw;
+        P[I.shL + 2] += 0.35 * e * kw;
+        P[I.shR + 2] -= 0.4 * e * kw;
+        P[I.elL] -= 0.4 * e * kw;
+        P[I.elR] -= 0.3 * e * kw;
+        break;
+      }
+      case 'dance': {
+        const b = now * 7.2;
+        const sway = Math.sin(b / 2);
+        const beat = Math.abs(Math.sin(b / 2 + 0.4));
+        P[I.hip + 1] -= (0.02 + 0.055 * beat) * L * ws;
+        P[I.hip] += 0.045 * k * sway * ws;
+        P[I.hipR + 1] += 0.28 * sway * ws;
+        P[I.hipR + 2] += 0.07 * Math.sin(b / 2 + 0.8) * ws;
+        P[I.spine + 1] -= 0.22 * sway * w;
+        P[I.chest + 1] -= 0.25 * sway * w;
+        P[I.chest + 2] += 0.08 * Math.sin(b) * w;
+        P[I.head] += 0.08 * Math.sin(b) * w;
+        P[I.head + 1] += 0.2 * sway * w;
+        for (const side of [Lf, R]) {
+          const up = 0.5 + 0.5 * sway * side;
+          arm(side, -0.35 - 0.25 * up, 1.25, 0.95 + 0.55 * up, -1.25 + 0.45 * Math.sin(b + side), w, 0.4);
+          // step-touch
+          const lift = Math.max(0, Math.sin(b / 2) * side);
+          const f = side > 0 ? I.footL : I.footR;
+          P[f + 1] += 0.06 * L * lift * ws;
+          P[f] += side * 0.05 * k * lift * ws;
+          P[(side > 0 ? I.footLr : I.footRr) + 0] += 0.5 * lift * ws;
+        }
+        break;
+      }
+      case 'clap': {
+        const c = Math.max(0, Math.sin(now * 12));
+        for (const side of [Lf, R]) hand(side, X + side * (0.045 * k + 0.085 * k * (1 - c)), S - 0.22 * a, Z + 0.56 * a, inward(side), w, 0, [side * 0.8, -0.5, -0.3]);
+        P[I.head] += 0.03 * w;
+        break;
+      }
+      case 'type':
+      case 'game': {
+        const game = kind === 'game';
+        for (const side of [Lf, R]) {
+          const tap = Math.sin(now * (side > 0 ? 19 : 23) + side) * (game ? 0.004 : 0.011) * k;
+          hand(side, X + side * (game ? 0.07 : 0.11) * k, S - (game ? 0.4 : 0.44) * a + tap, Z + (game ? 0.4 : 0.52) * a, game ? inward(side) : down, w, game ? 0.9 : 0.35);
+        }
+        P[I.head] += (game ? 0.02 : 0.12) * w;
+        P[I.chest] += (game ? 0.02 : 0.07) * w;
+        if (game) {
+          P[I.chest + 1] += 0.08 * Math.sin(now * 2) * w;
+          P[I.chest + 2] += 0.05 * Math.sin(now * 1.3) * w;
+        }
+        break;
+      }
+      case 'piano': {
+        for (const side of [Lf, R]) {
+          const struck = hs === 0 || hs === side ? h : 0;
+          const drift = Math.sin(now * (side > 0 ? 2.3 : 2) + side) * 0.07 * k;
+          hand(side, X + side * 0.17 * k + drift, S - 0.44 * a + 0.03 * k - 0.045 * k * struck, Z + 0.5 * a, down, w, 0.3);
+        }
+        P[I.head] += (0.13 + 0.03 * h) * w;
+        P[I.chest] += (0.08 + 0.03 * h) * w;
+        P[I.chest + 2] += 0.03 * Math.sin(now * 2) * w;
+        break;
+      }
+      case 'guitar': {
+        const strum = Math.sin(now * 9) * 0.03 * k + 0.06 * k * h;
+        // left hand on the neck, right hand strums over the sound hole
+        hand(Lf, X + 0.3 * k, S - 0.2 * a, Z + 0.3 * a, [-0.4, 0.2, -0.9], w, 0.9, [0.5, -0.8, -0.2]);
+        hand(R, X - 0.03 * k, S - 0.5 * a - strum, Z + 0.36 * a, [0.2, 0, -1], w, 0.5, [-0.9, -0.3, -0.3]);
+        P[I.head] += 0.18 * w;
+        P[I.head + 1] += 0.28 * w;
+        P[I.chest + 2] += 0.04 * Math.sin(now * 2.2) * w;
+        break;
+      }
+      case 'drums': {
+        for (const side of [Lf, R]) {
+          const struck = hs === 0 || hs === side ? h : 0;
+          const idle = 0.02 * k * Math.sin(now * 8 + side);
+          hand(side, X + side * 0.2 * k, S - 0.46 * a + 0.16 * k * struck + idle, Z + 0.46 * a - 0.05 * k * struck, inward(side), w, 1);
+        }
+        P[I.head] += 0.08 * Math.sin(now * 8) * w;
+        P[I.chest] += 0.05 * w;
+        if (hs === 0) P[I.footRr] += 0.3 * h * w;
+        break;
+      }
+      case 'cook': {
+        const c = now * 5;
+        hand(R, X - 0.1 * k + 0.05 * k * Math.cos(c), S - 0.36 * a, Z + 0.5 * a + 0.05 * k * Math.sin(c), inward(R), w, 1);
+        hand(Lf, X + 0.17 * k, S - 0.5 * a, Z + 0.42 * a, down, w, 0.6);
+        P[I.head] += 0.3 * w;
+        P[I.chest] += 0.1 * w;
+        P[I.spine] += 0.06 * w;
+        break;
+      }
+      case 'eat':
+      case 'drink': {
+        const eat = kind === 'eat';
+        const up = smooth(-0.2, 0.75, Math.sin(now * (eat ? 3 : 1.6)));
+        hand(
+          R,
+          X + lerp(-0.14 * k, -0.035 * k, up),
+          lerp(S - 0.46 * a, mouthY - 0.02 * k, up),
+          lerp(Z + 0.42 * a, faceZ + 0.1 * k, up),
+          inward(R),
+          w,
+          0.8,
+          [-0.8, -0.55, -0.2],
+        );
+        P[I.head] += (eat ? 0.06 * up : -0.22 * up * up) * w;
+        break;
+      }
+      case 'read': {
+        for (const side of [Lf, R]) hand(side, X + side * 0.1 * k, S - 0.3 * a, Z + 0.42 * a, [-side * 0.5, 0.5, -0.7], w, 0.7);
+        P[I.head] += 0.32 * w;
+        P[I.neck] += 0.08 * w;
+        break;
+      }
+      case 'photo': {
+        for (const side of [Lf, R]) hand(side, X + side * 0.075 * k, eyeY - 0.035 * k, faceZ + 0.2 * k, inward(side), w, 0.8, [side * 0.9, -0.4, -0.1]);
+        P[I.head] += -0.03 * w;
+        break;
+      }
+      case 'call': {
+        // hands cupped around the mouth
+        for (const side of [Lf, R]) hand(side, X + side * 0.07 * k, mouthY - 0.01 * k, faceZ + 0.045 * k, inward(side), w, 0.25, [side * 0.9, -0.4, 0]);
+        P[I.head] += -0.14 * w;
+        P[I.chest] += (-0.1 + 0.16 * smooth(0.2, 0.6, tl)) * w;
+        break;
+      }
+      case 'wash': {
+        const c = Math.sin(now * 9);
+        for (const side of [Lf, R]) hand(side, X + side * (0.085 + 0.02 * c * side) * k, headTop - 0.035 * k + 0.02 * k * c * side, Z + 0.02 * k + 0.02 * k * c, inward(side), w, 0.3, [side * 0.95, -0.1, -0.2]);
+        P[I.head] += (-0.12 + 0.04 * c) * w;
+        break;
+      }
+      case 'feed': {
+        const c = Math.sin(now * 6);
+        hand(R, X - 0.12 * k, S - 0.52 * a + 0.03 * k * c, Z + 0.78 * a, [0, 1, 0], w, 0.2);
+        P[I.head] += 0.26 * w;
+        P[I.spine] += 0.12 * ws;
+        P[I.hipR] += 0.1 * ws;
+        break;
+      }
+      case 'play': {
+        const c = Math.sin(now * 3);
+        hand(R, X - 0.14 * k + 0.06 * k * c, S - 0.46 * a, Z + (0.6 + 0.16 * c) * a, down, w, 0.6);
+        hand(Lf, X + 0.18 * k, S - 0.5 * a, Z + 0.46 * a, down, w, 0.4);
+        P[I.hipR] += 0.14 * ws;
+        P[I.spine] += 0.12 * w;
+        P[I.chest] += 0.08 * w;
+        P[I.head] += 0.06 * w;
+        P[I.footL + 2] += 0.1 * L * ws;
+        P[I.footR + 2] -= 0.08 * L * ws;
+        P[I.hip + 1] -= 0.02 * L * ws;
+        break;
+      }
+      case 'pedal': {
+        // exercise bike: feet go round, hands on the bar
+        const c = now * 7;
+        const hy = P[I.hip + 1];
+        for (const side of [Lf, R]) {
+          const f = side > 0 ? I.footL : I.footR;
+          const ph = c + (side > 0 ? 0 : Math.PI);
+          mix(f, side * 0.11 * k);
+          mix(f + 1, hy - 0.6 * L + 0.14 * L * Math.cos(ph));
+          mix(f + 2, Z + 0.3 * L + 0.14 * L * Math.sin(ph));
+          mix((side > 0 ? I.footLr : I.footRr) + 0, 0.2 - 0.15 * Math.cos(ph + 0.5));
+          hand(side, X + side * 0.2 * k, S - 0.32 * a, Z + 0.74 * a, down, w, 1.1);
+        }
+        P[I.hipR] += 0.22 * w;
+        P[I.spine] += 0.12 * w;
+        P[I.neck] += -0.2 * w;
+        P[I.hipR + 2] += 0.03 * Math.sin(c) * w;
+        break;
+      }
+      case 'row': {
+        // rowing machine: feet on the plates, the seat slides, the handle comes to the chest
+        const c = smooth(-1, 1, Math.sin(now * 3)); // 0 = catch (compressed) … 1 = finish (extended)
+        const hy = P[I.hip + 1];
+        const feetZ = Z + 0.62 * L;
+        const hipZ = Z - 0.3 * L * c;
+        mix(I.hip + 2, hipZ);
+        for (const side of [Lf, R]) {
+          const f = side > 0 ? I.footL : I.footR;
+          mix(f, side * 0.1 * k);
+          mix(f + 1, Math.max(s.ankleY, hy - 0.2 * L));
+          mix(f + 2, feetZ);
+          mix((side > 0 ? I.footLr : I.footRr) + 0, -0.5);
+        }
+        const lean = 0.38 - 0.62 * c;
+        mix(I.hipR, lean * 0.6);
+        mix(I.spine, lean * 0.3);
+        mix(I.chest, lean * 0.2);
+        P[I.neck] -= lean * 0.5 * w;
+        const hz = lerp(feetZ - 0.2 * L, hipZ + 0.24 * a, smooth(0.25, 1, c));
+        for (const side of [Lf, R]) hand(side, X + side * 0.11 * k, hy + 0.5 * torso, lerp(P[I.hip + 2], hz, 1), down, w, 1.1, [side * 0.8, -0.3, -0.4]);
+        break;
+      }
+      case 'lift': {
+        // alternating dumbbell curls
+        const c = smooth(-1, 1, Math.sin(now * 3.2));
+        arm(R, -0.12, -0.9, 0.12, -0.25 - c * 2.0, w, 1.1);
+        arm(Lf, -0.12, -0.9, 0.12, -0.25 - (1 - c) * 2.0, w, 1.1);
+        P[I.chest + 2] += 0.03 * (c - 0.5) * w;
+        break;
+      }
+      case 'punch': {
+        const p = Math.pow(Math.max(0, Math.sin(now * 8)), 0.7);
+        const q = Math.pow(Math.max(0, -Math.sin(now * 8)), 0.7);
+        const jab = (side: number, e: number) =>
+          hand(side, X + side * lerp(0.1, 0.02, e) * k, S + lerp(-0.02, -0.04, e) * a, Z + lerp(0.26, 0.93, e) * a, inward(side), w, 1.2, [side * 0.8, -0.5, -0.2]);
+        jab(R, p);
+        jab(Lf, q);
+        P[I.chest + 1] += (p - q) * 0.3 * w;
+        P[I.spine + 1] += (p - q) * 0.15 * w;
+        P[I.hipR + 1] += (p - q) * 0.1 * ws + 0.25 * ws;
+        P[I.hip + 1] -= 0.03 * L * ws;
+        P[I.footL + 2] += 0.12 * L * ws;
+        P[I.footR + 2] -= 0.1 * L * ws;
+        P[I.footRr] += 0.25 * ws;
+        P[I.head + 1] += -0.2 * ws;
+        break;
+      }
+      case 'yoga': {
+        // tree pose: palms together overhead, the right foot on the left thigh
+        const c = 0.9 + 0.1 * Math.sin(now * 0.8);
+        for (const side of [Lf, R]) hand(side, X + side * 0.03 * k, headTop + 0.3 * a * c, Z, inward(side), w, 0, [side * 1, 0.1, -0.2]);
+        mix(I.footR, 0.035 * k, ws);
+        mix(I.footR + 1, s.kneeY + 0.1 * L, ws);
+        mix(I.footR + 2, 0.02 * k, ws);
+        mix(I.footRr, 1.15, ws);
+        mix(I.footRr + 1, -1.35, ws);
+        P[I.hip] += 0.03 * k * ws;
+        P[I.hip + 1] += 0.004 * L * Math.sin(now * 0.8) * ws;
+        break;
+      }
+      case 'stretch': {
+        const c = Math.sin(now * 1.2);
+        for (const side of [Lf, R]) arm(side, -0.15, -0.3, 2.85 - 0.25 * c * side, -0.12, w, 0);
+        mix(I.clavL, 0.3);
+        mix(I.clavR, 0.3);
+        P[I.spine + 2] += 0.14 * c * w;
+        P[I.chest + 2] += 0.16 * c * w;
+        P[I.hip] -= 0.035 * k * c * ws;
+        P[I.head + 2] += 0.1 * c * w;
+        break;
+      }
+      case 'swing': {
+        // playground swing: hands on the chains, legs pumping
+        const c = Math.sin(now * 2.2);
+        for (const side of [Lf, R]) {
+          hand(side, X + side * 0.25 * k, S + 0.06 * a, Z + 0.06 * a, inward(side), w, 1.1, [side * 0.5, -0.8, -0.3]);
+          const f = side > 0 ? I.footL : I.footR;
+          P[f + 2] += 0.2 * L * c * w;
+          P[f + 1] += 0.22 * L * Math.max(0, c) * w;
+          P[(side > 0 ? I.footLr : I.footRr) + 0] += -0.3 * c * w;
+        }
+        P[I.hipR] += -0.2 * c * w;
+        P[I.spine] += -0.06 * c * w;
+        break;
+      }
+      case 'slide': {
+        for (const side of [Lf, R]) arm(side, -0.5, -0.4, 2.3 + 0.08 * Math.sin(now * 11 + side), -0.3, w, 0);
+        P[I.head] += -0.1 * w;
+        P[I.hipR] += -0.12 * w;
+        break;
+      }
+      case 'shoot': {
+        // basketball shot: dip, then push the ball up and out
+        const e = smooth(0.12, 0.45, tl);
+        const dip = smooth(0, 0.14, tl) * (1 - e);
+        P[I.hip + 1] += (-0.1 * L * dip + 0.02 * L * e) * wStand * w;
+        for (const f of [I.footLr, I.footRr]) P[f] += 0.3 * e * wStand * w;
+        for (const f of [I.footL, I.footR]) P[f + 1] += 0.03 * L * e * wStand * w;
+        hand(R, X - 0.06 * k, lerp(S - 0.08 * a, headTop + 0.42 * a, e), Z + lerp(0.34, 0.42, e) * a, [0.2, 0.4, 0.9], w, 0.2, [-0.9, -0.3, -0.2]);
+        hand(Lf, X + 0.1 * k, lerp(S - 0.1 * a, headTop + 0.22 * a, e), Z + lerp(0.36, 0.38, e) * a, inward(Lf), w, 0.2, [0.9, -0.3, -0.2]);
+        P[I.head] += -0.2 * e * w;
+        P[I.chest] += -0.06 * e * w;
+        break;
+      }
+      case 'throw': {
+        // dart: the hand comes forward from beside the eye
+        const e = smooth(0.1, 0.36, tl);
+        hand(R, X + lerp(-0.2, -0.13, e) * k, eyeY + lerp(0.0, -0.06, e) * a, Z + lerp(0.12, 0.92, e) * a, inward(R), w, lerp(0.9, 0, e), [-0.7, -0.7, -0.1]);
+        arm(Lf, 0.1, 0, this.restAbduct + 0.1, -0.5, w * 0.6);
+        P[I.chest + 1] += lerp(-0.18, 0.2, e) * w;
+        P[I.footL + 2] += 0.1 * L * wStand * w;
+        P[I.footR + 2] -= 0.06 * L * wStand * w;
+        P[I.head] += -0.04 * w;
+        break;
+      }
+      case 'sleep': {
+        // one hand on the tummy, head rolled to the side
+        P[I.head + 1] += 0.3 * w;
+        hand(R, -0.03 * k, P[I.hip + 1] + 0.125 * k, P[I.hip + 2] - 0.2 * torso, down, w, 0.2, [-1, 0.15, 0.1]);
+        break;
+      }
+      default:
+        break;
     }
   }
 
@@ -939,8 +1342,7 @@ export class Animator {
     const bt = 0.16 - sinceBlink;
     this.blink = bt > 0 ? Math.sin(clamp01(bt / 0.16) * Math.PI) : 0;
     const closed = Math.max(this.blink, asleep);
-    const lidTravel = (s.child ? 77 : s.female ? 69 : 64) * (Math.PI / 180);
-    bn[B.lid].quaternion.setFromAxisAngle(X_AXIS, closed * lidTravel);
+    bn[B.lid].quaternion.setFromAxisAngle(X_AXIS, closed * this.bb.lidTravel);
 
     // ---- loose hair ----------------------------------------------------------------------------------------------
     const hair = this.bb.hair;

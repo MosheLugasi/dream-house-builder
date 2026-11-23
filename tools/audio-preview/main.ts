@@ -24,6 +24,8 @@ declare global {
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const app = $('#app');
 const status = $('#status');
+/** sections register here what "silence()" has to reset in the page itself */
+const onSilence: (() => void)[] = [];
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = Object.assign(document.createElement(tag), props);
@@ -136,6 +138,7 @@ requestAnimationFrame(meter);
     if (walking) buttons.get(walking)?.classList.remove('on');
     walking = null;
   };
+  onSilence.push(stop);
   const walk = () => {
     if (!walking) return;
     audio.footstep(walking as (typeof ALL_SURFACES)[number], Number(strength.input.value));
@@ -201,6 +204,10 @@ requestAnimationFrame(meter);
     const b = el('button', {}, loop);
     const v = slider('volume', 0, 1, 1);
     let on = false;
+    onSilence.push(() => {
+      on = false;
+      b.classList.remove('on');
+    });
     const apply = () => audio.setLoop(loop, on, Number(v.input.value));
     b.addEventListener('click', () => {
       on = !on;
@@ -250,11 +257,9 @@ requestAnimationFrame(meter);
     presets.append(b);
   }
   s.append(el('div', { className: 'row' }, onBtn), el('div', { className: 'row' }, outdoor.wrap, night.wrap), el('div', { className: 'row' }, wind.wrap, rain.wrap), presets);
-  $('#silence').addEventListener('click', () => {
+  onSilence.push(() => {
     on = false;
     onBtn.classList.remove('on');
-    document.querySelectorAll('section button.on').forEach((b) => b.classList.remove('on'));
-    audio.silence();
   });
 }
 
@@ -280,6 +285,11 @@ requestAnimationFrame(meter);
     });
     kinds.append(b);
   }
+  onSilence.push(() => {
+    kind = null;
+    demoStart = -1;
+    buttons.forEach((x) => x.classList.remove('on'));
+  });
   const demo = el('button', {}, 'demo: idle → accelerate → cruise → brake');
   demo.addEventListener('click', () => {
     if (!kind) {
@@ -387,5 +397,10 @@ function table(rows: Row[]): HTMLTableElement {
   s.append(el('div', { className: 'row' }, sel, go), canvas);
   window.__spectro = show;
 }
+
+$('#silence').addEventListener('click', () => {
+  for (const f of onSilence) f();
+  audio.silence();
+});
 
 window.__audio = audio;
