@@ -125,7 +125,7 @@ export class Realism {
     this.grass.update(this.camera, this.preset.grass);
 
     // eye adaptation: a room by day is darker than the street, the eye (camera) opens up
-    const wantAdapt = f.walking && f.indoors ? t.indoorExposure + (t.indoorExposureNight - t.indoorExposure) * atm.night : 1;
+    const wantAdapt = f.walking && f.indoors && this.preset.indoorAmbient ? t.indoorExposure + (t.indoorExposureNight - t.indoorExposure) * atm.night : 1;
     this.adapt += (wantAdapt - this.adapt) * Math.min(1, dt * 1.5);
     this.renderer.toneMappingExposure = atm.exposure * this.adapt;
 

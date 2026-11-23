@@ -25,7 +25,8 @@ export interface RenderPreset {
   sharpShadows: boolean;
   /** pool of area lights that bring daylight in through the nearest windows */
   windowLights: number;
-  /** interior surfaces see less of the sky (ambient + reflections) than outdoor ones */
+  /** interior surfaces see less of the sky (ambient + reflections) than outdoor ones, the camera adapts
+   * its exposure indoors (needs the window lights to look right) */
   indoorAmbient: boolean;
   /** nearest lit lamps that cast (soft) shadows at night */
   lampShadows: number;
@@ -46,7 +47,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     shadowMapSize: 2048,
     sharpShadows: false,
     windowLights: 0,
-    indoorAmbient: true,
+    indoorAmbient: false,
     lampShadows: 0,
     grass: false,
     photoScale: 1,
@@ -80,6 +81,6 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     lampShadows: 1,
     grass: true,
     photoScale: 2,
-    photoSamples: 8,
+    photoSamples: 6,
   },
 };
