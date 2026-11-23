@@ -19,7 +19,7 @@ import {
   shellGeos,
   taperLeg,
   turnedLeg,
-  piping,
+  rrLoop,
   bolster,
   diamondTufts,
   seatPad,
@@ -734,7 +734,7 @@ const SOFAS: SofaItem[] = [
     id: 'sofa-chesterfield-velvet',
     name: "ספת צ'סטרפילד מקטיפה",
     tags: ["צ'סטרפילד", 'קטיפה', 'קפיטונאז׳', 'כפתורים', 'יוקרתי'],
-    spec: sp({ w: 2.2, d: 0.94, arm: 'scroll', armW: 0.24, armH: 0.74, backH: 0.74, back: 'tufted', backT: 0.2, seat: 'split', cushT: 0.15, base: 'brass', legH: 0.12, mat: 'velvet', pillows: 2, tuftRows: 3, seed: 5 }),
+    spec: sp({ w: 2.2, d: 0.94, arm: 'scroll', armW: 0.24, armH: 0.74, backH: 0.74, back: 'tufted', backT: 0.2, seat: 'split', cushT: 0.15, base: 'brass', legH: 0.12, mat: 'velvet', pillows: 0, bolsters: true, tuftRows: 3, seed: 5 }),
     fabric: '#24574a',
     legs: PAL.darkWood,
     accent: '#c9a35a',
@@ -995,6 +995,8 @@ function buildCurved(s: CurvedSpec, c: Colors): THREE.Object3D {
     bo.grooveDepth = 0.04;
     bo.grooveW = 0.025;
     bo.step = 0.3;
+  } else {
+    bo.step = 0.14;
   }
   addPad(body, L, bh, bo as Parameters<typeof addPad>[3], up, 0, legH + bh / 2, zb + s.backT * 0.45, {});
   // seat cushions
@@ -1665,9 +1667,9 @@ const butterfly: FurnitureDef = {
         [
           [sx * 0.4, 0.56, FT + 0.005],
           [sx * 0.41, 0.3, FT + 0.01],
-          [sx * 0.41, r, FT - 0.04],
-          [sx * 0.41, r, 0.0],
-          [sx * 0.41, r, BT + 0.06],
+          [sx * 0.41, r + 0.014, FT - 0.04],
+          [sx * 0.41, r + 0.002, 0.0],
+          [sx * 0.41, r + 0.014, BT + 0.06],
           [sx * 0.41, 0.4, BT + 0.02],
           [sx * 0.4, 0.92, BT],
         ],
@@ -2113,7 +2115,8 @@ function beanGeo(kind: 'pear' | 'lounger' | 'chair', seed: number): THREE.Buffer
       y = (y + 1) * 0.2;
       // raised back rim
       const back = Math.max(0, -z / 0.72);
-      y += back * back * 0.32 * (y / 0.4);
+      y += Math.pow(back, 1.6) * 0.6 * (y / 0.4);
+      y -= Math.exp(-(x * x + (z - 0.15) * (z - 0.15)) / 0.08) * 0.08 * (y / 0.4);
       y = Math.max(0, y);
     } else {
       x *= 0.44;
@@ -2211,9 +2214,9 @@ const ottomanTufted: FurnitureDef = {
   category: 'living',
   group: 'הדומים וספסלים',
   tags: ['הדום', 'כפתורים', 'קפיטונאז׳', 'קטיפה', 'שולחן סלון'],
-  size: { w: 1.0, d: 0.62, h: 0.44 },
+  size: { w: 1.0, d: 0.62, h: 0.46 },
   colors: [slot('fabric', 'קטיפה', '#5e3a55'), slot('legs', 'רגליים', PAL.darkWood)],
-  seats: [{ x: -0.25, z: 0, height: 0.44, facing: 0, kind: 'sit' }, { x: 0.25, z: 0, height: 0.44, facing: 0, kind: 'sit' }],
+  seats: [{ x: -0.25, z: 0, height: 0.45, facing: 0, kind: 'sit' }, { x: 0.25, z: 0, height: 0.45, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const vel = M.velvet(c.fabric);
@@ -2223,7 +2226,7 @@ const ottomanTufted: FurnitureDef = {
     seatPad(k, 0.996, 0.616, 0.115, vel, 0, legH + 0.215, 0, { crown: 0.02, r: 0.05, p: 2.6, tufts, tuftDepth: 0.04, tuftR: 0.05, step: 0.08, wrinkle: 0.002 }, { buttons: M.velvet(darken(c.fabric, 0.2)) });
     // welt along the bottom edge of the body
     const y = legH + 0.004;
-    piping(k, [[-0.49, y, -0.3], [0.49, y, -0.3], [0.49, y, 0.3], [-0.49, y, 0.3]], 0.007, M.velvet(darken(c.fabric, 0.1)), true, 40);
+    k.tube(rrLoop(0.98, 0.6, 0.03, y), 0.007, M.velvet(darken(c.fabric, 0.1)), { closed: true, seg: 48, radial: 5, tension: 0.1 });
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) turnedLeg(k, sx * 0.43, sz * 0.24, legH, M.wood(c.legs), 0.026, M.brass());
     return k.g;
   },
@@ -2315,27 +2318,27 @@ const benchStorage: FurnitureDef = {
   category: 'living',
   group: 'הדומים וספסלים',
   tags: ['ספסל', 'אחסון', 'ארגז', 'מבואה', 'כניסה', 'עץ'],
-  size: { w: 1.1, d: 0.44, h: 0.48 },
+  size: { w: 1.1, d: 0.44, h: 0.49 },
   colors: [slot('wood', 'עץ', '#e8e2d6'), slot('fabric', 'מושב', '#7f8c7a')],
   seats: [{ x: -0.27, z: 0.03, height: 0.47, facing: 0, kind: 'sit' }, { x: 0.27, z: 0.03, height: 0.47, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.paint(c.wood, 0.5);
-    const w = 1.1;
+    const w = 1.04;
     const d = 0.42;
     // carcass on a recessed plinth
     k.rbox(w - 0.06, 0.05, d - 0.06, 0.004, M.paint(darken(c.wood, 0.25)), 0, 0, 0, 1);
     k.rbox(w, 0.32, d, 0.006, wood, 0, 0.05, 0, 1);
     // frame-and-panel front: two raised panels with shadow lines
-    for (const x of [-0.26, 0.26]) {
-      k.box(0.46, 0.2, 0.004, M.paint(darken(c.wood, 0.18)), x, 0.11, d / 2 + 0.001);
-      k.rbox(0.43, 0.17, 0.012, 0.004, wood, x, 0.125, d / 2 + 0.004, 1);
+    for (const x of [-0.25, 0.25]) {
+      k.box(0.44, 0.2, 0.004, M.paint(darken(c.wood, 0.18)), x, 0.11, d / 2 + 0.001);
+      k.rbox(0.41, 0.17, 0.012, 0.004, wood, x, 0.125, d / 2 + 0.004, 1);
     }
     // lid with a slight overhang
     k.rbox(w + 0.01, 0.025, d + 0.02, 0.006, wood, 0, 0.37, 0, 1);
     k.box(w - 0.01, 0.003, 0.004, M.matte('#3a3836'), 0, 0.368, d / 2 + 0.001);
     // seat cushion with buttons
-    const tufts: Array<[number, number]> = [-0.36, -0.12, 0.12, 0.36].map((x) => [x, 0]);
+    const tufts: Array<[number, number]> = [-0.35, -0.12, 0.12, 0.35].map((x) => [x, 0]);
     seatPad(k, w - 0.04, d - 0.02, 0.08, M.linen(c.fabric), 0, 0.395, 0.005, { crown: 0.012, r: 0.035, p: 3, tufts, tuftDepth: 0.02, tuftR: 0.035, step: 0.12, wrinkle: 0.002 }, { buttons: M.linen(darken(c.fabric, 0.2)) });
     // iron side handles
     const iron = M.blackMetal();
@@ -2359,7 +2362,7 @@ const benchUph: FurnitureDef = {
   category: 'living',
   group: 'הדומים וספסלים',
   tags: ['ספסל', 'מרופד', 'קטיפה', 'תעלות', 'מרגלות המיטה'],
-  size: { w: 1.3, d: 0.42, h: 0.47 },
+  size: { w: 1.3, d: 0.42, h: 0.48 },
   colors: [slot('fabric', 'קטיפה', '#566b5a'), slot('legs', 'רגליים', PAL.walnut)],
   seats: [-0.4, 0, 0.4].map((x) => ({ x, z: 0.02, height: 0.47, facing: 0, kind: 'sit' as const })),
   build: ({ colors: c }) => {
@@ -2389,9 +2392,9 @@ const footstool: FurnitureDef = {
   category: 'living',
   group: 'הדומים וספסלים',
   tags: ['הדום', 'שרפרף רגליים', 'קלאסי', 'רגליים מחורטות'],
-  size: { w: 0.52, d: 0.4, h: 0.38 },
+  size: { w: 0.52, d: 0.4, h: 0.41 },
   colors: [slot('fabric', 'ריפוד', '#b9a37e'), slot('legs', 'רגליים', PAL.darkWood)],
-  seats: [{ x: 0, z: 0, height: 0.38, facing: 0, kind: 'sit' }],
+  seats: [{ x: 0, z: 0, height: 0.4, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const fab = M.fabric(c.fabric, 16);
@@ -2421,7 +2424,7 @@ const cubeOttoman: FurnitureDef = {
   seats: [{ x: 0, z: 0, height: 0.44, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
-    seatPad(k, 0.46, 0.46, 0.44, M.boucle(c.fabric), 0, 0, 0, { tB: 0.2, crown: 0.015, r: 0.07, p: 3.2, step: 0.12, wrinkle: 0.003 });
+    seatPad(k, 0.46, 0.46, 0.427, M.boucle(c.fabric), 0, 0, 0, { tB: 0.2, crown: 0.012, r: 0.07, p: 3.2, step: 0.12, wrinkle: 0.003 });
     return k.g;
   },
   draw2d: (ctx, c) =>

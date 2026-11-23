@@ -719,3 +719,21 @@ export function roundCushionProfile(r: number, t: number, crown = 0.015): Array<
     [0, t + crown],
   ];
 }
+
+/** Points of a horizontal rounded rectangle (for closed piping loops). */
+export function rrLoop(w: number, d: number, r: number, y: number, n = 3): V3[] {
+  const out: V3[] = [];
+  const cs: Array<[number, number, number]> = [
+    [w / 2 - r, d / 2 - r, 0],
+    [-w / 2 + r, d / 2 - r, Math.PI / 2],
+    [-w / 2 + r, -d / 2 + r, Math.PI],
+    [w / 2 - r, -d / 2 + r, Math.PI * 1.5],
+  ];
+  for (const [cx, cz, a0] of cs) {
+    for (let i = 0; i <= n; i++) {
+      const a = a0 + (i / n) * (Math.PI / 2);
+      out.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
+    }
+  }
+  return out;
+}

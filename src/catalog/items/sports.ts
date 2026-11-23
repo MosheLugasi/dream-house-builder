@@ -28,6 +28,33 @@ function consoleUnit(k: Kit, w: number, h: number, t: number, body: THREE.Materi
   k.sub(c, x, y, z).rotation.x = tilt;
 }
 
+/**
+ * Turn a built machine by 180° around Y so its console / handlebars end up at -Z (the runtime puts
+ * the user at `at` facing local -Z). Parts keep an identity rotation (their children are turned
+ * instead), so the runtime can still spin them about their local X axis.
+ */
+function faceBack(g: THREE.Group): THREE.Group {
+  const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+  const turn = (o: THREE.Object3D): void => {
+    o.position.set(-o.position.x, o.position.y, -o.position.z);
+    o.quaternion.premultiply(q);
+  };
+  for (const c of g.children) {
+    if (c.userData.part !== undefined) {
+      c.position.set(-c.position.x, c.position.y, -c.position.z);
+      for (const cc of c.children) turn(cc);
+    } else turn(c);
+  }
+  return g;
+}
+
+/** Plan symbol drawn for the unturned machine, rotated 180° like `faceBack`. */
+const backSym = (ctx: CanvasRenderingContext2D, fn: () => void): void =>
+  sym(ctx, () => {
+    ctx.rotate(Math.PI);
+    fn();
+  });
+
 /* ================================================================== treadmills */
 
 interface TreadOpts {
@@ -60,7 +87,7 @@ function treadmill(o: TreadOpts): FurnitureDef {
     tags: o.tags,
     size: { w, d, h },
     colors: [slot('frame', 'מסגרת', o.frame), slot('accent', 'פס צבע', o.accent)],
-    actions: [{ kind: 'run', at: { x: 0, y: beltTop, z: pad ? -0.05 : -0.18 } }],
+    actions: [{ kind: 'run', at: { x: 0, y: beltTop, z: pad ? 0.05 : 0.18 } }],
     build: ({ colors: c }) => {
       const k = new Kit();
       const frame = M.plastic(c.frame);
@@ -100,7 +127,7 @@ function treadmill(o: TreadOpts): FurnitureDef {
         k.rbox(w - 0.004, 0.11, d / 2 - hoodZ0 - 0.004, 0.035, frame, 0, 0.035, (hoodZ0 + d / 2) / 2, 1);
         k.box(0.16, 0.004, 0.035, M.screen('#0d1a24'), 0, 0.146, (hoodZ0 + d / 2) / 2);
         k.box(w * 0.7, 0.004, 0.008, accent, 0, 0.143, hoodZ0 + 0.03);
-        return k.g;
+        return faceBack(k.g);
       }
       // motor hood
       const hoodD = d / 2 - hoodZ0 - 0.004;
@@ -126,10 +153,10 @@ function treadmill(o: TreadOpts): FurnitureDef {
       consoleUnit(k, w - 0.16, 0.24, 0.1, M.plastic(DARK), c.accent, 0, h - 0.15, d / 2 - 0.2, 0.6);
       // safety key (red clip)
       k.cyl(0.012, 0.02, M.plastic('#d0302a'), 0.2, h - 0.27, d / 2 - 0.3, 0.012, 10);
-      return k.g;
+      return faceBack(k.g);
     },
     draw2d: (ctx, c) =>
-      sym(ctx, () => {
+      backSym(ctx, () => {
         D.rr(ctx, 0, 0, w, d, 0.05, tint(c.frame, 0.5));
         D.rr(ctx, 0, (z0 + hoodZ0) / 2 + 0.01, beltW, hoodZ0 - z0 - 0.08, 0.01, '#5a5c60', undefined, LINE_THIN);
         for (let z = z0 + 0.15; z < hoodZ0 - 0.05; z += 0.12) D.line(ctx, -beltW / 2 + 0.02, z, beltW / 2 - 0.02, z, '#7c7f84', 0.006);
@@ -151,7 +178,7 @@ const elliptical: FurnitureDef = {
   tags: ['אליפטיקל', 'קרדיו', 'כושר', 'חדר כושר'],
   size: ELL,
   colors: [slot('frame', 'מסגרת', '#2e3035'), slot('accent', 'כיסויים', '#c9ccd0')],
-  actions: [{ kind: 'run', label: 'אימון אליפטי', at: { x: 0, y: 0.33, z: -0.02 } }],
+  actions: [{ kind: 'run', label: 'אימון אליפטי', at: { x: 0, y: 0.33, z: 0.02 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { d } = ELL;
@@ -204,10 +231,10 @@ const elliptical: FurnitureDef = {
       k.tube([[x * 1.05, 1.36, d / 2 - 0.47], [x * 1.04, 1.48, d / 2 - 0.53], [x * 1.0, 1.62, d / 2 - 0.59]], 0.024, foam(), { seg: 10, radial: 6 });
       k.beam([x, 0.55, d / 2 - 0.15], [s * 0.2, 0.2, 0.45], 0.03, 0.03, frame, 0.006);
     }
-    return k.g;
+    return faceBack(k.g);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    backSym(ctx, () => {
       const { w, d } = ELL;
       D.rr(ctx, 0, 0, 0.09, d - 0.1, 0.02, tint(c.frame, 0.4), undefined, LINE_THIN);
       for (const z of [-d / 2 + 0.06, d / 2 - 0.06]) D.rr(ctx, 0, z, w - 0.06, 0.07, 0.03, tint(c.frame, 0.35), undefined, LINE_THIN);
@@ -253,7 +280,7 @@ const exerciseBike: FurnitureDef = {
   tags: ['אופניים נייחים', 'קרדיו', 'כושר', 'דיווש'],
   size: BIKE,
   colors: [slot('frame', 'שלדה', '#e9eaec'), slot('accent', 'פס צבע', '#2c8bd6'), slot('seat', 'מושב', '#232427')],
-  actions: [{ kind: 'pedal', at: { x: 0, y: 0.95, z: -0.3 } }],
+  actions: [{ kind: 'pedal', at: { x: 0, y: 0.95, z: 0.3 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { d } = BIKE;
@@ -293,10 +320,10 @@ const exerciseBike: FurnitureDef = {
     consoleUnit(k, 0.26, 0.16, 0.06, M.plastic(DARK), c.accent, 0, 1.2, 0.33, 0.55);
     // resistance knob
     k.cyl(0.03, 0.04, accent, 0, 1.08, 0.36, 0.026, 12);
-    return k.g;
+    return faceBack(k.g);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    backSym(ctx, () => {
       const { w, d } = BIKE;
       for (const z of [-d / 2 + 0.05, d / 2 - 0.08]) D.rr(ctx, 0, z, w - 0.04, 0.07, 0.03, tint(c.frame, 0.1), undefined, LINE_THIN);
       D.rr(ctx, 0, 0.15, 0.15, 0.5, 0.06, tint(c.frame, 0.2));
@@ -317,7 +344,7 @@ const spinBike: FurnitureDef = {
   tags: ['ספינינג', 'אופניים נייחים', 'גלגל תנופה', 'קרדיו'],
   size: SPIN,
   colors: [slot('frame', 'שלדה', '#1f2023'), slot('accent', 'פס צבע', '#d6402b'), slot('seat', 'מושב', '#1a1a1c')],
-  actions: [{ kind: 'pedal', at: { x: 0, y: 1.0, z: -0.34 } }],
+  actions: [{ kind: 'pedal', at: { x: 0, y: 1.0, z: 0.34 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { d } = SPIN;
@@ -358,10 +385,10 @@ const spinBike: FurnitureDef = {
     // resistance knob + bottle holder
     k.cyl(0.035, 0.04, M.plastic('#d0302a'), 0, 0.84, 0.22, 0.03, 12);
     k.cyl(0.035, 0.2, M.plastic('#e8eaec'), 0, 0.5, 0.32, 0.035, 12);
-    return k.g;
+    return faceBack(k.g);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    backSym(ctx, () => {
       const { w, d } = SPIN;
       for (const z of [-d / 2 + 0.05, d / 2 - 0.05]) D.rr(ctx, 0, z, w - 0.02, 0.08, 0.02, tint(c.frame, 0.4), undefined, LINE_THIN);
       D.rr(ctx, 0, 0.32, 0.05, 0.46, 0.02, '#d9dadc');
@@ -382,7 +409,7 @@ const recumbentBike: FurnitureDef = {
   tags: ['אופניים רכובים', 'משענת גב', 'קרדיו', 'שיקום'],
   size: REC,
   colors: [slot('frame', 'שלדה', '#d9dcdf'), slot('seat', 'ריפוד', '#2a2c30'), slot('accent', 'פס צבע', '#3aa776')],
-  actions: [{ kind: 'pedal', at: { x: 0, y: 0.6, z: -0.38 } }],
+  actions: [{ kind: 'pedal', at: { x: 0, y: 0.6, z: 0.38 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { d } = REC;
@@ -426,10 +453,10 @@ const recumbentBike: FurnitureDef = {
     k.beam([0, 0.6, 0.55], [0, 1.08, 0.48], 0.05, 0.06, frame, 0.01);
     k.tube([[-0.2, 0.92, 0.36], [-0.18, 1.0, 0.46], [0, 1.02, 0.49], [0.18, 1.0, 0.46], [0.2, 0.92, 0.36]], 0.015, M.steel(), { seg: 18 });
     consoleUnit(k, 0.3, 0.18, 0.06, M.plastic(DARK), c.accent, 0, 1.17, 0.5, 0.6);
-    return k.g;
+    return faceBack(k.g);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    backSym(ctx, () => {
       const { w, d } = REC;
       for (const z of [-d / 2 + 0.05, d / 2 - 0.06]) D.rr(ctx, 0, z, w - 0.04, 0.07, 0.03, tint(c.frame, 0.1), undefined, LINE_THIN);
       D.line(ctx, 0, -d / 2 + 0.05, 0, d / 2 - 0.06, INK_SOFT, 0.05);
@@ -452,7 +479,7 @@ const rower: FurnitureDef = {
   tags: ['חתירה', 'קרדיו', 'מאוורר אוויר', 'כושר'],
   size: ROW,
   colors: [slot('frame', 'מסגרת', '#2a2c30'), slot('rail', 'מסילה', '#c3c6ca'), slot('accent', 'מושב', '#1d1e20')],
-  actions: [{ kind: 'row', at: { x: 0, y: 0.43, z: -0.15 } }],
+  actions: [{ kind: 'row', at: { x: 0, y: 0.43, z: 0.15 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const { d } = ROW;
@@ -466,7 +493,7 @@ const rower: FurnitureDef = {
     // fan cage: dark rims, translucent mesh sides
     for (const s of [-1, 1]) {
       xcyl(k, 0.3, 0.01, M.glass('#1f2226', 0.55), s * 0.085, fanY, fanZ, 24);
-      k.add(mesh(new THREE.TorusGeometry(0.3, 0.012, 6, 36), M.plastic(DARK)), s * 0.085, fanY, fanZ).rotation.y = Math.PI / 2;
+      k.add(mesh(new THREE.TorusGeometry(0.3, 0.012, 5, 28), M.plastic(DARK)), s * 0.085, fanY, fanZ).rotation.y = Math.PI / 2;
       k.add(mesh(new THREE.TorusGeometry(0.1, 0.008, 6, 20), M.plastic(DARK)), s * 0.09, fanY, fanZ).rotation.y = Math.PI / 2;
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2;
@@ -474,7 +501,7 @@ const rower: FurnitureDef = {
       }
     }
     // cage drum (top half)
-    const drum = new THREE.CylinderGeometry(0.3, 0.3, 0.17, 32, 1, true, 0, Math.PI);
+    const drum = new THREE.CylinderGeometry(0.3, 0.3, 0.17, 20, 1, true, 0, Math.PI);
     drum.rotateZ(Math.PI / 2);
     k.add(mesh(drum, M.plastic(DARK)), 0, fanY, fanZ).rotation.x = Math.PI / 2;
     // fan wheel (animated)
@@ -507,14 +534,14 @@ const rower: FurnitureDef = {
     // handle on its hook + chain into the fan
     k.rod([-0.25, 0.62, fanZ - 0.2], [0.25, 0.62, fanZ - 0.2], 0.014, M.steel(), 0.014, 8);
     for (const s of [-1, 1]) k.rod([s * 0.25, 0.62, fanZ - 0.2], [s * 0.14, 0.62, fanZ - 0.2], 0.019, foam(), 0.019, 8);
-    chain(k, [0, 0.62, fanZ - 0.2], [0, fanY + 0.06, fanZ - 0.06], M.steel(), 0.022, 0.009);
+    k.rod([0, 0.62, fanZ - 0.2], [0, fanY + 0.06, fanZ - 0.06], 0.004, M.steel(), 0.004, 4);
     // monitor arm
     k.tube([[0, fanY + 0.26, fanZ - 0.02], [0, 0.78, fanZ - 0.12], [0, 0.82, fanZ - 0.24]], 0.016, M.steel(), { seg: 12, radial: 6 });
     consoleUnit(k, 0.2, 0.15, 0.05, M.plastic(DARK), '#3a7bd5', 0, 0.92, fanZ - 0.26, 0.55);
-    return k.g;
+    return faceBack(k.g);
   },
   draw2d: (ctx, c) =>
-    sym(ctx, () => {
+    backSym(ctx, () => {
       const { w, d } = ROW;
       D.rr(ctx, 0, -0.21, 0.08, d - 0.62, 0.01, tint(c.rail, 0.2));
       D.rr(ctx, 0, d / 2 - 0.36, 0.19, 0.62, 0.05, tint(c.frame, 0.45));
@@ -1611,7 +1638,7 @@ const parkedBike: FurnitureDef = {
     const seatTop: V3 = [-0.2, 0.84, 0];
     const head: V3 = [0.4, 0.82, 0];
     k.rod(bb, seatTop, 0.017, fr, 0.017, 10);
-    k.tube([bb, [0.12, 0.42, 0], [0.32, 0.66, 0], head], 0.02, fr, { seg: 16 });
+    k.tube([bb, [0.12, 0.42, 0], [0.32, 0.66, 0], head], 0.02, fr, { seg: 16, radial: 6 });
     k.rod([bb[0] + 0.02, bb[1] + 0.1, 0], [0.38, 0.72, 0], 0.014, fr, 0.014, 8);
     for (const s of [-1, 1]) {
       k.rod([rx, wy + 0.01, s * 0.04], bb, 0.009, fr, 0.009, 6);
@@ -1628,7 +1655,7 @@ const parkedBike: FurnitureDef = {
     k.sub(s, -0.22, 0.95, 0);
     // handlebar
     k.rod([head[0] - 0.01, head[1] + 0.06, 0], [head[0] - 0.06, head[1] + 0.12, 0], 0.012, M.chrome(), 0.012, 8);
-    k.tube([[head[0] - 0.16, head[1] + 0.14, -0.27], [head[0] - 0.06, head[1] + 0.13, -0.18], [head[0] - 0.06, head[1] + 0.12, 0], [head[0] - 0.06, head[1] + 0.13, 0.18], [head[0] - 0.16, head[1] + 0.14, 0.27]], 0.011, M.chrome(), { seg: 24 });
+    k.tube([[head[0] - 0.16, head[1] + 0.14, -0.27], [head[0] - 0.06, head[1] + 0.13, -0.18], [head[0] - 0.06, head[1] + 0.12, 0], [head[0] - 0.06, head[1] + 0.13, 0.18], [head[0] - 0.16, head[1] + 0.14, 0.27]], 0.011, M.chrome(), { seg: 20, radial: 6 });
     for (const sz of [-1, 1]) zcyl(k, 0.016, 0.1, M.leather(c.seat), head[0] - 0.155, head[1] + 0.14, sz * 0.24, 10);
     // front basket
     k.rbox(0.28, 0.2, 0.32, 0.03, M.wicker('#b8925f'), head[0] + 0.12, head[1] - 0.06, 0, 1);

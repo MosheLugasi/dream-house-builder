@@ -486,7 +486,7 @@ export function caster(k: Kit, x: number, z: number, a: number, body: Mat, h = 0
   const cx = x - tx * 0.022;
   const cz = z - tz * 0.022;
   k.cyl(0.007, h - 0.05, M.chrome(), x, 0.05, z, 0.007, 8);
-  const hood = k.sphere(0.03, body, cx, 0.03, cz, 0.62, 0.75, 1.0, 8);
+  const hood = k.box(0.05, 0.028, 0.034, body, cx, 0.03, cz);
   hood.rotation.y = -a;
   for (const s of [-1, 1]) {
     const w = k.cyl(0.026, 0.016, M.rubber('#2a2a2c'), 0, 0, 0, 0.026, 10);
@@ -506,12 +506,12 @@ export function starBase(k: Kit, r: number, mat: Mat, o: { casters?: boolean; n?
     const cx = Math.cos(a);
     const cz = Math.sin(a);
     if (o.flat) {
-      k.beam([cx * 0.04, hubY + 0.015, cz * 0.04], [cx * (r - 0.01), yTip + 0.005, cz * (r - 0.01)], 0.045, 0.022, mat, 0.008);
+      k.beam([cx * 0.04, hubY + 0.015, cz * 0.04], [cx * (r - 0.01), yTip + 0.005, cz * (r - 0.01)], 0.045, 0.022, mat, 0);
     } else {
       k.rod([cx * 0.04, hubY + 0.02, cz * 0.04], [cx * (r - 0.012), yTip + 0.006, cz * (r - 0.012)], 0.02, mat, 0.013, 8);
     }
     if (cast) caster(k, cx * (r - 0.03), cz * (r - 0.03), a, o.casterMat ?? M.plastic('#2a2b2e'));
-    else k.cyl(0.02, 0.016, M.rubber('#2a2a2c'), cx * (r - 0.02), 0, cz * (r - 0.02), 0.016, 12);
+    else k.cyl(0.02, 0.016, M.rubber('#2a2a2c'), cx * (r - 0.02), 0, cz * (r - 0.02), 0.016, 8);
   }
   k.cyl(0.05, 0.05, mat, 0, hubY - 0.01, 0, 0.04, 16);
   return hubY + 0.04;

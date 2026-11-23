@@ -945,7 +945,7 @@ function metalCafe(o: { sh: number; back: 'tall' | 'low' | 'none'; round?: boole
   const sh = o.sh;
   const hs = o.round ? 0.185 : 0.19;
   const seatO: Outline = o.round ? ellOutline(0.19, 0.19, 36) : roundPoly([[-hs, -hs], [hs, -hs], [hs, hs], [-hs, hs]], 0.05, 40);
-  const sp = 0.025 + 0.06 * (sh / 0.46);
+  const sp = 0.03 + 0.045 * (sh / 0.46);
   const ct = o.round ? 0.13 : 0.165;
   const build = (c: C): THREE.Object3D => {
     const k = new Kit();
@@ -1486,7 +1486,7 @@ function tubBack(k: Kit, t: TubSpec, m: Mat, thick: number, channels = 0, outer?
     }
     sheet(k, (u, v) => tubPoint(t, -t.a * 1.01 + 2.02 * t.a * u, v * 0.985, thick * 0.55 + 0.012), 20, 8, pillowT(0.022, 0.4), outer ?? m);
   } else {
-    sheet(k, (u, v) => tubPoint(t, -t.a + 2 * t.a * u, v), 24, 12, (u, v) => thick * (0.35 + 0.65 * Math.pow(Math.sin(Math.PI * u), 0.35)) * roundTop(v), m);
+    sheet(k, (u, v) => tubPoint(t, -t.a + 2 * t.a * u, v), t.a > 1.2 ? 22 : 16, t.yBack - t.y0 > 0.3 ? 10 : 7, (u, v) => thick * (0.35 + 0.65 * Math.pow(Math.sin(Math.PI * u), 0.35)) * roundTop(v), m);
   }
 }
 
@@ -1649,7 +1649,7 @@ function stool(o: StoolOpts): Fam {
   const yF = Math.max(0.17, sh - 0.47);
   const four = o.base === 'wood4' || o.base === 'metal4' || o.base === 'brass4' || o.base === 'square';
   const tp = o.base === 'square' ? 0.155 : o.base === 'wood4' ? 0.125 : 0.13;
-  const fp = o.base === 'square' ? 0.17 : tp + 0.035 + 0.06 * (sh / 0.75);
+  const fp = o.base === 'square' ? 0.17 : o.base === 'wood4' ? tp + 0.035 + 0.06 * (sh / 0.75) : tp + 0.02 + 0.045 * (sh / 0.75);
   const feet2d: Array<[number, number]> = four
     ? corners2d(fp)
     : o.base === 'tripod'
@@ -1705,7 +1705,7 @@ function stool(o: StoolOpts): Fam {
         top: (x, z) => 0.018 * (z / 0.17) ** 2 - 0.024 * (x / 0.2) ** 2 + 0.008,
       });
     else if (o.seat === 'cushion') {
-      pad(k, ellOutline(0.17, 0.17, 32), 0.014, o.base === 'pedestal' ? M.plastic('#1f2023') : fr, 0, yU, 0, { rTop: 0.004, rBot: 0.002, rings: 2 });
+      k.cyl(0.17, 0.014, o.base === 'pedestal' ? M.plastic('#1f2023') : fr, 0, yU, 0, 0.17, 24);
       pad(k, seatO, 0.064, um, 0, yU + 0.014, 0, { rTop: 0.028, rBot: 0.012, crown: 0.012 });
     } else if (o.seat === 'tufted') {
       const btn: Array<[number, number]> = [];
@@ -1719,9 +1719,9 @@ function stool(o: StoolOpts): Fam {
       });
       for (const [bx, bz] of btn) {
         const rho = Math.hypot(bx, bz) / 0.19;
-        k.sphere(0.0085, um, bx, yU + 0.088 + 0.014 * (1 - rho * rho) - 0.008, bz, 1, 0.7, 1, 10);
+        k.sphere(0.0085, um, bx, yU + 0.088 + 0.014 * (1 - rho * rho) - 0.008, bz, 1, 0.7, 1, 6);
       }
-      k.tube(SQ38.map(([x, z]) => [x * 0.99, yU + 0.075, z * 0.99] as V3), 0.0045, um, { closed: true, seg: 64, radial: 5 });
+      k.tube(SQ38.filter((_, i) => i % 2 === 0).map(([x, z]) => [x * 0.99, yU + 0.075, z * 0.99] as V3), 0.0045, um, { closed: true, seg: 48, radial: 4 });
     } else if (o.seat === 'rattan') {
       pad(k, seatO, 0.064, M.wicker(c.seat), 0, yU, 0, { rTop: 0.026, rBot: 0.008, crown: 0.01 });
       k.ring(0.188, 0.013, fr, 0, yU + 0.016, 0, 40);
@@ -1747,7 +1747,7 @@ function stool(o: StoolOpts): Fam {
         const foot: V3 = [sx * fp, 0, sz * fp];
         legs.push([foot, top]);
         if (o.base === 'wood4') turned(k, foot, top, o.turnedLegs ? PROF.windsor(0.024) : PROF.taper(0.021, 0.0145), fr, 12);
-        else if (o.base === 'square') k.beam([foot[0], 0.003, foot[2]], top, 0.024, 0.024, fr, 0.004);
+        else if (o.base === 'square') k.beam([foot[0], 0.003, foot[2]], top, 0.024, 0.024, fr, 0);
         else turned(k, foot, top, PROF.taper(0.0115, 0.0085), fr, 10);
         if (o.base !== 'wood4') k.cyl(0.012, 0.01, M.rubber('#202022'), foot[0], 0, foot[2], 0.011, 10);
       }
@@ -1756,13 +1756,13 @@ function stool(o: StoolOpts): Fam {
         if (o.base === 'wood4') {
           if (o.turnedLegs) turned(k, a, b, PROF.stretcher(0.015), fr, 8);
           else k.rod(a, b, r, fr, r, 8);
-        } else if (o.base === 'square') k.beam(a, b, 0.02, 0.02, fr, 0.004);
+        } else if (o.base === 'square') k.beam(a, b, 0.02, 0.02, fr, 0);
         else k.rod(a, b, 0.0085, fr, 0.0085, 8);
       };
       const ft = o.foot ?? 'bars';
       if (ft === 'ring') {
         const hp = at(0, yF)[0];
-        k.ring(Math.abs(hp) * Math.SQRT2, 0.0095, fr, 0, yF, 0, 44);
+        k.ring(Math.abs(hp) * Math.SQRT2, 0.0095, fr, 0, yF, 0, 36);
         for (let i = 0; i < 4; i++) bar(at(i, yU - 0.03), at((i + 1) % 4, yU - 0.03), 0.009);
       } else if (ft === 'h') {
         bar(at(0, yF), at(3, yF));
@@ -1808,7 +1808,7 @@ function stool(o: StoolOpts): Fam {
       k.cyl(0.026, yU - 0.06, fr, 0, 0.055, 0, 0.026, 16);
       k.cyl(0.034, 0.13, M.plastic('#1f2023'), 0, yU - 0.16, 0, 0.032, 16);
       k.cyl(0.07, 0.02, M.plastic('#1f2023'), 0, yU - 0.03, 0, 0.09, 16);
-      k.ring(0.185, 0.0095, fr, 0, yF, 0, 44);
+      k.ring(0.185, 0.0095, fr, 0, yF, 0, 36);
       k.cyl(0.038, 0.03, fr, 0, yF - 0.015, 0, 0.038, 16);
       for (let i = 0; i < 3; i++) {
         const a = Math.PI / 2 + (i * 2 * Math.PI) / 3;
@@ -1972,7 +1972,7 @@ interface OfficeOpts {
 function officeChair(o: OfficeOpts): Fam {
   const sh = o.sh ?? 0.48;
   const yMech = sh - 0.145;
-  const seatO = o.saddle ? SADDLE : trapOutline(0.5, 0.46, 0.48, 0.1, 0.08, 44, 0.02);
+  const seatO = o.saddle ? SADDLE : trapOutline(0.5, 0.46, 0.48, 0.1, 0.08, 32, 0.02);
   const surf: Record<Exclude<OfficeOpts['back'], 'none'>, BackSurf> = {
     mesh: { y0: sh + 0.07, H: 0.56, hw: [[0, 0.2], [0.3, 0.235], [0.8, 0.24], [1, 0.22]], z: [[0, -0.245], [0.25, -0.238], [0.6, -0.275], [1, -0.33]], R: 0.45 },
     exec: { y0: sh + 0.03, H: 0.72, hw: [[0, 0.235], [0.5, 0.25], [1, 0.23]], z: [[0, -0.25], [0.3, -0.255], [1, -0.36]], R: 0.6 },
@@ -2005,7 +2005,7 @@ function officeChair(o: OfficeOpts): Fam {
     k.cyl(0.033, Math.min(0.15, (yMech - hubTop) * 0.6), blk, 0, hubTop - 0.012, 0, 0.03, 14);
     if (o.ring) {
       const yr = 0.32;
-      k.ring(0.225, 0.0105, M.chrome(), 0, yr, 0, 48);
+      k.ring(0.225, 0.0105, M.chrome(), 0, yr, 0, 32);
       k.cyl(0.04, 0.035, blk, 0, yr - 0.017, 0, 0.04, 16);
       for (let i = 0; i < 3; i++) {
         const a = Math.PI / 2 + (i * 2 * Math.PI) / 3;
@@ -2014,16 +2014,16 @@ function officeChair(o: OfficeOpts): Fam {
     }
     k.rbox(0.2, 0.05, 0.24, 0.012, blk, 0, yMech, 0, 1);
     k.rod([0.08, yMech + 0.02, 0.07], [0.2, yMech + 0.012, 0.11], 0.005, blk, 0.005, 8);
-    k.sphere(0.012, blk, 0.2, yMech + 0.012, 0.11, 1.4, 0.8, 1, 10);
+    k.sphere(0.012, blk, 0.2, yMech + 0.012, 0.11, 1.4, 0.8, 1, 6);
     const leatherLook = o.back === 'exec' || o.back === 'conf' || o.back === 'gaming' || o.saddle;
     const um = leatherLook ? M.leather(c.seat) : M.fabric(c.seat);
-    pad(k, o.saddle ? SADDLE : trapOutline(0.44, 0.42, 0.44, 0.08, 0.07, 36, 0.02), 0.02, blk, 0, yMech + 0.045, 0, { rTop: 0.006, rBot: 0.003, rings: 2 });
+    k.box(0.4, 0.016, 0.38, blk, 0, yMech + 0.046, 0.02);
     if (o.saddle) {
       pad(k, SADDLE, 0.08, um, 0, yMech + 0.06, 0, { rTop: 0.03, rBot: 0.012, crown: -0.014, rings: 6, top: (x, z) => 0.02 * (z / 0.17) ** 2 - 0.03 * (x / 0.2) ** 2 + 0.012 });
     } else if (o.back === 'gaming') {
       const acc = M.leather(c.accent);
-      pad(k, seatO, 0.075, acc, 0, yMech + 0.06, 0, { rTop: 0.03, rBot: 0.012, crown: 0.004, rings: 6, top: (x) => 0.04 * Math.pow(Math.min(1, Math.abs(x) / 0.25), 4) });
-      pad(k, trapOutline(0.29, 0.27, 0.42, 0.05, 0.05, 32, 0.03), 0.018, um, 0, yMech + 0.128, 0, { rTop: 0.008, rBot: 0.004, crown: 0.004, rings: 3 });
+      pad(k, seatO, 0.075, acc, 0, yMech + 0.06, 0, { rTop: 0.03, rBot: 0.012, crown: 0.004, rings: 4, top: (x) => 0.04 * Math.pow(Math.min(1, Math.abs(x) / 0.25), 4) });
+      pad(k, trapOutline(0.29, 0.27, 0.42, 0.05, 0.05, 24, 0.03), 0.018, um, 0, yMech + 0.128, 0, { rTop: 0.008, rBot: 0.004, crown: 0.004, rings: 2 });
     } else pad(k, seatO, 0.075, um, 0, yMech + 0.06, 0, { rTop: 0.03, rBot: 0.012, crown: 0.01, top: (_x, z) => (z > 0.13 ? -(z - 0.13) * 0.35 : 0) });
 
     // ---- back
@@ -2038,17 +2038,17 @@ function officeChair(o: OfficeOpts): Fam {
         ],
         r,
         m,
-        { seg: 20, radial: 8 },
+        { seg: 14, radial: 6 },
       );
     };
     if (o.back === 'mesh') {
-      sheet(k, fnB, 12, 14, 0.004, M.fabric(c.mesh, 40));
+      sheet(k, fnB, 10, 12, 0.004, M.fabric(c.mesh, 40));
       const rim: V3[] = [];
       for (let j = 0; j <= 10; j++) rim.push(fnB(0, j / 10));
       for (let i = 1; i <= 8; i++) rim.push(fnB(i / 8, 1));
       for (let j = 9; j >= 0; j--) rim.push(fnB(1, j / 10));
       for (let i = 7; i >= 1; i--) rim.push(fnB(i / 8, 0));
-      k.tube(rim, 0.013, blk, { closed: true, seg: 76, radial: 6 });
+      k.tube(rim, 0.013, blk, { closed: true, seg: 52, radial: 5 });
       sheet(k, offsetFn(fnB, 0.012, 0.18, 0.82, 0.14, 0.3), 8, 3, 0.012, blk);
       jBar(blk, 0.02);
       const jt: V3 = [0, (bs as BackSurf).y0 + 0.16, lerpTab((bs as BackSurf).z, 0.16 / (bs as BackSurf).H) - 0.045];
@@ -2074,20 +2074,20 @@ function officeChair(o: OfficeOpts): Fam {
         k.beam([0, b.y0 + b.H - 0.03, lerpTab(b.z, 1) - 0.022], [0, hy + 0.05, hz - 0.035], 0.04, 0.014, blk, 0.004);
       }
     } else if (o.back === 'exec') {
-      sheet(k, fnB, 12, 14, pillowT(0.05, 0.45), um);
+      sheet(k, fnB, 8, 10, pillowT(0.05, 0.45), um);
       for (let i = 0; i < 5; i++) {
         const v0 = 0.04 + i * 0.185;
         const v1 = Math.min(0.98, v0 + (i === 4 ? 0.2 : 0.185));
-        sheet(k, offsetFn(fnB, 0.03, 0.06, 0.94, v0, v1), 10, 4, (u, v) => (i === 4 ? 0.065 : 0.05) * (0.3 + 0.7 * Math.pow(Math.sin(Math.PI * v), 0.5)) * (0.45 + 0.55 * Math.pow(Math.sin(Math.PI * u), 0.3)), um);
+        sheet(k, offsetFn(fnB, 0.03, 0.06, 0.94, v0, v1), 8, 3, (u, v) => (i === 4 ? 0.065 : 0.05) * (0.3 + 0.7 * Math.pow(Math.sin(Math.PI * v), 0.5)) * (0.45 + 0.55 * Math.pow(Math.sin(Math.PI * u), 0.3)), um);
       }
       jBar(M.chrome(), 0.016);
     } else if (o.back === 'task') {
-      sheet(k, fnB, 10, 10, pillowT(0.06, 0.35), um);
-      sheet(k, offsetFn(fnB, -0.032, 0.02, 0.98, 0.02, 0.98), 10, 10, 0.008, blk);
+      sheet(k, fnB, 10, 8, pillowT(0.06, 0.35), um);
+      sheet(k, offsetFn(fnB, -0.032, 0.02, 0.98, 0.02, 0.98), 6, 5, 0.008, blk);
       jBar(blk, 0.018);
     } else if (o.back === 'gaming') {
-      sheet(k, fnB, 16, 18, pillowT(0.075, 0.45), M.leather(c.accent));
-      sheet(k, offsetFn(fnB, 0.036, 0.22, 0.78, 0.04, 0.95), 10, 14, pillowT(0.035, 0.4), um);
+      sheet(k, fnB, 12, 12, pillowT(0.075, 0.45), M.leather(c.accent));
+      sheet(k, offsetFn(fnB, 0.036, 0.22, 0.78, 0.04, 0.95), 6, 10, pillowT(0.035, 0.4), um);
       const pn = fnB(0.5, 0.84);
       k.pillow(0.22, 0.09, 0.08, um, pn[0], pn[1] - 0.045, pn[2] + 0.085);
       const pl = fnB(0.5, 0.17);
@@ -2095,12 +2095,12 @@ function officeChair(o: OfficeOpts): Fam {
       // shoulder slots
       for (const s of [-1, 1]) {
         const p = fnB(0.5 + s * 0.34, 0.7);
-        k.rbox(0.07, 0.035, 0.05, 0.016, M.matte('#141416'), p[0], p[1] - 0.017, p[2]);
+        k.box(0.07, 0.03, 0.05, M.matte('#141416'), p[0], p[1] - 0.015, p[2]);
       }
       jBar(blk, 0.02);
     } else if (o.back === 'conf') {
-      sheet(k, fnB, 12, 10, pillowT(0.035, 0.45), um);
-      sheet(k, offsetFn(fnB, -0.022, 0.01, 0.99, 0.01, 0.99), 12, 10, 0.006, blk);
+      sheet(k, fnB, 10, 8, pillowT(0.035, 0.45), um);
+      sheet(k, offsetFn(fnB, -0.022, 0.01, 0.99, 0.01, 0.99), 6, 5, 0.006, blk);
       jBar(M.chrome(), 0.015);
     }
 
@@ -2109,7 +2109,7 @@ function officeChair(o: OfficeOpts): Fam {
       const ax = o.arms === 'gaming' ? 0.285 : 0.275;
       for (const s of [-1, 1]) {
         k.beam([s * 0.09, yMech + 0.035, 0.0], [s * ax, yMech + 0.038, 0.0], 0.012, 0.05, blk, 0.003);
-        k.rbox(0.035, sh + 0.19 - (yMech + 0.03), 0.055, 0.012, blk, s * ax, yMech + 0.03, 0.0, 1);
+        k.box(0.035, sh + 0.19 - (yMech + 0.03), 0.055, blk, s * ax, yMech + 0.03, 0.0);
         k.rbox(o.arms === 'gaming' ? 0.09 : 0.075, 0.03, 0.26, 0.012, o.arms === 'gaming' ? M.leather(c.seat) : M.rubber('#2d2e31'), s * ax, sh + 0.19, 0.02, 1);
       }
     } else if (o.arms === 'loop') {
@@ -2126,7 +2126,7 @@ function officeChair(o: OfficeOpts): Fam {
           ],
           0.011,
           M.chrome(),
-          { seg: 40, radial: 8 },
+          { seg: 26, radial: 6 },
         );
         k.rbox(0.065, 0.03, 0.25, 0.012, o.back === 'exec' ? um : blk, s * 0.29, sh + 0.185, 0.02, 1);
       }
@@ -2219,14 +2219,14 @@ function ballChair(): Fam {
       frame.push([x + Math.sign(x) * 0.02, 0.075, z - Math.sign(z) * 0.03]);
       frame.push([x - Math.sign(x) * 0.03, 0.075, z + Math.sign(z) * 0.02]);
     }
-    k.tube(frame, 0.015, fm, { closed: true, seg: 64, radial: 8, tension: 0.2 });
+    k.tube(frame, 0.015, fm, { closed: true, seg: 48, radial: 6, tension: 0.2 });
     for (const [x, z] of [[0.205, 0.205], [0.205, -0.205], [-0.205, -0.205], [-0.205, 0.205]]) {
       caster(k, x, z, Math.atan2(z, x), fm, 0.075);
       k.rod([x * 0.9, 0.075, z * 0.9], [x * 0.66, ringY, z * 0.66], 0.011, fm, 0.011, 8);
     }
-    k.ring(0.19, 0.014, fm, 0, ringY, 0, 40);
-    k.sphere(rb, M.plastic(c.ball), 0, cy, 0, 1, 1, 1, 30);
-    k.ring(rb + 0.0005, 0.0022, M.plastic(c.ball), 0, cy, 0, 48);
+    k.ring(0.19, 0.014, fm, 0, ringY, 0, 32);
+    k.sphere(rb, M.plastic(c.ball), 0, cy, 0, 1, 1, 1, 26);
+    k.cyl(rb + 0.0008, 0.004, M.plastic(c.ball), 0, cy - 0.002, 0, rb + 0.0008, 32);
     k.sphere(0.008, M.rubber('#3a3a3c'), rb * 0.7, cy + rb * 0.7, 0, 1, 1, 1, 8);
     for (const s of [-1, 1]) k.tube([[s * 0.17, 0.075, -0.2], [s * 0.17, 0.4, -0.27], [s * 0.165, 0.79, -0.3]], 0.012, fm, { seg: 16, radial: 8 });
     sheet(
@@ -2273,7 +2273,7 @@ function visitorChair(): Fam {
         ],
         0.0125,
         ch,
-        { seg: 44, radial: 8 },
+        { seg: 30, radial: 6 },
       );
       k.tube(
         [
@@ -2288,7 +2288,7 @@ function visitorChair(): Fam {
         ],
         0.0125,
         ch,
-        { seg: 44, radial: 8 },
+        { seg: 30, radial: 6 },
       );
       k.rbox(0.05, 0.022, 0.26, 0.009, lea, xs, 0.652, -0.0, 1);
     }

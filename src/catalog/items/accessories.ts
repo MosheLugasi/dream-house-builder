@@ -996,11 +996,11 @@ const flutedVase: FurnitureDef = {
   draw2d: (ctx, c) =>
     sym(ctx, () => {
       for (const [x, y] of [
-        [-0.11, 0.03],
-        [0.09, -0.04],
+        [-0.085, 0.03],
+        [0.085, -0.04],
         [0.02, 0.06],
       ])
-        D.ellipse(ctx, x, y, 0.045, 0.025, tint(c.pampas, 0.3), INK_SOFT, 0.006, Math.atan2(y, x));
+        D.ellipse(ctx, x, y, 0.04, 0.022, tint(c.pampas, 0.3), INK_SOFT, 0.006, Math.atan2(y, x));
       circ(ctx, 0, 0, 0.082, tint(c.vase, 0.2));
       for (let i = 0; i < 18; i++) {
         const a = (i / 18) * Math.PI * 2;
@@ -1081,7 +1081,7 @@ const bust: FurnitureDef = {
   group: G_DECOR,
   tags: ['פסל', 'ראש', 'קלאסי', 'גבס', 'יווני'],
   size: { w: 0.24, d: 0.17, h: 0.33 },
-  colors: [slot('plaster', 'גבס', '#eeebe4')],
+  colors: [slot('plaster', 'גבס', '#e8e2d6')],
   build: ({ colors: c }) => {
     const k = new Kit();
     const pl = M.stone(c.plaster, 0.75);
