@@ -7,12 +7,18 @@ import type { Quality } from '../../store/quality';
  */
 export interface RenderPreset {
   quality: Quality;
-  /** upper limit of the device pixel ratio */
+  /**
+   * upper limit of the device pixel ratio. `high` renders at CSS resolution, as it effectively did before
+   * (N8AO was sized in CSS pixels, so the scene was never drawn at 2× anyway); `ultra` renders sharper on
+   * HiDPI screens.
+   */
   pixelRatioCap: number;
   /** post-processing chain (AO, bloom, graded output, SMAA); off = render straight to the canvas */
   post: boolean;
   /** N8AO quality mode */
   ao: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra';
+  /** AO at half resolution with depth-aware upsampling (looks the same here, ~10% cheaper overall) */
+  aoHalfRes: boolean;
   /** frames averaged with sub-pixel jitter while the camera stands still (0 = off) */
   accumulate: number;
   /** sun shadow map size */
@@ -21,7 +27,8 @@ export interface RenderPreset {
   sharpShadows: boolean;
   /** pool of area lights that bring daylight in through the nearest windows */
   windowLights: number;
-  /** interior surfaces see less of the sky (ambient + reflections) than outdoor ones */
+  /** interior surfaces see less of the sky (ambient + reflections) than outdoor ones, the camera adapts
+   * its exposure indoors (needs the window lights to look right) */
   indoorAmbient: boolean;
   /** nearest lit lamps that cast (soft) shadows at night */
   lampShadows: number;
@@ -38,11 +45,12 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     pixelRatioCap: 1,
     post: false,
     ao: 'Low',
+    aoHalfRes: true,
     accumulate: 0,
     shadowMapSize: 2048,
     sharpShadows: false,
     windowLights: 0,
-    indoorAmbient: true,
+    indoorAmbient: false,
     lampShadows: 0,
     grass: false,
     photoScale: 1,
@@ -50,9 +58,10 @@ export const PRESETS: Record<Quality, RenderPreset> = {
   },
   high: {
     quality: 'high',
-    pixelRatioCap: 2,
+    pixelRatioCap: 1,
     post: true,
     ao: 'Medium',
+    aoHalfRes: true,
     accumulate: 0,
     shadowMapSize: 4096,
     sharpShadows: false,
@@ -65,9 +74,10 @@ export const PRESETS: Record<Quality, RenderPreset> = {
   },
   ultra: {
     quality: 'ultra',
-    pixelRatioCap: 2,
+    pixelRatioCap: 1.5,
     post: true,
     ao: 'High',
+    aoHalfRes: false,
     accumulate: 16,
     shadowMapSize: 4096,
     sharpShadows: true,
@@ -76,6 +86,6 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     lampShadows: 1,
     grass: true,
     photoScale: 2,
-    photoSamples: 8,
+    photoSamples: 6,
   },
 };

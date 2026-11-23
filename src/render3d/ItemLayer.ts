@@ -11,6 +11,9 @@ export interface ItemEvents {
 }
 export const itemEvents: { current: ItemEvents | null } = { current: null };
 
+/** the floor finish of a room is drawn this far above the level (see buildArchitecture) */
+const RUG_LIFT = 0.013;
+
 export interface ItemContext {
   /** ceiling height of the level (ceiling-mounted items hang from it) */
   levelHeight: number;
@@ -49,6 +52,8 @@ export function makeItemHolder(item: Pick<FurnitureItem, 'catalogId' | 'colors' 
   }
   const lift = def.mount === 'ceiling' ? ctx.levelHeight - DESIGN_CEILING : 0;
   obj.position.y += lift;
+  // rugs and mats lie ON the floor finish (drawn 1.2 cm above the slab) instead of fighting with it
+  if (def.walkable && (def.mount ?? 'floor') === 'floor') obj.position.y += RUG_LIFT;
   holder.add(obj);
   holder.userData.body = obj;
   return holder;

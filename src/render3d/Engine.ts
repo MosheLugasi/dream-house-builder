@@ -319,7 +319,8 @@ export class Engine {
     this.interactions.update(dt, this.mode === 'walk' ? this.walk.character.root.position : null);
     this.updateSun();
     const walking = this.mode === 'walk';
-    this.realism.update(dt, { walking, indoors: walking && this.walk.indoors, project: useStore.getState().project, focus });
+    const lampLight = walking ? this.lights.brightnessAt(this.walk.character.root.position, this.atmosphere.night) : 0;
+    this.realism.update(dt, { walking, indoors: walking && this.walk.indoors, project: useStore.getState().project, focus, lampLight });
     this.realism.render();
     if (this.photoPending) {
       this.photoPending = false;
@@ -473,7 +474,7 @@ export class Engine {
       // by day the sky itself is far brighter than any lamp: keep the glow for the evening,
       // and keep it gentle in a lit room
       bloom.threshold = 4 - 2.9 * night;
-      bloom.strength = 0.03 + 0.25 * night * (indoors ? 0.3 : 1);
+      bloom.strength = 0.03 + 0.25 * night * (indoors ? 0.2 : 1);
     }
   }
 

@@ -117,15 +117,18 @@ export class WindowLights {
    * @param eye camera position
    * @param radiance brightness of the view out of a window (0 by night)
    * @param color sky tint
+   * @param active windows may light rooms now (walk mode by day). Area lights cost every lit pixel even
+   *   when dark, so the pool is taken out of the scene while no window is in reach (outside, in the
+   *   editor, at night); each variant of the shaders compiles once and is then cached by three.
    */
-  update(dt: number, eye: THREE.Vector3, radiance: number, color: THREE.Color): void {
+  update(dt: number, eye: THREE.Vector3, radiance: number, color: THREE.Color, active: boolean): void {
     if (!this.slots.length) return;
     this.timer -= dt;
     if (this.timer <= 0) {
       this.timer = 0.2;
       const here = { x: eye.x, y: eye.z };
       const scored: { s: WindowSource; score: number; weight: number }[] = [];
-      if (radiance > 1e-3) {
+      if (active && radiance > 1e-3) {
         for (const s of this.sources) {
           if (eye.y < s.floorY - 0.3 || eye.y > s.ceilY + 0.6) continue;
           const dx = eye.x - s.center.x;
@@ -138,6 +141,12 @@ export class WindowLights {
         scored.sort((a, b) => a.score - b.score);
       }
       const wanted = scored.slice(0, this.slots.length);
+      // only in the scene while some window is in reach (or still fading out)
+      const on = wanted.length > 0 || this.slots.some((sl) => sl.light.intensity > 1e-3);
+      if (this.group.visible !== on) {
+        this.group.visible = on;
+        if (!on) this.clear();
+      }
       const byId = new Map(wanted.map((w) => [w.s.id, w]));
       for (const slot of this.slots) {
         const w = slot.source && byId.get(slot.source.id);
@@ -166,7 +175,6 @@ export class WindowLights {
         slot.light.intensity = 0;
         slot.source = null;
       }
-      slot.light.visible = true;
     }
   }
 

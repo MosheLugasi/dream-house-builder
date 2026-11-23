@@ -53,6 +53,9 @@ export class RenderPipeline {
 
   configure(preset: RenderPreset, width: number, height: number, pixelRatio: number): void {
     this.dispose();
+    // (never 1 px: half-resolution AO would get zero-sized targets before the first resize)
+    width = Math.max(2, width);
+    height = Math.max(2, height);
     this.width = width;
     this.height = height;
     this.pixelRatio = pixelRatio;
@@ -65,7 +68,8 @@ export class RenderPipeline {
       ao.configuration.distanceFalloff = 1.0;
       ao.configuration.intensity = 2.6;
       ao.configuration.color = new THREE.Color(0, 0, 0);
-      ao.configuration.halfRes = false;
+      ao.configuration.halfRes = preset.aoHalfRes;
+      ao.configuration.depthAwareUpsampling = true;
       ao.configuration.gammaCorrection = false;
       ao.setQualityMode(preset.ao);
       composer.addPass(ao);
@@ -94,10 +98,13 @@ export class RenderPipeline {
   }
 
   setSize(width: number, height: number): void {
+    width = Math.max(2, width);
+    height = Math.max(2, height);
     this.width = width;
     this.height = height;
+    // (the composer sizes every pass, N8AO included, in device pixels; sizing N8AO again in CSS pixels –
+    // as the engine used to – rendered the scene at a fraction of the canvas resolution on HiDPI screens)
     this.composer?.setSize(width, height);
-    this.ao?.setSize(width, height);
     this.still = 0;
   }
 
@@ -165,14 +172,12 @@ export class RenderPipeline {
       out.dispose();
       composer.setPixelRatio(this.pixelRatio);
       composer.setSize(this.width, this.height);
-      this.ao?.setSize(this.width, this.height);
       this.camera.clearViewOffset();
       this.still = 0;
     };
     try {
       composer.setPixelRatio(1);
       composer.setSize(w, h);
-      this.ao?.setSize(w, h);
       for (let i = 0; i < samples; i++) {
         acc.weight = 1 / (i + 1);
         if (samples > 1) this.jitter(i + 1, w, h);
@@ -183,11 +188,9 @@ export class RenderPipeline {
       const copy = new THREE.MeshBasicMaterial({ map: acc.result.texture, toneMapped: false, depthTest: false, depthWrite: false });
       const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), copy);
       const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-      const prevSpace = gl.outputColorSpace;
-      gl.outputColorSpace = THREE.LinearSRGBColorSpace; // the average is already display-ready
+      // (a render target gets no output colour conversion: the average is already display-ready)
       gl.setRenderTarget(out);
       gl.render(quad, ortho);
-      gl.outputColorSpace = prevSpace;
       gl.setRenderTarget(null);
       copy.dispose();
       quad.geometry.dispose();
@@ -213,9 +216,8 @@ export class RenderPipeline {
   }
 
   dispose(): void {
+    if (this.composer) for (const p of this.composer.passes) p.dispose();
     this.composer?.dispose();
-    this.acc?.dispose();
-    this.output?.dispose();
     this.composer = null;
     this.ao = null;
     this.bloom = null;

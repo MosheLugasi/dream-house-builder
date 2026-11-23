@@ -19,6 +19,8 @@ export interface RealismFrame {
   project: Project;
   /** what the camera looks at (orbit target / walker) */
   focus: THREE.Vector3;
+  /** lamp light around the walker, 1 ≈ one ordinary lamp nearby (see LightManager.brightnessAt) */
+  lampLight?: number;
 }
 
 const _dir = new THREE.Vector3();
@@ -37,7 +39,7 @@ export class Realism {
   /** look parameters (tuned against screenshots; exposed for experiments from the console) */
   readonly tune = {
     /** sky light left inside rooms: diffuse and reflections */
-    indoorDiffuse: 0.32,
+    indoorDiffuse: 0.45,
     indoorSpecular: 0.2,
     /** brightness of the view out of a window, × daylight × environment intensity */
     windowRadiance: 8,
@@ -72,7 +74,13 @@ export class Realism {
     // skies and lamps off to white without the hue shifts and over-saturation of ACES (AgX was flatter
     // still and needed a much stronger grade). Contrast comes from the grade below.
     renderer.toneMapping = THREE.NeutralToneMapping;
+    // the placement ghost, hover cursors and keyboard rotation move things without touching the store or
+    // the camera: never let the still-camera average smear them
+    renderer.domElement.addEventListener('pointermove', this.onInput);
+    window.addEventListener('keydown', this.onInput);
   }
+
+  private onInput = (): void => this.pipeline.invalidate();
 
   setQuality(q: Quality, width: number, height: number): void {
     const preset = PRESETS[q] ?? PRESETS.high;
@@ -116,7 +124,7 @@ export class Realism {
     // daylight through the windows (only matters where ceilings are drawn)
     this.windows.setBuildings(f.project.buildings);
     const radiance = f.walking ? t.windowRadiance * atm.daylight * this.scene.environmentIntensity : 0;
-    this.windows.update(dt, this.camera.position, radiance, atm.skyColor);
+    this.windows.update(dt, this.camera.position, radiance, atm.skyColor, f.walking && atm.daylight > 0.01);
 
     setCeilingGlow(f.walking && this.preset.indoorAmbient ? t.ceilingDay + (t.ceilingNight - t.ceilingDay) * atm.night : 1);
 
@@ -125,7 +133,9 @@ export class Realism {
     this.grass.update(this.camera, this.preset.grass);
 
     // eye adaptation: a room by day is darker than the street, the eye (camera) opens up
-    const wantAdapt = f.walking && f.indoors ? t.indoorExposure + (t.indoorExposureNight - t.indoorExposure) * atm.night : 1;
+    let wantAdapt = f.walking && f.indoors && this.preset.indoorAmbient ? t.indoorExposure + (t.indoorExposureNight - t.indoorExposure) * atm.night : 1;
+    // a room full of lit lamps at night: the eye closes down again instead of washing everything out
+    if (f.walking && atm.night > 0.3 && (f.lampLight ?? 0) > 1) wantAdapt /= Math.min(3, Math.pow(f.lampLight!, 0.6 * atm.night));
     this.adapt += (wantAdapt - this.adapt) * Math.min(1, dt * 1.5);
     this.renderer.toneMappingExposure = atm.exposure * this.adapt;
 
@@ -175,6 +185,8 @@ export class Realism {
   }
 
   dispose(): void {
+    this.renderer.domElement.removeEventListener('pointermove', this.onInput);
+    window.removeEventListener('keydown', this.onInput);
     this.pipeline.dispose();
     this.windows.dispose();
     this.indoor.dispose();

@@ -93,6 +93,21 @@ export class LightManager {
     return next;
   }
 
+  /**
+   * How much lamp light reaches a point, relative to one ordinary lamp a couple of meters away
+   * (lamps behind walls count too – it is only used to let the camera's exposure adapt).
+   */
+  brightnessAt(p: THREE.Vector3, night: number): number {
+    let sum = 0;
+    for (const s of this.sources) {
+      if (!this.isOn(s.id, night)) continue;
+      const d2 = s.pos.distanceToSquared(p);
+      if (d2 > s.distance * s.distance) continue;
+      sum += s.intensity / (4 + d2);
+    }
+    return sum / 12;
+  }
+
   update(dt: number, focus: THREE.Vector3, night: number): void {
     this.timer -= dt;
     if (this.timer <= 0) {
