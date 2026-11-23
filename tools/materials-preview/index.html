@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Materials preview – Dream House Builder</title>
+    <style>
+      body { margin: 0; padding: 12px; background: #23262b; color: #e8e8e8; font: 13px/1.35 system-ui, sans-serif; }
+      nav { direction: ltr; margin-bottom: 10px; }
+      nav a { color: #9cc7ff; margin-right: 12px; }
+      #grid { display: flex; flex-wrap: wrap; gap: 10px; direction: ltr; }
+      .card { background: #15171a; border-radius: 6px; overflow: hidden; }
+      .card img { display: block; }
+      .card .cap { padding: 5px 8px; display: flex; justify-content: space-between; gap: 12px; direction: ltr; }
+      .card .cap b { font-weight: 600; }
+      .card .cap span { opacity: 0.75; }
+      .sw { width: 150px; text-align: center; padding: 8px 4px; }
+      .sw img { margin: 0 auto 4px; border-radius: 6px; width: 96px; height: 96px; }
+      .sw i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: -2px; border: 1px solid #555; }
+      h2 { width: 100%; margin: 14px 0 2px; font-size: 15px; direction: rtl; text-align: left; }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="?mode=scenes">scenes (room)</a>
+      <a href="?mode=scenes&view=close">scenes (close-up)</a>
+      <a href="?mode=scenes&view=top">scenes (bird's eye, 16 m)</a>
+      <a href="?mode=swatches">swatches</a>
+      <span id="status"></span>
+    </nav>
+    <div id="grid"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

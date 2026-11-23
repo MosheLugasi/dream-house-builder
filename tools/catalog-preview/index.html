@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="he">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Catalog preview – 3D</title>
+    <style>
+      body { margin: 0; background: #e9ebee; font-family: system-ui, sans-serif; color: #222; }
+      header { padding: 8px 14px; font-size: 13px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+      header a { color: #2a5d9f; text-decoration: none; }
+      #sheet { display: block; }
+      #gl { position: absolute; left: -99999px; top: 0; }
+    </style>
+  </head>
+  <body>
+    <header id="nav"></header>
+    <canvas id="sheet"></canvas>
+    <canvas id="gl"></canvas>
+    <script type="module" src="/tools/catalog-preview/main.ts"></script>
+  </body>
+</html>
