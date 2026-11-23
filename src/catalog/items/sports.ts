@@ -599,14 +599,14 @@ const dumbbellRack: FurnitureDef = {
       { y: 0.42, z: 0.1, kg: [2, 4, 6, 8, 10] },
       { y: 0.74, z: -0.08, kg: [12, 14, 16, 18, 20] },
     ];
-    tiers.forEach((t, ti) => {
+    tiers.forEach((t) => {
       const tier = new Kit();
       tier.rbox(w - 0.08, 0.025, 0.3, 0.005, frame, 0, 0, 0, 1);
       tier.rbox(w - 0.1, 0.006, 0.28, 0.003, M.rubber('#2e3034'), 0, 0.025, 0, 1);
       const n = t.kg.length;
       t.kg.forEach((kg, i) => {
         const x = -w / 2 + 0.16 + (i * (w - 0.32)) / (n - 1);
-        dumbbell(tier, kg + ti * 0, x, 0.031, 0, head);
+        dumbbell(tier, kg, x, 0.031, 0, head);
       });
       k.sub(tier, 0, t.y, t.z).rotation.x = 0.16;
     });
@@ -1443,8 +1443,7 @@ const hoopKidsStand: FurnitureDef = {
     k.beam([0, 1.65, pz], [0, 1.65, boardZ - 0.02], 0.04, 0.04, M.plastic(c.base), 0.01);
     // shaped plastic backboard
     const shape = roundedRectShape(0.74, 0.5, 0.08);
-    const bm = k.geo(profileZ(shape, 0.03), M.plastic(c.board), 0, 1.7, boardZ - 0.015);
-    void bm;
+    k.geo(profileZ(shape, 0.03), M.plastic(c.board), 0, 1.7, boardZ - 0.015);
     k.box(0.36, 0.22, 0.004, M.plastic('#f4f3ef'), 0, 1.5, boardZ + 0.001);
     k.box(0.3, 0.16, 0.005, M.plastic(c.board), 0, 1.53, boardZ + 0.001);
     hoopRing(k, ri, 0, 1.5, ringZ, M.plastic(c.ring), 0.3);
