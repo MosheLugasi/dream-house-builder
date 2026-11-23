@@ -54,7 +54,7 @@ describe('catalog', () => {
       expect(ids.has(f.id), `duplicate id ${f.id}`).toBe(false);
       ids.add(f.id);
     }
-    expect(FURNITURE.length).toBeGreaterThan(300);
+    expect(FURNITURE.length).toBeGreaterThan(500);
   });
 
   it('builds every item and every action has what it needs', () => {
@@ -67,6 +67,16 @@ describe('catalog', () => {
         problems.push(`${def.id}: build failed ${String(e)}`);
         continue;
       }
+      // the geometry must fit the declared footprint / height (what the plan and collisions use)
+      const box = new THREE.Box3().setFromObject(obj, true);
+      const { w, d, h } = def.size;
+      const tol = 0.012;
+      const ceiling = def.mount === 'ceiling';
+      const y0 = ceiling ? 2.7 - h : 0;
+      const y1 = ceiling ? 2.7 : h;
+      if (box.min.x < -w / 2 - tol || box.max.x > w / 2 + tol) problems.push(`${def.id}: x ${box.min.x.toFixed(3)}..${box.max.x.toFixed(3)} exceeds ±${w / 2}`);
+      if (box.min.z < -d / 2 - tol || box.max.z > d / 2 + tol) problems.push(`${def.id}: z ${box.min.z.toFixed(3)}..${box.max.z.toFixed(3)} exceeds ±${d / 2}`);
+      if (box.min.y < y0 - tol || box.max.y > y1 + tol) problems.push(`${def.id}: y ${box.min.y.toFixed(3)}..${box.max.y.toFixed(3)} outside ${y0}..${y1}`);
       const parts = new Set<string>();
       obj.traverse((o) => {
         if (typeof o.userData.part === 'string') parts.add(o.userData.part);

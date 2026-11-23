@@ -676,7 +676,7 @@ const daybed = mkBed({
   id: 'bed2-daybed',
   name: 'מיטת יום עם משענות קש',
   tags: ['מיטת יום', 'דייבד', 'ספה', 'יחיד', 'קש', 'אירוח', 'סלון'],
-  size: { w: DB.w, d: DB.d, h: DB.h },
+  size: { w: DB.w, d: DB.d, h: DB.h + 0.02 },
   colors: [C.frame(PAL.oak, 'עץ'), C.bedding('#d9cfbf'), C.sheet('#efe9de'), C.throw('#9bae8a'), slot('cane', 'קש', '#d7bb8c')],
   mw: DB.mw,
   len: DB.len,
