@@ -17,7 +17,12 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
 - `src/catalog/types.ts` and `src/materials/types.ts` are contracts – extend with optional fields only.
 - No network assets: textures and models are procedural.
 - UI strings are Hebrew; keep code, comments and identifiers in English.
-- The saved file format is versioned (`version: 1`); structural changes need a migration in `io/storage.ts#parseProject`.
+- The saved file format is versioned (`version: 2`); structural changes need a migration in `io/storage.ts#parseProject`.
+- Two edit scopes: `site` (neighborhood map; items in site coordinates) and `building` (inside one building; building-local
+  coordinates). Convert with `toSite` / `toLocal` from `model/types.ts`.
+- Stairs and vehicles are catalog items (`stair` / `vehicle` on `FurnitureDef`, both `noBake`). Kit `box()` takes the height of
+  the box's BOTTOM, not its center.
+- Agents working in parallel share one scratchpad directory: use a private subfolder and never `pkill` by a generic name.
 
 ## Verifying visual changes
 Chromium + Playwright are preinstalled. Launch with

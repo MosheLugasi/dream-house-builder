@@ -247,19 +247,18 @@ export function sweepYZ(profile: Array<[number, number]>, path: Array<[number, n
     // normal = tangent rotated +90° in the (z, y) plane, pointing up for a path running towards +z
     frames.push({ z: path[i][0], y: path[i][1], nz: -ty, ny: tz });
   }
-  // duplicate vertices per profile edge so edges stay crisp
-  for (let i = 0; i < frames.length - 1; i++) {
-    const f0 = frames[i];
-    const f1 = frames[i + 1];
-    for (let j = 0; j < np; j++) {
-      const p0 = profile[j];
-      const p1 = profile[(j + 1) % np];
-      const base = pos.length / 3;
-      pos.push(p0[0], f0.y + f0.ny * p0[1], f0.z + f0.nz * p0[1]);
-      pos.push(p1[0], f0.y + f0.ny * p1[1], f0.z + f0.nz * p1[1]);
-      pos.push(p0[0], f1.y + f1.ny * p0[1], f1.z + f1.nz * p0[1]);
-      pos.push(p1[0], f1.y + f1.ny * p1[1], f1.z + f1.nz * p1[1]);
-      idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+  // one strip per profile edge: smooth along the path, crisp across profile corners
+  for (let j = 0; j < np; j++) {
+    const p0 = profile[j];
+    const p1 = profile[(j + 1) % np];
+    const base = pos.length / 3;
+    for (const f of frames) {
+      pos.push(p0[0], f.y + f.ny * p0[1], f.z + f.nz * p0[1]);
+      pos.push(p1[0], f.y + f.ny * p1[1], f.z + f.nz * p1[1]);
+    }
+    for (let i = 0; i < frames.length - 1; i++) {
+      const a = base + i * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
     }
   }
   if (capEnds) {
@@ -286,6 +285,17 @@ export function sweepYZ(profile: Array<[number, number]>, path: Array<[number, n
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
+}
+
+/** Resample a [z, y] polyline through a smooth spline (for `sweepYZ` paths). */
+export function smoothYZ(path: Array<[number, number]>, n = 20): Array<[number, number]> {
+  const c = new THREE.CatmullRomCurve3(
+    path.map(([z, y]) => new THREE.Vector3(0, y, z)),
+    false,
+    'catmullrom',
+    0.5,
+  );
+  return c.getPoints(n).map((p) => [p.z, p.y] as [number, number]);
 }
 
 /** Helical coil spring standing on y = 0. */

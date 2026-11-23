@@ -176,10 +176,3 @@ export function sampleHouse(): Building {
 
   return b;
 }
-
-/** The starter project so that a first-time player immediately has something to explore. */
-export function sampleProject(): Project {
-  const p = emptyProject('השכונה שלי');
-  p.buildings = [sampleHouse()];
-  return p;
-}

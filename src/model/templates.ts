@@ -206,7 +206,7 @@ function twoStoreyHouse(): Building {
   U.put('nightstand', 4.25, 0.33);
   U.put('wardrobe', 0.43, 2.4, FACE.E);
   U.put('ceiling-light', 3, 2.2);
-  U.put('bunk-bed', 0.64, 6.9, FACE.E);
+  U.put('bunk-bed', 0.64, 6.8);
   U.put('kids-desk', 3.2, 7.59, FACE.N);
   U.put('kids-chair', 3.2, 7.0);
   U.put('toy-chest', 5.69, 5.2, FACE.W);

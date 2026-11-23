@@ -50,7 +50,7 @@ const slide: FurnitureDef = {
     // tower: four posts, deck, guard panels
     for (const s of [-1, 1]) {
       for (const z of [z0, z1]) {
-        k.cyl(pr, top, frame, s * px, 0, z, pr, 12);
+        k.cyl(pr, top, frame, s * px, 0, z, pr, 10);
         k.sphere(pr * 1.3, grey, s * px, top, z, 1, 0.7, 1, 10);
         k.cyl(0.07, 0.012, frame, s * px, 0, z, 0.07, 12);
       }
@@ -62,7 +62,7 @@ const slide: FurnitureDef = {
         hole.absarc(hz, 0.34, 0.085, 0, Math.PI * 2, true);
         sh.holes.push(hole);
       }
-      k.geo(extrudeX(sh, 0.022, 0, 14), panel, s * px, deckY + 0.06, (z0 + z1) / 2);
+      k.geo(extrudeX(sh, 0.022, 0, 7), panel, s * px, deckY + 0.06, (z0 + z1) / 2);
     }
     k.rbox(px * 2 + 0.06, 0.05, z1 - z0 + 0.06, 0.012, grey, 0, deckY - 0.05, (z0 + z1) / 2, 1);
     // arch over the chute entry
@@ -93,7 +93,7 @@ const slide: FurnitureDef = {
         ],
         0.024,
         frame,
-        { seg: 18, radial: 8, tension: 0.3 },
+        { seg: 14, radial: 6, tension: 0.3 },
       );
     }
     for (let i = 1; i <= 4; i++) {
@@ -633,7 +633,7 @@ const playhouse: FurnitureDef = {
     dk.box(0.4, 0.03, 0.006, trim, 0.24, 0.07, 0.014);
     dk.sphere(0.018, M.brass(), 0.42, 0.3, 0.025, 1, 1, 1, 8);
     const dg = k.sub(dk, door.x0 + 0.01, y0 + 0.01, bd / 2 + 0.012);
-    dg.rotation.y = -0.34;
+    dg.rotation.y = -0.3;
     // flower box under the front window
     const fbY = y0 + win.y0 - 0.15;
     k.rbox(0.46, 0.1, 0.1, 0.01, M.paint(c.roof, 0.5), (win.x0 + win.x1) / 2, fbY, bd / 2 + 0.065, 1);
@@ -674,7 +674,7 @@ const playhouse: FurnitureDef = {
 
 /* ------------------------------------------------------------------ basketball hoop */
 
-const BB = { w: 1.2, d: 1.44, h: 3.86, pz: -0.6, hoopY: 3.05, boardZ: 0.02 };
+const BB = { w: 1.2, d: 1.46, h: 3.82, pz: -0.6, hoopY: 3.05, boardZ: 0.02 };
 
 const boardFace = (): THREE.Material =>
   canvasMat(
@@ -974,7 +974,7 @@ const rubberMat: FurnitureDef = {
 
 /* ------------------------------------------------------------------ drinking fountain */
 
-const DF_Z = -0.015;
+const DF_Z = -0.0125;
 
 const drinkingFountain: FurnitureDef = {
   id: 'drinking-fountain',

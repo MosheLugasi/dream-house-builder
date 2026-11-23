@@ -167,9 +167,18 @@ export function loftBody(spec: BodySpec): BodyGeo {
     const yt = Math.max(topAt(z), yb + 0.02);
     const ysb = Math.min(archAt(z, yu), yb - 0.06);
     const xin = Math.max(0.02, W - spec.wellDepth);
-    const side = SIDE_T.map((t) => {
-      const y = ysb + (yb - ysb) * t;
-      return { x: sideProfile(W, yu, yb, y), y };
+    // rows sit at fixed heights (so stripes and lamps stay level); over a wheel arch the lower
+    // rows are pushed up and row 0 becomes a narrow lip that follows the arch
+    const side: Pt[] = [];
+    let yPrev = ysb;
+    SIDE_T.forEach((t, j) => {
+      let y = yu + (yb - yu) * t;
+      if (j === 0) y = ysb;
+      else if (j === 1) y = Math.max(y, ysb + 0.05);
+      else y = Math.max(y, yPrev + 0.004);
+      y = Math.min(y, yb - (SIDE_T.length - 1 - j) * 0.002);
+      yPrev = y;
+      side.push({ x: sideProfile(W, yu, yb, y), y });
     });
     const hG = yt - yb;
     const c = Math.min(spec.crown, hG * 0.3);

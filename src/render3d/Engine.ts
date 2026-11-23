@@ -595,7 +595,7 @@ export class Engine {
     const size = box.getSize(new THREE.Vector3());
     const radius = Math.hypot(size.x, size.z, size.y) * 0.5 + 1.5;
     const fit = Math.min(1, this.camera.aspect);
-    const dist = (radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) / fit) * (st.scope === 'building' ? 0.86 : 0.7);
+    const dist = (radius / Math.sin(THREE.MathUtils.degToRad(this.camera.fov / 2)) / fit) * (st.scope === 'building' ? 0.86 : 0.8);
     this.controls.target.set(center.x, 0.6, center.z);
     this.camera.position.set(center.x + dist * 0.4, dist * 0.62, center.z + dist * 0.68);
     this.controls.update();

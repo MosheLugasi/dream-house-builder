@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { produce } from 'immer';
 import type { Building, Level, Project } from '../model/types';
 import { emptyProject } from '../model/defaults';
-import { sampleProject } from '../model/sample';
+import { sampleProject } from '../model/neighborhood';
 import { loadCurrentProject, saveProject } from '../io/storage';
 
 export type Mode = 'site' | 'plan' | 'view3d' | 'walk';

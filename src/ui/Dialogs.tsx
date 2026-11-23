@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { deleteProject, listProjects, loadProject, saveProject, type ProjectMeta } from '../io/storage';
 import { emptyProject } from '../model/defaults';
-import { sampleProject } from '../model/sample';
+import { sampleProject } from '../model/neighborhood';
 import { useStore } from '../store/store';
 import { Icon } from './icons';
 
@@ -39,7 +39,7 @@ export function ProjectsDialog({ onClose }: { onClose: () => void }) {
           <Icon name="plus" size={16} /> פרויקט חדש וריק
         </button>
         <button className="btn" onClick={() => open('sample')}>
-          <Icon name="home" size={16} /> בית לדוגמה
+          <Icon name="home" size={16} /> שכונה לדוגמה
         </button>
       </div>
       <ul className="project-list">
@@ -85,27 +85,38 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="איך משחקים?" onClose={onClose}>
       <div className="help">
-        <h4>1. בונים</h4>
+        <h4>1. בונים בית</h4>
         <p>
-          במצב <b>תכנון</b> בחרו בכלי <b>חדר</b> וגררו מלבן. אפשר להצמיד חדרים זה לזה, או לשרטט קירות חופשיים עם הכלי <b>קיר</b>.
+          במצב <b>תכנון בית</b> בחרו בכלי <b>חדר</b> וגררו מלבן. אפשר להצמיד חדרים זה לזה, או לשרטט קירות חופשיים עם הכלי <b>קיר</b>.
           הוסיפו דלתות וחלונות מהלשונית "דלתות וחלונות".
         </p>
-        <h4>2. מעצבים</h4>
+        <h4>2. קומות וגג</h4>
+        <p>
+          הניחו <b>מדרגות</b> (בלשונית "בנייה") ולחצו <b>+ קומה</b> בפינת המסך: הקומה החדשה מתחילה מקווי המתאר של הקומה שמתחתיה, והפתח
+          למדרגות נחתך לבד. את סוג הגג – שטוח או רעפים – בוחרים בלוח שמשמאל כששום דבר לא מסומן.
+        </p>
+        <h4>3. מעצבים</h4>
         <p>
           בחרו רהיט מהקטלוג ולחצו היכן שתרצו למקם אותו. <kbd>R</kbd> מסובב. רהיטים נצמדים לקירות לבד (<kbd>Alt</kbd> בזמן גרירה מבטל הצמדה).
           ב"חומרים וצבעים" בוחרים ריצוף, צבע או טפט ולוחצים על חדר.
         </p>
-        <h4>3. מטיילים</h4>
+        <h4>4. בונים שכונה</h4>
         <p>
-          עברו ל<b>תלת־ממד</b> כדי לראות את הבית מכל זווית, ול<b>סיור בבית</b> כדי ללכת בתוכו: <kbd>W</kbd>
+          במצב <b>שכונה</b> סוללים כבישים בגרירה, מסמנים גינות ורחבות, מוסיפים בתים ומבני ציבור מוכנים, עצים, מתקני משחק וכלי רכב. לחיצה
+          כפולה על מבנה פותחת אותו לעריכה מבפנים.
+        </p>
+        <h4>5. מטיילים ונוסעים</h4>
+        <p>
+          ב<b>סיור</b> הולכים עם <kbd>W</kbd>
           <kbd>A</kbd>
           <kbd>S</kbd>
-          <kbd>D</kbd> להליכה, <kbd>E</kbd> כדי לשבת, <kbd>V</kbd> למבט מהעיניים.
+          <kbd>D</kbd>, עולים במדרגות, ו-<kbd>E</kbd> כדי לשבת, לשכב במיטה, או לעלות על אופניים ולהיכנס למכונית. ברכב: <kbd>W</kbd> גז,{' '}
+          <kbd>S</kbd> בלם ורוורס, <kbd>A</kbd>/<kbd>D</kbd> הגה. <kbd>V</kbd> – מבט מהעיניים.
         </p>
         <h4>קיצורי מקלדת</h4>
         <p>
           <kbd>Ctrl</kbd>+<kbd>Z</kbd> ביטול · <kbd>Ctrl</kbd>+<kbd>Y</kbd> ביצוע מחדש · <kbd>Delete</kbd> מחיקה · <kbd>Ctrl</kbd>+<kbd>D</kbd> שכפול ·{' '}
-          <kbd>Esc</kbd> ביטול כלי · גלגלת – זום · גרירה על שטח ריק – הזזת התוכנית
+          <kbd>Esc</kbd> ביטול כלי · גלגלת – זום · גרירה על שטח ריק – הזזת המפה
         </p>
       </div>
     </Modal>

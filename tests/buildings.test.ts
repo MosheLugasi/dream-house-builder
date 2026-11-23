@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { getFurniture } from '../src/catalog';
 import { parseProject } from '../src/io/storage';
 import { emptyProject } from '../src/model/defaults';
 import { buildGraph } from '../src/model/graph';
@@ -102,6 +103,28 @@ describe('buildings on the site', () => {
     }
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
+  });
+
+  it('no template furniture pokes through a wall', () => {
+    for (const t of TEMPLATES) {
+      const b = t.build();
+      for (const lvl of b.levels) {
+        const graph = buildGraph(lvl.walls);
+        const roomOf = (p: { x: number; y: number }) => graph.rooms.findIndex((r) => inside(p, r.polygon));
+        for (const f of lvl.furniture) {
+          const def = getFurniture(f.catalogId)!;
+          const home = roomOf(f);
+          const hw = Math.max(0.01, def.size.w / 2 - 0.06);
+          const hd = Math.max(0.01, def.size.d / 2 - 0.06);
+          const c = Math.cos(f.rotation);
+          const s = Math.sin(f.rotation);
+          for (const [lx, ly] of [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]) {
+            const corner = { x: f.x + lx * c - ly * s, y: f.y + lx * s + ly * c };
+            expect(roomOf(corner), `${t.id} / ${lvl.name}: ${f.catalogId} at ${f.x},${f.y}`).toBe(home);
+          }
+        }
+      }
+    }
   });
 });
 
