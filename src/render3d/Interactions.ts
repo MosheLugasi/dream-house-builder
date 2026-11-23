@@ -322,20 +322,6 @@ export class Interactions {
     if (!keepState) this.states.delete(id);
   }
 
-  setLampScale(s: number): void {
-    this.lampScale = s;
-    for (const inst of this.insts.values()) this.applyLight(inst);
-  }
-
-  /** at night every lamp is switched on again */
-  allLights(on: boolean): void {
-    for (const inst of this.insts.values()) {
-      if (!inst.light) continue;
-      inst.st.lightOn = on;
-      this.applyLight(inst);
-    }
-  }
-
   private applyLight(inst: Inst): void {
     if (!inst.def.light) return;
     if (this.lamps) inst.st.lightOn = this.lamps.isOn(inst.id);
