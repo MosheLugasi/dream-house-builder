@@ -28,6 +28,7 @@ const floorLamp: FurnitureDef = {
   size: { w: 0.46, d: 0.46, h: 1.62 },
   colors: [slot('shade', 'אהיל', PAL.cream), slot('metal', 'מתכת', PAL.brass)],
   light: { x: 0, y: 1.42, z: 0, color: WARM, intensity: 55, distance: 7 },
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const metal = M.metal(c.metal, 0.32, 1);
@@ -69,6 +70,7 @@ const tableLamp: FurnitureDef = {
   size: { w: 0.28, d: 0.28, h: 0.48 },
   colors: [slot('shade', 'אהיל', PAL.cream), slot('base', 'בסיס', PAL.dustyBlue)],
   light: { x: 0, y: 0.36, z: 0, color: WARM, intensity: 22, distance: 5 },
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     k.lathe(
@@ -106,6 +108,7 @@ const pendant: FurnitureDef = {
   mount: 'ceiling',
   colors: [slot('shade', 'אהיל', PAL.sage), slot('inner', 'פנים', PAL.white)],
   light: { x: 0, y: CEILING - 0.82, z: 0, color: WARM, intensity: 70, distance: 8 },
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const top = CEILING;
@@ -147,6 +150,7 @@ const ceilingLight: FurnitureDef = {
   mount: 'ceiling',
   colors: [slot('rim', 'מסגרת', PAL.white)],
   light: { x: 0, y: CEILING - 0.16, z: 0, color: '#fff0d8', intensity: 95, distance: 9 },
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const y0 = CEILING - 0.1;
@@ -179,6 +183,7 @@ const ceilingSpot: FurnitureDef = {
   mount: 'ceiling',
   colors: [slot('body', 'גוף', PAL.white)],
   light: { x: 0, y: CEILING - 0.2, z: 0, color: '#fff0d8', intensity: 40, distance: 6 },
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const y0 = CEILING - 0.12;

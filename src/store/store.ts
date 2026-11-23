@@ -29,6 +29,7 @@ export interface ViewOptions {
   snap: boolean;
   showDimensions: boolean;
   firstPerson: boolean;
+  timeOfDay: 'day' | 'sunset' | 'night';
 }
 
 interface State {
@@ -75,7 +76,7 @@ export const useStore = create<State>((set, get) => ({
   tool: { type: 'select' },
   selection: null,
   levelIndex: 0,
-  view: { wallsLow: false, showRoof: false, quality: 'high', snap: true, showDimensions: true, firstPerson: false },
+  view: { wallsLow: false, showRoof: false, quality: 'high', snap: true, showDimensions: true, firstPerson: false, timeOfDay: 'day' },
   hint: '',
   wallThickness: 0.2,
 

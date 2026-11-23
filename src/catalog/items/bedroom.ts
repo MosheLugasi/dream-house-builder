@@ -123,6 +123,7 @@ function bedDef(id: string, name: string, o: BedOpts, bed: string, thr: string):
     category: 'bedroom',
     size: bedSize(o),
     colors: BED_COLORS(bed, thr),
+    actions: [{ kind: 'sleep' }],
     seats: bedSeats(o),
     build: ({ colors }) => buildBed(colors, o),
     draw2d: (ctx, colors) => drawBed(ctx, colors, o),

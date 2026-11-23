@@ -241,6 +241,728 @@ function noiseTexture(): THREE.CanvasTexture | null {
   );
 }
 
+/* ------------------------------------------------------------------------------------------ */
+/* Extra procedural textures: soft furnishings, natural materials, art and rug patterns          */
+/* ------------------------------------------------------------------------------------------ */
+
+type TexKind = 'grain' | 'weave' | 'noise' | 'boucle' | 'slub' | 'knit' | 'rattan' | 'wicker' | 'marble' | 'terrazzo' | 'brushed' | 'fur' | 'velour';
+
+/** Bouclé: dense little loops of yarn. */
+function boucleTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'boucle',
+    128,
+    (c, s) => {
+      const r = rng(31);
+      c.fillStyle = '#c8c8c8';
+      c.fillRect(0, 0, s, s);
+      for (let i = 0; i < 900; i++) {
+        const x = r() * s;
+        const y = r() * s;
+        const rad = 1.5 + r() * 3.2;
+        const v = 150 + Math.floor(r() * 105);
+        c.strokeStyle = `rgb(${v},${v},${v})`;
+        c.lineWidth = 0.8 + r() * 1.2;
+        for (const [ox, oy] of [[0, 0], [s, 0], [-s, 0], [0, s], [0, -s]]) {
+          c.beginPath();
+          c.arc(x + ox, y + oy, rad, 0, Math.PI * 2);
+          c.stroke();
+        }
+      }
+    },
+    true,
+  );
+}
+
+/** Linen: irregular slubby threads in both directions. */
+function slubTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'slub',
+    128,
+    (c, s) => {
+      const r = rng(41);
+      const img = c.createImageData(s, s);
+      const rows = new Float32Array(s);
+      const cols = new Float32Array(s);
+      for (let i = 0; i < s; i++) {
+        rows[i] = (r() - 0.5) * 26 + (r() > 0.93 ? 22 : 0);
+        cols[i] = (r() - 0.5) * 20 + (r() > 0.95 ? 18 : 0);
+      }
+      for (let y = 0; y < s; y++) {
+        for (let x = 0; x < s; x++) {
+          const over = (x + y) % 2 === 0;
+          const v = 218 + (over ? rows[y] : cols[x]) + (r() - 0.5) * 10;
+          const i = (y * s + x) * 4;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.max(0, Math.min(255, v));
+          img.data[i + 3] = 255;
+        }
+      }
+      c.putImageData(img, 0, 0);
+    },
+    true,
+  );
+}
+
+/** Chunky knit: columns of V-shaped stitches. */
+function knitTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'knit',
+    128,
+    (c, s) => {
+      c.fillStyle = '#7a7a7a';
+      c.fillRect(0, 0, s, s);
+      const cw = s / 8;
+      const ch = s / 10;
+      for (let col = 0; col < 8; col++) {
+        for (let row = 0; row < 11; row++) {
+          const x = col * cw;
+          const y = row * ch - ch / 2;
+          for (const side of [-1, 1]) {
+            const g = c.createLinearGradient(x + cw / 2, y, x + cw / 2 + side * cw * 0.45, y + ch);
+            g.addColorStop(0, '#e9e9e9');
+            g.addColorStop(1, '#a5a5a5');
+            c.fillStyle = g;
+            c.beginPath();
+            c.ellipse(x + cw / 2 + side * cw * 0.22, y + ch * 0.55, cw * 0.22, ch * 0.62, -side * 0.55, 0, Math.PI * 2);
+            c.fill();
+          }
+        }
+      }
+    },
+    true,
+  );
+}
+
+/** Woven cane (rattan webbing): octagonal open weave on a dark backing. */
+function rattanTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'rattan',
+    128,
+    (c, s) => {
+      c.fillStyle = '#3a3a3a';
+      c.fillRect(0, 0, s, s);
+      const n = 8;
+      const step = s / n;
+      c.lineCap = 'round';
+      const strand = (x0: number, y0: number, x1: number, y1: number) => {
+        c.strokeStyle = '#d9d9d9';
+        c.lineWidth = step * 0.22;
+        c.beginPath();
+        c.moveTo(x0, y0);
+        c.lineTo(x1, y1);
+        c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,0.35)';
+        c.lineWidth = step * 0.06;
+        c.stroke();
+      };
+      for (let i = -n; i <= 2 * n; i++) {
+        strand(i * step, 0, i * step, s);
+        strand(0, i * step, s, i * step);
+        strand(i * step, 0, i * step + s, s);
+        strand(i * step + s, 0, i * step, s);
+      }
+    },
+    true,
+  );
+}
+
+/** Basket weave (wicker): over-under thick strands. */
+function wickerTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'wicker',
+    128,
+    (c, s) => {
+      const n = 8;
+      const st = s / n;
+      c.fillStyle = '#4a4a4a';
+      c.fillRect(0, 0, s, s);
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j < n; j++) {
+          const horiz = (i + j) % 2 === 0;
+          const g = horiz ? c.createLinearGradient(0, j * st, 0, j * st + st) : c.createLinearGradient(i * st, 0, i * st + st, 0);
+          g.addColorStop(0, '#9a9a9a');
+          g.addColorStop(0.5, '#eeeeee');
+          g.addColorStop(1, '#9a9a9a');
+          c.fillStyle = g;
+          if (horiz) c.fillRect(i * st - 1, j * st + st * 0.12, st + 2, st * 0.76);
+          else c.fillRect(i * st + st * 0.12, j * st - 1, st * 0.76, st + 2);
+        }
+      }
+    },
+    true,
+  );
+}
+
+/** Marble: soft cloudy base with thin dark veins. White-ish so it can be tinted. */
+function marbleTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'marble',
+    256,
+    (c, s) => {
+      const img = c.createImageData(s, s);
+      for (let y = 0; y < s; y++) {
+        for (let x = 0; x < s; x++) {
+          const a = (x / s) * Math.PI * 2;
+          const b = (y / s) * Math.PI * 2;
+          const px = Math.cos(a) * 1.6;
+          const py = Math.sin(a) * 1.6;
+          const pz = Math.cos(b) * 1.6;
+          const pw = Math.sin(b) * 1.6;
+          const turb = noise3(px + 3, py + pz, pw) * 1.0 + noise3(px * 2.3, py * 2.3 + 7, pz * 2.3 + pw) * 0.5 + noise3(px * 5, py * 5, pz * 5 + pw * 3) * 0.25;
+          const v = Math.abs(Math.sin((x / s) * Math.PI * 2 + (y / s) * Math.PI * 4 + turb * 6.5));
+          const vein = Math.pow(1 - v, 14);
+          const cloud = noise3(px * 3 + 9, py * 3, pz * 3 + pw) * 0.12;
+          const val = 250 - cloud * 120 - vein * 150;
+          const i = (y * s + x) * 4;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.max(0, Math.min(255, val));
+          img.data[i + 3] = 255;
+        }
+      }
+      c.putImageData(img, 0, 0);
+    },
+    true,
+  );
+}
+
+/** Terrazzo: stone chips of a few tones scattered on a light ground (colour in the texture). */
+function terrazzoTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'terrazzo',
+    256,
+    (c, s) => {
+      const r = rng(53);
+      c.fillStyle = '#f1eee8';
+      c.fillRect(0, 0, s, s);
+      const tones = ['#c7775a', '#8a8d90', '#3b3f45', '#d9c6a5', '#9bae8a', '#e6b9a8', '#ffffff'];
+      for (let i = 0; i < 420; i++) {
+        const x = r() * s;
+        const y = r() * s;
+        const rad = 1.5 + Math.pow(r(), 3) * 9;
+        c.fillStyle = tones[Math.floor(r() * tones.length)];
+        c.beginPath();
+        const n = 5 + Math.floor(r() * 3);
+        for (let k = 0; k < n; k++) {
+          const a = (k / n) * Math.PI * 2 + r() * 0.5;
+          const rr = rad * (0.6 + r() * 0.5);
+          const px = x + Math.cos(a) * rr;
+          const py = y + Math.sin(a) * rr;
+          if (k === 0) c.moveTo(px, py);
+          else c.lineTo(px, py);
+        }
+        c.closePath();
+        c.fill();
+      }
+    },
+    true,
+  );
+}
+
+/** Brushed metal: fine streaks along U (used as roughness map + subtle color variation). */
+function brushedTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'brushed',
+    128,
+    (c, s) => {
+      const r = rng(61);
+      c.fillStyle = '#9a9a9a';
+      c.fillRect(0, 0, s, s);
+      for (let i = 0; i < 500; i++) {
+        const y = r() * s;
+        const v = 120 + Math.floor(r() * 110);
+        c.fillStyle = `rgba(${v},${v},${v},0.5)`;
+        c.fillRect(0, y, s, 0.6 + r() * 0.8);
+      }
+    },
+    false,
+  );
+}
+
+/** Short fur / plush: fine directional strands. */
+function furTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'fur',
+    128,
+    (c, s) => {
+      const r = rng(71);
+      c.fillStyle = '#bdbdbd';
+      c.fillRect(0, 0, s, s);
+      for (let i = 0; i < 2600; i++) {
+        const x = r() * s;
+        const y = r() * s;
+        const v = 150 + Math.floor(r() * 105);
+        c.strokeStyle = `rgba(${v},${v},${v},0.7)`;
+        c.lineWidth = 0.7;
+        c.beginPath();
+        c.moveTo(x, y);
+        c.lineTo(x + (r() - 0.5) * 2, y + 3 + r() * 4);
+        c.stroke();
+      }
+    },
+    true,
+  );
+}
+
+/** Velour / velvet pile: very fine soft noise. */
+function velourTexture(): THREE.CanvasTexture | null {
+  return canvasTexture(
+    'velour',
+    128,
+    (c, s) => {
+      const r = rng(83);
+      const img = c.createImageData(s, s);
+      for (let y = 0; y < s; y++) {
+        for (let x = 0; x < s; x++) {
+          const a = (x / s) * Math.PI * 2;
+          const b = (y / s) * Math.PI * 2;
+          const n = noise3(Math.cos(a) * 2 + 4, Math.sin(a) * 2 + 4, Math.cos(b) * 2 + Math.sin(b));
+          const v = 226 + (n - 0.5) * 34 + (r() - 0.5) * 8;
+          const i = (y * s + x) * 4;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+          img.data[i + 3] = 255;
+        }
+      }
+      c.putImageData(img, 0, 0);
+    },
+    true,
+  );
+}
+
+const EXTRA_TEX: Record<string, () => THREE.CanvasTexture | null> = {
+  boucle: boucleTexture,
+  slub: slubTexture,
+  knit: knitTexture,
+  rattan: rattanTexture,
+  wicker: wickerTexture,
+  marble: marbleTexture,
+  terrazzo: terrazzoTexture,
+  brushed: brushedTexture,
+  fur: furTexture,
+  velour: velourTexture,
+};
+
+/* ---------------------------------------------------------------- art & patterns (0..1 UVs) */
+
+export type ArtStyle = 'abstract' | 'geometric' | 'landscape' | 'lines' | 'botanical' | 'sea' | 'stripes' | 'city' | 'circles' | 'mountains' | 'sunset' | 'portrait';
+export type RugStyle = 'persian' | 'kilim' | 'stripes' | 'lattice' | 'shag' | 'border' | 'abstract' | 'checker' | 'diamond' | 'solid';
+
+function drawArt(c: CanvasRenderingContext2D, s: number, style: ArtStyle, seed: number, pal: string[]): void {
+  const r = rng(seed * 977 + style.length * 13);
+  const pick = () => pal[Math.floor(r() * pal.length)];
+  const bg = pal[0];
+  c.fillStyle = bg;
+  c.fillRect(0, 0, s, s);
+  const brush = (x: number, y: number, rad: number, col: string, alpha = 0.85) => {
+    c.globalAlpha = alpha;
+    c.fillStyle = col;
+    c.beginPath();
+    const n = 9;
+    for (let k = 0; k <= n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      const rr = rad * (0.7 + r() * 0.5);
+      const px = x + Math.cos(a) * rr;
+      const py = y + Math.sin(a) * rr * (0.6 + r() * 0.5);
+      if (k === 0) c.moveTo(px, py);
+      else c.quadraticCurveTo(x + Math.cos(a - 0.3) * rr * 1.2, y + Math.sin(a - 0.3) * rr * 1.1, px, py);
+    }
+    c.fill();
+    c.globalAlpha = 1;
+  };
+  switch (style) {
+    case 'abstract':
+      for (let i = 0; i < 14; i++) brush(r() * s, r() * s, s * (0.08 + r() * 0.22), pick(), 0.55 + r() * 0.4);
+      for (let i = 0; i < 6; i++) {
+        c.strokeStyle = pick();
+        c.lineWidth = s * (0.006 + r() * 0.02);
+        c.beginPath();
+        c.moveTo(r() * s, r() * s);
+        c.bezierCurveTo(r() * s, r() * s, r() * s, r() * s, r() * s, r() * s);
+        c.stroke();
+      }
+      break;
+    case 'geometric': {
+      const g = 3 + Math.floor(r() * 2);
+      const cs = s / g;
+      for (let i = 0; i < g; i++) {
+        for (let j = 0; j < g; j++) {
+          c.fillStyle = pick();
+          c.fillRect(i * cs, j * cs, cs, cs);
+          c.fillStyle = pick();
+          const t = Math.floor(r() * 4);
+          c.beginPath();
+          if (t === 0) c.arc(i * cs + cs / 2, j * cs + cs / 2, cs * 0.38, 0, Math.PI * 2);
+          else if (t === 1) {
+            c.moveTo(i * cs, j * cs + cs);
+            c.lineTo(i * cs + cs, j * cs + cs);
+            c.lineTo(i * cs + cs, j * cs);
+          } else if (t === 2) c.arc(i * cs, j * cs + cs, cs, -Math.PI / 2, 0);
+          else c.rect(i * cs + cs * 0.25, j * cs, cs * 0.5, cs);
+          c.fill();
+        }
+      }
+      break;
+    }
+    case 'landscape':
+    case 'mountains':
+    case 'sunset': {
+      const sky = c.createLinearGradient(0, 0, 0, s * 0.65);
+      sky.addColorStop(0, style === 'sunset' ? pal[1] : pal[0]);
+      sky.addColorStop(1, style === 'sunset' ? pal[2] : lighten(pal[0], 0.4));
+      c.fillStyle = sky;
+      c.fillRect(0, 0, s, s);
+      c.fillStyle = style === 'sunset' ? '#fff1c9' : lighten(pal[2], 0.5);
+      c.beginPath();
+      c.arc(s * (0.25 + r() * 0.5), s * (style === 'sunset' ? 0.55 : 0.25), s * 0.08, 0, Math.PI * 2);
+      c.fill();
+      const layers = style === 'mountains' ? 4 : 3;
+      for (let l = 0; l < layers; l++) {
+        const base = s * (0.45 + l * 0.14);
+        c.fillStyle = mix(pal[3] ?? pal[1], pal[4] ?? '#2b3a2f', l / Math.max(1, layers - 1));
+        c.beginPath();
+        c.moveTo(0, s);
+        for (let x = 0; x <= s; x += s / 32) {
+          const amp = style === 'mountains' ? s * 0.16 : s * 0.05;
+          const y = base - Math.abs(Math.sin(x / s * (2 + l) * Math.PI + seed + l)) * amp - noise3(x / s * 5, l, seed) * amp * 0.6;
+          c.lineTo(x, y);
+        }
+        c.lineTo(s, s);
+        c.fill();
+      }
+      break;
+    }
+    case 'lines':
+      c.strokeStyle = pal[1];
+      c.lineWidth = s * 0.008;
+      for (let i = 0; i < 3; i++) {
+        c.beginPath();
+        let x = s * (0.2 + r() * 0.6);
+        let y = s * 0.15;
+        c.moveTo(x, y);
+        for (let k = 0; k < 6; k++) {
+          const nx = s * (0.15 + r() * 0.7);
+          const ny = y + s * 0.12;
+          c.bezierCurveTo(x + (r() - 0.5) * s * 0.4, y + s * 0.05, nx + (r() - 0.5) * s * 0.4, ny - s * 0.05, nx, ny);
+          x = nx;
+          y = ny;
+        }
+        c.stroke();
+      }
+      brush(s * (0.3 + r() * 0.4), s * (0.3 + r() * 0.4), s * 0.12, pal[2] ?? pal[1], 0.7);
+      break;
+    case 'botanical':
+      for (let i = 0; i < 7; i++) {
+        const x0 = s * (0.15 + r() * 0.7);
+        const y0 = s;
+        const ang = -Math.PI / 2 + (r() - 0.5) * 0.9;
+        const len = s * (0.45 + r() * 0.4);
+        const col = pick() === bg ? pal[1] : pick();
+        c.strokeStyle = col;
+        c.fillStyle = col;
+        c.lineWidth = s * 0.006;
+        c.beginPath();
+        c.moveTo(x0, y0);
+        const x1 = x0 + Math.cos(ang) * len;
+        const y1 = y0 + Math.sin(ang) * len;
+        c.lineTo(x1, y1);
+        c.stroke();
+        for (let k = 1; k < 9; k++) {
+          const t = k / 9;
+          const px = x0 + (x1 - x0) * t;
+          const py = y0 + (y1 - y0) * t;
+          for (const side of [-1, 1]) {
+            c.save();
+            c.translate(px, py);
+            c.rotate(ang + side * 0.9);
+            c.beginPath();
+            c.ellipse(s * 0.04, 0, s * 0.045 * (1 - t * 0.5), s * 0.014, 0, 0, Math.PI * 2);
+            c.fill();
+            c.restore();
+          }
+        }
+      }
+      break;
+    case 'sea': {
+      const g = c.createLinearGradient(0, 0, 0, s);
+      g.addColorStop(0, lighten(pal[0], 0.3));
+      g.addColorStop(0.45, pal[0]);
+      g.addColorStop(1, pal[1]);
+      c.fillStyle = g;
+      c.fillRect(0, 0, s, s);
+      for (let i = 0; i < 18; i++) {
+        const y = s * (0.45 + (i / 18) * 0.55);
+        c.strokeStyle = `rgba(255,255,255,${0.15 + r() * 0.35})`;
+        c.lineWidth = s * 0.004;
+        c.beginPath();
+        for (let x = 0; x <= s; x += 8) c.lineTo(x, y + Math.sin(x * 0.05 + i) * s * 0.006);
+        c.stroke();
+      }
+      c.fillStyle = pal[2] ?? '#f4e3c3';
+      c.beginPath();
+      c.moveTo(0, s);
+      c.quadraticCurveTo(s * 0.4, s * 0.8, s, s * 0.92);
+      c.lineTo(s, s);
+      c.fill();
+      break;
+    }
+    case 'stripes': {
+      const n = 5 + Math.floor(r() * 6);
+      for (let i = 0; i < n; i++) {
+        c.fillStyle = pal[i % pal.length];
+        c.fillRect(0, (i / n) * s, s, s / n + 1);
+      }
+      break;
+    }
+    case 'city': {
+      const g = c.createLinearGradient(0, 0, 0, s);
+      g.addColorStop(0, '#1c2440');
+      g.addColorStop(1, pal[1]);
+      c.fillStyle = g;
+      c.fillRect(0, 0, s, s);
+      let x = 0;
+      while (x < s) {
+        const bw = s * (0.05 + r() * 0.1);
+        const bh = s * (0.25 + r() * 0.5);
+        c.fillStyle = mix('#11131c', pal[2] ?? '#30344a', r() * 0.6);
+        c.fillRect(x, s - bh, bw, bh);
+        c.fillStyle = '#ffd98a';
+        for (let wy = s - bh + 6; wy < s - 6; wy += 9) for (let wx = x + 3; wx < x + bw - 4; wx += 7) if (r() > 0.55) c.fillRect(wx, wy, 3, 4);
+        x += bw + 2;
+      }
+      break;
+    }
+    case 'circles':
+      for (let i = 0; i < 6; i++) {
+        c.fillStyle = pick();
+        c.globalAlpha = 0.85;
+        c.beginPath();
+        c.arc(s * (0.2 + r() * 0.6), s * (0.2 + r() * 0.6), s * (0.08 + r() * 0.22), 0, Math.PI * 2);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+      break;
+    case 'portrait':
+      c.fillStyle = pal[1];
+      c.beginPath();
+      c.ellipse(s * 0.5, s * 0.42, s * 0.17, s * 0.22, 0, 0, Math.PI * 2);
+      c.fill();
+      c.fillRect(s * 0.44, s * 0.6, s * 0.12, s * 0.12);
+      c.beginPath();
+      c.ellipse(s * 0.5, s, s * 0.34, s * 0.3, 0, Math.PI, Math.PI * 2);
+      c.fillStyle = pal[2] ?? pal[1];
+      c.fill();
+      c.fillStyle = pal[3] ?? darken(pal[1], 0.5);
+      c.beginPath();
+      c.ellipse(s * 0.5, s * 0.28, s * 0.2, s * 0.12, 0, Math.PI, Math.PI * 2);
+      c.fill();
+      break;
+  }
+  // canvas grain
+  const img = c.getImageData(0, 0, s, s);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const n = (r() - 0.5) * 14;
+    img.data[i] += n;
+    img.data[i + 1] += n;
+    img.data[i + 2] += n;
+  }
+  c.putImageData(img, 0, 0);
+}
+
+function drawRug(c: CanvasRenderingContext2D, s: number, style: RugStyle, pal: string[], aspect: number): void {
+  const [a, b, d = darken(pal[1], 0.3), e = lighten(pal[0], 0.3)] = pal;
+  const W = s;
+  const H = s;
+  c.fillStyle = a;
+  c.fillRect(0, 0, W, H);
+  // keep motifs square on non-square rugs: work in "units" where x spans aspect
+  const ux = (v: number) => (v / aspect) * W;
+  switch (style) {
+    case 'persian': {
+      const bw = H * 0.08;
+      c.fillStyle = b;
+      c.fillRect(0, 0, W, H);
+      c.fillStyle = a;
+      c.fillRect(ux(0.08), bw, W - 2 * ux(0.08), H - 2 * bw);
+      c.strokeStyle = d;
+      c.lineWidth = s * 0.008;
+      c.strokeRect(ux(0.1), bw * 1.25, W - 2 * ux(0.1), H - 2.5 * bw);
+      // border motifs
+      c.fillStyle = e;
+      for (let i = 0; i < 24; i++) {
+        const t = (i + 0.5) / 24;
+        for (const y of [bw / 2, H - bw / 2]) {
+          c.beginPath();
+          c.ellipse(t * W, y, ux(0.03), bw * 0.25, 0, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
+      // central medallion
+      c.save();
+      c.translate(W / 2, H / 2);
+      c.scale(1 / aspect, 1);
+      for (let k = 0; k < 4; k++) {
+        const rr = s * (0.32 - k * 0.07);
+        c.fillStyle = [b, e, d, b][k];
+        c.beginPath();
+        for (let i = 0; i <= 16; i++) {
+          const ang = (i / 16) * Math.PI * 2;
+          const rad = rr * (i % 2 ? 0.78 : 1);
+          c.lineTo(Math.cos(ang) * rad, Math.sin(ang) * rad * 0.8);
+        }
+        c.fill();
+      }
+      c.restore();
+      // corner pieces
+      c.fillStyle = d;
+      for (const [x, y] of [[0.12, 0.17], [0.88, 0.17], [0.12, 0.83], [0.88, 0.83]]) {
+        c.beginPath();
+        c.arc(x * W, y * H, s * 0.05, 0, Math.PI * 2);
+        c.fill();
+      }
+      break;
+    }
+    case 'kilim': {
+      const bands = 7;
+      for (let i = 0; i < bands; i++) {
+        const y0 = (i / bands) * H;
+        c.fillStyle = i % 2 ? a : b;
+        c.fillRect(0, y0, W, H / bands + 1);
+        c.fillStyle = [d, e, b, a][i % 4];
+        const n = Math.max(3, Math.round(aspect * 6));
+        for (let k = 0; k < n; k++) {
+          const cx = ((k + 0.5) / n) * W;
+          const cy = y0 + H / bands / 2;
+          const rw = (W / n) * 0.35;
+          const rh = (H / bands) * 0.35;
+          c.beginPath();
+          c.moveTo(cx - rw, cy);
+          c.lineTo(cx, cy - rh);
+          c.lineTo(cx + rw, cy);
+          c.lineTo(cx, cy + rh);
+          c.fill();
+        }
+      }
+      break;
+    }
+    case 'stripes': {
+      const n = 9;
+      for (let i = 0; i < n; i++) {
+        c.fillStyle = [a, b, a, e, a, d][i % 6];
+        c.fillRect((i / n) * W, 0, W / n + 1, H);
+      }
+      break;
+    }
+    case 'lattice': {
+      c.strokeStyle = b;
+      c.lineWidth = s * 0.018;
+      const n = 6;
+      const cw = W / Math.max(2, Math.round(n * aspect));
+      const ch = H / n;
+      for (let i = -1; i <= W / cw + 1; i++) {
+        for (let j = -1; j <= n + 1; j++) {
+          const cx = i * cw + (j % 2 ? cw / 2 : 0);
+          const cy = j * ch;
+          c.beginPath();
+          c.moveTo(cx, cy - ch * 0.5);
+          c.quadraticCurveTo(cx + cw * 0.5, cy - ch * 0.3, cx + cw * 0.5, cy);
+          c.quadraticCurveTo(cx + cw * 0.5, cy + ch * 0.3, cx, cy + ch * 0.5);
+          c.quadraticCurveTo(cx - cw * 0.5, cy + ch * 0.3, cx - cw * 0.5, cy);
+          c.quadraticCurveTo(cx - cw * 0.5, cy - ch * 0.3, cx, cy - ch * 0.5);
+          c.stroke();
+        }
+      }
+      break;
+    }
+    case 'shag': {
+      const r = rng(5);
+      for (let i = 0; i < 6000; i++) {
+        c.fillStyle = r() > 0.5 ? lighten(a, r() * 0.2) : darken(a, r() * 0.18);
+        c.fillRect(r() * W, r() * H, 2, 2);
+      }
+      break;
+    }
+    case 'border': {
+      c.fillStyle = b;
+      c.fillRect(0, 0, W, H);
+      c.fillStyle = a;
+      c.fillRect(ux(0.07), H * 0.07, W - 2 * ux(0.07), H * 0.86);
+      c.strokeStyle = b;
+      c.lineWidth = s * 0.01;
+      c.strokeRect(ux(0.12), H * 0.12, W - 2 * ux(0.12), H * 0.76);
+      break;
+    }
+    case 'abstract': {
+      const r = rng(17);
+      for (let i = 0; i < 9; i++) {
+        c.fillStyle = [b, d, e][i % 3];
+        c.globalAlpha = 0.85;
+        c.beginPath();
+        c.ellipse(r() * W, r() * H, ux(0.1 + r() * 0.25), H * (0.08 + r() * 0.2), r() * 3, 0, Math.PI * 2);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+      break;
+    }
+    case 'checker': {
+      const n = 8;
+      const m = Math.max(2, Math.round(n * aspect));
+      for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) {
+        c.fillStyle = (i + j) % 2 ? a : b;
+        c.fillRect((i / m) * W, (j / n) * H, W / m + 1, H / n + 1);
+      }
+      break;
+    }
+    case 'diamond': {
+      const n = 5;
+      const m = Math.max(2, Math.round(n * aspect));
+      c.fillStyle = b;
+      for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) {
+        const cx = ((i + 0.5) / m) * W;
+        const cy = ((j + 0.5) / n) * H;
+        c.beginPath();
+        c.moveTo(cx - W / m / 2, cy);
+        c.lineTo(cx, cy - H / n / 2);
+        c.lineTo(cx + W / m / 2, cy);
+        c.lineTo(cx, cy + H / n / 2);
+        c.closePath();
+        c.fill();
+        c.strokeStyle = d;
+        c.lineWidth = s * 0.006;
+        c.stroke();
+      }
+      break;
+    }
+    case 'solid':
+      break;
+  }
+  // woven texture
+  const r = rng(3);
+  const img = c.getImageData(0, 0, W, H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const n = ((x + y) % 2 ? 6 : -6) + (r() - 0.5) * 16;
+      img.data[i] += n;
+      img.data[i + 1] += n;
+      img.data[i + 2] += n;
+    }
+  }
+  c.putImageData(img, 0, 0);
+}
+
+/**
+ * A texture whose 0..1 square covers a centred w × d rectangle measured in METERS in the shape /
+ * slab coordinates (`k.slab` top faces use shape x / y as UVs). Works for paintings too: build
+ * them with `k.slab`/`extrudeZ` of a w × h shape or set plain 0..1 UVs and pass w = d = 1.
+ */
+function fitTex(tex: THREE.CanvasTexture | null, w: number, d: number): THREE.Texture | null {
+  if (!tex) return null;
+  const t = tex.clone();
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  t.repeat.set(1 / w, 1 / d);
+  t.offset.set(0.5, 0.5);
+  t.needsUpdate = true;
+  return t;
+}
+
 function rep(tex: THREE.CanvasTexture | null, rx: number, ry: number): THREE.Texture | null {
   if (!tex) return null;
   const t = tex.clone();
@@ -256,10 +978,10 @@ function rep(tex: THREE.CanvasTexture | null, rx: number, ry: number): THREE.Tex
 const matCache = new Map<string, THREE.Material>();
 const repCache = new Map<string, THREE.Texture | null>();
 
-function texRep(kind: 'grain' | 'weave' | 'noise', rx: number, ry: number): THREE.Texture | null {
+function texRep(kind: TexKind, rx: number, ry: number): THREE.Texture | null {
   const key = `${kind}|${rx}|${ry}`;
   if (repCache.has(key)) return repCache.get(key) ?? null;
-  const base = kind === 'grain' ? grainTexture() : kind === 'weave' ? weaveTexture() : noiseTexture();
+  const base = kind === 'grain' ? grainTexture() : kind === 'weave' ? weaveTexture() : kind === 'noise' ? noiseTexture() : EXTRA_TEX[kind]();
   const t = rep(base, rx, ry);
   repCache.set(key, t);
   return t;
@@ -482,6 +1204,150 @@ export const M = {
   },
   soil(): THREE.MeshStandardMaterial {
     return M.matte('#4a3a2e');
+  },
+  /** Velvet: soft pile with a bright sheen at grazing angles. */
+  velvet(color: string): THREE.MeshPhysicalMaterial {
+    return cached(`velvet|${color}`, () => {
+      const map = texRep('velour', 6, 6);
+      const m = new THREE.MeshPhysicalMaterial({
+        color,
+        roughness: 0.82,
+        metalness: 0,
+        map,
+        sheen: 1,
+        sheenColor: new THREE.Color(lighten(color, 0.45)),
+        sheenRoughness: 0.32,
+      });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Bouclé: nubby looped yarn (very trendy on curvy sofas / chairs). */
+  boucle(color: string): THREE.MeshPhysicalMaterial {
+    return cached(`boucle|${color}`, () => {
+      const map = texRep('boucle', 7, 7);
+      const m = new THREE.MeshPhysicalMaterial({
+        color,
+        roughness: 1,
+        metalness: 0,
+        map,
+        bumpMap: map,
+        bumpScale: 3,
+        sheen: 0.5,
+        sheenColor: new THREE.Color(lighten(color, 0.3)),
+        sheenRoughness: 0.7,
+      });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Linen / cotton slub weave. */
+  linen(color: string): THREE.MeshStandardMaterial {
+    return cached(`linen|${color}`, () => {
+      const map = texRep('slub', 9, 9);
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.96, metalness: 0, map, bumpMap: map, bumpScale: 0.8 });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Chunky knit (throws, poufs, cushions). */
+  knit(color: string): THREE.MeshStandardMaterial {
+    return cached(`knit|${color}`, () => {
+      const map = texRep('knit', 5, 5);
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.98, metalness: 0, map, bumpMap: map, bumpScale: 2.5 });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Woven cane webbing (chair seats/backs, cabinet doors). */
+  rattan(color: string = '#d2b48a'): THREE.MeshStandardMaterial {
+    return cached(`rattan|${color}`, () => {
+      const map = texRep('rattan', 14, 14);
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0, map, bumpMap: map, bumpScale: 1.5 });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Basket weave (wicker baskets, outdoor furniture). */
+  wicker(color: string = '#b8925f'): THREE.MeshStandardMaterial {
+    return cached(`wicker|${color}`, () => {
+      const map = texRep('wicker', 10, 10);
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0, map, bumpMap: map, bumpScale: 2 });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Polished marble with veins. */
+  marble(color: string = '#f2f0ec'): THREE.MeshPhysicalMaterial {
+    return cached(`marble|${color}`, () => {
+      const map = texRep('marble', 1.2, 1.2);
+      const m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.18, metalness: 0, map, clearcoat: 0.6, clearcoatRoughness: 0.12 });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Terrazzo (multi-coloured chips are in the texture; `color` tints it). */
+  terrazzo(color: string = '#ffffff'): THREE.MeshPhysicalMaterial {
+    return cached(`terrazzo|${color}`, () => {
+      const map = texRep('terrazzo', 1.5, 1.5);
+      const m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.35, metalness: 0, map, clearcoat: 0.3 });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** Brushed metal (stainless appliances, lamp bases). */
+  brushed(color: string = '#c9ccce', metalness = 1): THREE.MeshStandardMaterial {
+    return cached(`brushed|${color}|${metalness}`, () => {
+      const rough = texRep('brushed', 4, 4);
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness, roughnessMap: rough });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /** High-gloss lacquer (piano black, glossy cabinets). */
+  lacquer(color: string): THREE.MeshPhysicalMaterial {
+    return cached(
+      `lacquer|${color}`,
+      () => new THREE.MeshPhysicalMaterial({ color, roughness: 0.25, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.04 }),
+    );
+  },
+  /** Short fur / plush (pets, teddy bears, sheepskin). */
+  fur(color: string): THREE.MeshPhysicalMaterial {
+    return cached(`fur|${color}`, () => {
+      const map = texRep('fur', 8, 8);
+      const m = new THREE.MeshPhysicalMaterial({
+        color,
+        roughness: 1,
+        metalness: 0,
+        map,
+        bumpMap: map,
+        bumpScale: 1.5,
+        sheen: 0.8,
+        sheenColor: new THREE.Color(lighten(color, 0.35)),
+        sheenRoughness: 0.6,
+      });
+      m.userData.uvMeters = true;
+      return m;
+    });
+  },
+  /**
+   * A procedural painting / print. The picture covers a centred w × h rectangle measured in
+   * meters in the geometry's UVs (e.g. `k.slab` / `extrudeZ` shapes, or `artPlane`).
+   * `palette` = 3-5 CSS colours, the first is the background.
+   */
+  art(style: ArtStyle, seed: number, palette: string[], w: number, h: number): THREE.MeshStandardMaterial {
+    return cached(`art|${style}|${seed}|${palette.join(',')}|${w}|${h}`, () => {
+      const tex = canvasTexture(`art|${style}|${seed}|${palette.join(',')}`, 256, (c, s) => drawArt(c, s, style, seed, palette), true);
+      return new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.78, metalness: 0, map: fitTex(tex, w, h) });
+    });
+  },
+  /** A woven rug pattern covering a centred w × d rectangle (top faces of `k.slab`). */
+  rug(style: RugStyle, palette: string[], w: number, d: number): THREE.MeshStandardMaterial {
+    return cached(`rug|${style}|${palette.join(',')}|${w}|${d}`, () => {
+      const tex = canvasTexture(`rug|${style}|${palette.join(',')}|${(w / d).toFixed(2)}`, 512, (c, s) => drawRug(c, s, style, palette, w / d), true);
+      const map = fitTex(tex, w, d);
+      return new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.97, metalness: 0, map, bumpMap: texRep('weave', 20, 20), bumpScale: 1.2 });
+    });
   },
   water(color: string = '#9fd0dc'): THREE.MeshPhysicalMaterial {
     return cached(
@@ -751,6 +1617,19 @@ export function latheGeo(profile: Array<[number, number]>, seg = 24): THREE.Buff
   return new THREE.LatheGeometry(pts, seg);
 }
 
+/**
+ * Vertical picture plane facing +Z, w × h, centred on x, bottom at y = 0, with UVs in meters
+ * centred on the plane (matches `M.art(..., w, h)`).
+ */
+export function artPlaneGeo(w: number, h: number): THREE.BufferGeometry {
+  const g = new THREE.PlaneGeometry(w, h);
+  const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+  const p = g.getAttribute('position') as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, p.getX(i), p.getY(i));
+  g.translate(0, h / 2, 0);
+  return g;
+}
+
 /** Smooth tube through points. */
 export function tubeGeo(
   pts: V3[],
@@ -948,6 +1827,20 @@ export class Kit {
   sub(k: Kit, x = 0, y = 0, z = 0): THREE.Group {
     return this.add(k.g, x, y, z);
   }
+
+  /**
+   * Start an animated PART (see `ActionKind` in catalog/types.ts): returns a child builder whose
+   * group sits at the pivot (x, y, z) of this builder. Build the part's geometry relative to the
+   * pivot (e.g. a door's hinge, a clock hand's axle, a fan's hub). `data` is copied into the
+   * part's userData (e.g. `{ open: -1.6 }` for a door). Parts are baked separately and keep their
+   * transform, so the runtime can animate them per placed instance.
+   */
+  part(name: string, x = 0, y = 0, z = 0, data: Record<string, unknown> = {}): Kit {
+    const k = new Kit();
+    k.g.userData = { ...data, part: name };
+    this.add(k.g, x, y, z);
+    return k;
+  }
 }
 
 /* ------------------------------------------------------------------------------------------ */
@@ -972,15 +1865,28 @@ function flipWinding(g: THREE.BufferGeometry): void {
 /**
  * Bake a hierarchy of meshes into a flat group with ONE mesh per (material, shadow flags).
  * Keeps the look identical while cutting draw calls by an order of magnitude.
+ *
+ * Sub-trees marked as parts (`userData.part`, see `Kit.part`) are baked on their own into child
+ * groups named `part:<name>` that keep the part's pivot transform and userData, so they can still
+ * be animated.
  */
 export function bake(root: THREE.Object3D, name = ''): THREE.Group {
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
   const buckets = new Map<string, { mat: THREE.Material; cast: boolean; recv: boolean; geos: THREE.BufferGeometry[] }>();
   const m4 = new THREE.Matrix4();
-  root.traverse((o) => {
+  const parts: THREE.Object3D[] = [];
+  const visit = (o: THREE.Object3D): void => {
+    // parts are baked on their own; inside a 'fish' part every child (one fish) stays separate
+    if (o !== root && (o.userData.part !== undefined || (o.parent === root && root.userData.part === 'fish'))) {
+      parts.push(o);
+      return;
+    }
     const me = o as THREE.Mesh;
-    if (!me.isMesh || Array.isArray(me.material)) return;
+    if (me.isMesh && !Array.isArray(me.material)) addMesh(me);
+    for (const c of o.children) visit(c);
+  };
+  const addMesh = (me: THREE.Mesh): void => {
     let g = me.geometry.index ? me.geometry.toNonIndexed() : me.geometry.clone();
     for (const key of Object.keys(g.attributes)) {
       if (key !== 'position' && key !== 'normal' && key !== 'uv') g.deleteAttribute(key);
@@ -1001,7 +1907,8 @@ export function bake(root: THREE.Object3D, name = ''): THREE.Group {
       buckets.set(key, b);
     }
     b.geos.push(g);
-  });
+  };
+  visit(root);
   const out = new THREE.Group();
   out.name = name;
   for (const b of buckets.values()) {
@@ -1014,6 +1921,13 @@ export function bake(root: THREE.Object3D, name = ''): THREE.Group {
     m.receiveShadow = b.recv;
     if (b.mat.transparent) m.renderOrder = 2;
     out.add(m);
+  }
+  for (const p of parts) {
+    const baked = bake(p, p.userData.part !== undefined ? `part:${p.userData.part as string}` : 'piece');
+    baked.userData = { ...p.userData };
+    m4.multiplyMatrices(inv, p.matrixWorld);
+    m4.decompose(baked.position, baked.quaternion, baked.scale);
+    out.add(baked);
   }
   return out;
 }

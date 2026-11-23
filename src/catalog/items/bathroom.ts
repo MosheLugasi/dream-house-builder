@@ -63,6 +63,7 @@ const basinVanity: FurnitureDef = {
   category: 'bathroom',
   size: { w: 0.8, d: 0.48, h: 1.95 },
   colors: [slot('fronts', 'ארון', PAL.oak), slot('top', 'משטח', PAL.white)],
+  actions: [{ kind: 'water', at: { x: 0, y: 0.8 + 0.124, z: -0.185 + 0.13 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const w = 0.8;
@@ -136,6 +137,7 @@ const bathtub: FurnitureDef = {
   size: { w: 1.7, d: 0.75, h: 0.74 },
   colors: [slot('ceramic', 'אמבט', '#f7f6f2')],
   seats: [{ x: 0.25, z: 0, height: 0.14, facing: -Math.PI / 2, kind: 'sit' }],
+  actions: [{ kind: 'water', at: { x: -1.7 / 2 + 0.05 + 0.15, y: 0.56 + 0.075, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const cer = M.ceramic(c.ceramic);
@@ -186,6 +188,7 @@ const shower: FurnitureDef = {
   category: 'bathroom',
   size: { w: 0.9, d: 0.9, h: 2.05 },
   colors: [slot('tray', 'אגנית', '#f4f3ef'), slot('metal', 'פרזול', '#d9dcdf')],
+  actions: [{ kind: 'water', at: { x: -0.1, y: 1.98, z: -0.9 / 2 + 0.03 + 0.3 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const s = 0.9;

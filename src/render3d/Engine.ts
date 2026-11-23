@@ -22,6 +22,45 @@ import {
 import { currentBuilding, currentLevel, useStore, type Mode } from '../store/store';
 import { buildArchitecture, disposeArchitecture, type Architecture } from './buildArchitecture';
 import { seatsOf, WalkController, type BoxCollider, type SeatInstance } from './WalkController';
+import { Interactions } from './Interactions';
+import { sound } from '../audio/sound';
+import { useWalk } from '../store/walk';
+import { loadLook } from './look';
+import type { Activity } from './Character';
+
+export type TimeOfDay = 'day' | 'sunset' | 'night';
+
+interface Lighting {
+  elev: number;
+  azim: number;
+  sun: string;
+  sunI: number;
+  hemiSky: string;
+  hemiGround: string;
+  hemiI: number;
+  env: number;
+  exposure: number;
+  lamps: number;
+  fog: string;
+  turbidity: number;
+  rayleigh: number;
+  skyElev: number;
+  stars: number;
+}
+
+const LIGHTING: Record<TimeOfDay, Lighting> = {
+  day: { elev: 44, azim: 318, sun: '#fff1dc', sunI: 3.1, hemiSky: '#fff9f0', hemiGround: '#b3a78f', hemiI: 0.35, env: 0.75, exposure: 0.82, lamps: 0.05, fog: '#cfdde8', turbidity: 3, rayleigh: 0.9, skyElev: 44, stars: 0 },
+  sunset: { elev: 7, azim: 285, sun: '#ffab66', sunI: 2.2, hemiSky: '#ffd6b8', hemiGround: '#8a6f5c', hemiI: 0.25, env: 0.38, exposure: 0.92, lamps: 0.15, fog: '#e7b99a', turbidity: 9, rayleigh: 2.6, skyElev: 3, stars: 0 },
+  night: { elev: 38, azim: 200, sun: '#9db2ff', sunI: 0.3, hemiSky: '#3a4a7a', hemiGround: '#1a1a22', hemiI: 0.1, env: 0.04, exposure: 0.9, lamps: 0.22, fog: '#070b18', turbidity: 1, rayleigh: 0.3, skyElev: -12, stars: 1 },
+};
+
+const EMOTES: Record<string, { activity: Activity; seconds: number; text: string }> = {
+  Digit1: { activity: 'wave', seconds: 2.5, text: '👋' },
+  Digit2: { activity: 'dance', seconds: 60, text: '💃' },
+  Digit3: { activity: 'clap', seconds: 2.5, text: '👏' },
+  Digit4: { activity: 'cheer', seconds: 2.5, text: '🙌' },
+  Digit5: { activity: 'stretch', seconds: 4, text: '🙆' },
+};
 
 interface FurnitureEntry {
   item: FurnitureItem;
@@ -31,8 +70,6 @@ interface FurnitureEntry {
 
 const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(44), THREE.MathUtils.degToRad(318));
 
-/** Catalog lamp intensities are tuned for a dark room; by day they only add a gentle warm pool of light. */
-const LAMP_SCALE = 0.05;
 
 /** Soft, mostly neutral sky gradient used for image-based lighting (the visible sky is the Sky shader). */
 function makeEnvironment(renderer: THREE.WebGLRenderer): THREE.Texture {
@@ -75,6 +112,13 @@ export class Engine {
   private composer: EffectComposer | null = null;
   private aoPass: N8AOPass | null = null;
   private sun = new THREE.DirectionalLight('#fff1dc', 3.1);
+  private hemi = new THREE.HemisphereLight('#fff9f0', '#b3a78f', 0.35);
+  private sky: Sky;
+  private stars: THREE.Points;
+  private sunDir = SUN_DIR.clone();
+  private tod: TimeOfDay = 'day';
+  readonly interactions: Interactions;
+  private photoPending = false;
   private ground: THREE.Mesh;
   private groundFinish = '';
   private arch: Architecture | null = null;
@@ -114,6 +158,7 @@ export class Engine {
 
     // sky + image based lighting
     const sky = new Sky();
+    this.sky = sky;
     sky.scale.setScalar(1000);
     const u = sky.material.uniforms;
     u.turbidity.value = 3;
@@ -134,7 +179,9 @@ export class Engine {
     this.sun.shadow.normalBias = 0.03;
     this.sun.shadow.radius = 2.5;
     this.scene.add(this.sun, this.sun.target);
-    this.scene.add(new THREE.HemisphereLight('#fff9f0', '#b3a78f', 0.35));
+    this.scene.add(this.hemi);
+    this.stars = makeStars();
+    this.scene.add(this.stars);
 
     // ground (the finish library adds its own large-scale variation, so plain tiling UVs in meters are enough)
     const groundGeo = new THREE.PlaneGeometry(600, 600).rotateX(-Math.PI / 2);
@@ -168,7 +215,16 @@ export class Engine {
       st.setView({ firstPerson: !st.view.firstPerson });
     };
     this.walk.character.root.visible = false;
+    this.walk.character.setLook(loadLook());
     this.scene.add(this.walk.character.root);
+    this.walk.onShortcut = (code) => this.shortcut(code);
+    this.interactions = new Interactions(this.scene);
+    this.interactions.onSleep = () => {
+      const st = useStore.getState();
+      const next: TimeOfDay = st.view.timeOfDay === 'night' ? 'day' : 'night';
+      st.setView({ timeOfDay: next });
+      useWalk.getState().toast(next === 'day' ? '☀️ בוקר טוב!' : '🌙 לילה טוב…');
+    };
 
     const el = renderer.domElement;
     el.addEventListener('pointerdown', this.onPointerDown);
@@ -209,6 +265,7 @@ export class Engine {
     this.renderer.setSize(width, height);
     this.composer?.setSize(width, height);
     this.aoPass?.setSize(width, height);
+    this.interactions.particles.setViewport(height * this.renderer.getPixelRatio(), this.camera.fov);
   }
 
   private applyQuality(q: 'low' | 'high'): void {
@@ -274,9 +331,130 @@ export class Engine {
     }
     if (this.mode === 'walk') this.walk.update(dt);
     else this.controls.update();
+    this.interactions.update(dt, this.mode === 'walk' ? this.walk.character.root.position : null);
     this.updateSun();
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
+    if (this.photoPending) {
+      this.photoPending = false;
+      this.savePhoto();
+    }
+  }
+
+  // ---- walk-mode extras ----------------------------------------------------------------------
+
+  /** run a walk-mode action button */
+  runChoice(id: string): void {
+    this.interactions.run(id);
+  }
+
+  instrumentKey(kind: 'piano' | 'guitar' | 'drums', code: string): void {
+    this.interactions.instrumentKey(kind, code);
+  }
+
+  emote(code: string): void {
+    const e = EMOTES[code];
+    if (!e || this.mode !== 'walk') return;
+    if (this.walk.occupation) return;
+    if (this.walk.character.getActivity() === e.activity) {
+      this.walk.endTimed();
+      return;
+    }
+    this.walk.playFor(e.activity, e.seconds);
+    if (e.activity === 'dance') {
+      const ps = this.interactions.particles;
+      let n = 0;
+      const timer = setInterval(() => {
+        if (this.walk.character.getActivity() !== 'dance' || ++n > 200) return clearInterval(timer);
+        if (Math.random() < 0.5) ps.emit('note', this.walk.character.headWorld().add(new THREE.Vector3(0, 0.3, 0)));
+      }, 300);
+    }
+    if (e.activity === 'clap') {
+      for (let i = 0; i < 5; i++) setTimeout(() => sound.sfx('clack', 0.5), 150 + i * 260);
+    }
+    if (e.activity === 'cheer') sound.sfx('cheer', 0.5);
+  }
+
+  jump(): void {
+    if (this.mode === 'walk') this.walk.jump();
+  }
+
+  callPets(): void {
+    this.interactions.callPets();
+  }
+
+  takePhoto(): void {
+    this.photoPending = true;
+    sound.sfx('shutter');
+    useWalk.getState().set({ flash: Date.now() });
+  }
+
+  private savePhoto(): void {
+    try {
+      const url = this.renderer.domElement.toDataURL('image/png');
+      const a = document.createElement('a');
+      const d = new Date();
+      a.download = `בית-החלומות-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}-${d.getHours()}${d.getMinutes()}${d.getSeconds()}.png`;
+      a.href = url;
+      a.click();
+      useWalk.getState().toast('📸 התמונה נשמרה');
+    } catch (err) {
+      console.warn('photo failed', err);
+    }
+  }
+
+  setLook(look: import('./Character').CharacterLook): void {
+    this.walk.character.setLook(look);
+  }
+
+  private shortcut(code: string): boolean {
+    if (EMOTES[code]) {
+      this.emote(code);
+      return true;
+    }
+    const st = useStore.getState();
+    switch (code) {
+      case 'KeyC':
+        this.callPets();
+        return true;
+      case 'KeyP':
+        this.takePhoto();
+        return true;
+      case 'KeyN': {
+        const order: TimeOfDay[] = ['day', 'sunset', 'night'];
+        st.setView({ timeOfDay: order[(order.indexOf(st.view.timeOfDay) + 1) % order.length] });
+        return true;
+      }
+      case 'KeyM': {
+        const m = !sound.isMuted();
+        sound.setMuted(m);
+        useWalk.getState().set({ muted: m });
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private applyTimeOfDay(tod: TimeOfDay): void {
+    const prev = this.tod;
+    this.tod = tod;
+    const L = LIGHTING[tod];
+    this.sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - L.elev), THREE.MathUtils.degToRad(L.azim));
+    this.sun.color.set(L.sun);
+    this.sun.intensity = L.sunI;
+    this.hemi.color.set(L.hemiSky);
+    this.hemi.groundColor.set(L.hemiGround);
+    this.hemi.intensity = L.hemiI;
+    this.scene.environmentIntensity = L.env;
+    this.renderer.toneMappingExposure = L.exposure;
+    (this.scene.fog as THREE.Fog).color.set(L.fog);
+    const u = this.sky.material.uniforms;
+    u.turbidity.value = L.turbidity;
+    u.rayleigh.value = L.rayleigh;
+    u.sunPosition.value.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - L.skyElev), THREE.MathUtils.degToRad(L.azim));
+    this.stars.visible = L.stars > 0;
+    this.interactions.setLampScale(L.lamps);
+    if (tod === 'night' && prev !== 'night') this.interactions.allLights(true);
   }
 
   /** Keep the shadow frustum centred on what the camera looks at. */
@@ -294,7 +472,7 @@ export class Engine {
       cam.updateProjectionMatrix();
     }
     this.sun.target.position.set(focus.x, 0, focus.z);
-    this.sun.position.copy(this.sun.target.position).addScaledVector(SUN_DIR, 90);
+    this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 90);
   }
 
   // ---- scene sync ----------------------------------------------------------------------------
@@ -311,6 +489,7 @@ export class Engine {
     const lvl = this.level();
 
     if (view.quality !== this.quality) this.applyQuality(view.quality);
+    if (view.timeOfDay !== this.tod) this.applyTimeOfDay(view.timeOfDay);
     if (st.mode !== this.mode) this.setMode(st.mode);
 
     if (project.site.ground !== this.groundFinish) {
@@ -373,10 +552,13 @@ export class Engine {
     }
     if (def.mount === 'ceiling') obj.position.y += lvl.height - 2.7;
     holder.add(obj);
+    holder.userData.obj = obj;
     if (def.light) {
-      const l = new THREE.PointLight(def.light.color, def.light.intensity * LAMP_SCALE, def.light.distance, 2);
+      const l = new THREE.PointLight(def.light.color, def.light.intensity * LIGHTING[this.tod].lamps, def.light.distance, 2);
+      holder.userData.lightBase = def.light.intensity;
       l.position.set(def.light.x, def.light.y + (def.mount === 'ceiling' ? lvl.height - 2.7 : 0), def.light.z);
       holder.add(l);
+      holder.userData.light = l;
     }
     return holder;
   }
@@ -398,10 +580,15 @@ export class Engine {
         this.furnitureGroup.add(holder);
         entry = { item, holder, colorsKey };
         this.furniture.set(item.id, entry);
+        entry.holder.position.set(item.x, item.elevation, item.y);
+        entry.holder.rotation.y = -item.rotation;
+        const def = getFurniture(item.catalogId)!;
+        this.interactions.register(item, def, holder, holder.userData.obj as THREE.Object3D, (holder.userData.light as THREE.PointLight | undefined) ?? null);
       }
       entry.item = item;
       entry.holder.position.set(item.x, item.elevation, item.y);
       entry.holder.rotation.y = -item.rotation;
+      this.interactions.updateItem(item);
     }
     // ceiling fixtures would float in mid-air when the walls are cut low
     const hideCeiling = this.mode !== 'walk' && useStore.getState().view.wallsLow;
@@ -412,6 +599,7 @@ export class Engine {
       if (!seen.has(id)) {
         this.furnitureGroup.remove(entry.holder);
         this.furniture.delete(id);
+        this.interactions.unregister(id);
         changed = true;
       }
     }
@@ -424,9 +612,12 @@ export class Engine {
     for (const { item } of this.furniture.values()) {
       const def = getFurniture(item.catalogId);
       if (!def) continue;
-      seats.push(...seatsOf(def, item.x, item.y, item.rotation, item.elevation));
+      // swings / rocking things are ridden through their action, not as a plain seat
+      const ridden = def.actions?.some((a) => a.kind === 'swing' || a.kind === 'rock');
+      if (!ridden) seats.push(...seatsOf(def, item.x, item.y, item.rotation, item.elevation, item.id));
       if (def.walkable || def.mount === 'ceiling' || def.mount === 'wall') continue;
-      boxes.push({ x: item.x, y: item.y, hw: def.size.w / 2, hd: def.size.d / 2, rotation: item.rotation });
+      if (def.actions?.some((a) => a.kind === 'pet' || a.kind === 'ball')) continue;
+      boxes.push({ x: item.x, y: item.y, hw: def.size.w / 2, hd: def.size.d / 2, rotation: item.rotation, id: item.id, top: item.elevation + def.size.h });
     }
     this.walk.world = {
       walls: this.arch?.colliders ?? [],
@@ -435,6 +626,7 @@ export class Engine {
       doors: this.arch?.doors ?? [],
       occluders: this.arch ? [this.arch.group] : [],
     };
+    this.interactions.setWorld(this.walk.world);
   }
 
   private syncSelection(): void {
@@ -502,15 +694,19 @@ export class Engine {
       const start = selected?.kind === 'room' ? selected.point : (room?.labelPoint ?? { x: 0, y: 0 });
       this.refreshWalkWorld();
       this.walk.teleport(start, Math.PI * 0.25);
+      this.interactions.enterWalk(this.walk, this.walk.world);
       this.camera.fov = 62;
       this.camera.updateProjectionMatrix();
+      this.interactions.particles.setViewport(this.height * this.renderer.getPixelRatio(), this.camera.fov);
     } else {
       if (prev === 'walk') {
+        this.interactions.exitWalk();
         this.walk.disable();
         this.walk.character.root.visible = false;
         useStore.getState().setHint('');
         this.camera.fov = 50;
         this.camera.updateProjectionMatrix();
+        this.interactions.particles.setViewport(this.height * this.renderer.getPixelRatio(), this.camera.fov);
         this.frameAll();
       }
       this.controls.enabled = true;
@@ -664,4 +860,27 @@ export class Engine {
       useStore.getState().setTool({ type: 'select' });
     }
   };
+}
+
+/** a dome of stars, visible at night */
+function makeStars(): THREE.Points {
+  const n = 1400;
+  const pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const u = Math.random();
+    const v = Math.random() * 0.9 + 0.08;
+    const th = u * Math.PI * 2;
+    const ph = Math.acos(1 - v);
+    const r = 400;
+    pos[i * 3] = r * Math.sin(ph) * Math.cos(th);
+    pos[i * 3 + 1] = r * Math.cos(ph);
+    pos[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.PointsMaterial({ color: '#ffffff', size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.9, depthWrite: false });
+  const p = new THREE.Points(g, m);
+  p.visible = false;
+  p.renderOrder = -1;
+  return p;
 }

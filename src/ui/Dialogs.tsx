@@ -5,9 +5,9 @@ import { sampleProject } from '../model/sample';
 import { useStore } from '../store/store';
 import { Icon } from './icons';
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+export function Modal({ title, onClose, children, className = '' }: { title: string; onClose: () => void; children: React.ReactNode; className?: string }) {
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className={`modal-backdrop ${className}`} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-label={title}>
         <header>
           <h2>{title}</h2>
@@ -100,7 +100,17 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
           עברו ל<b>תלת־ממד</b> כדי לראות את הבית מכל זווית, ול<b>סיור בבית</b> כדי ללכת בתוכו: <kbd>W</kbd>
           <kbd>A</kbd>
           <kbd>S</kbd>
-          <kbd>D</kbd> להליכה, <kbd>E</kbd> כדי לשבת, <kbd>V</kbd> למבט מהעיניים.
+          <kbd>D</kbd> להליכה, <kbd>V</kbd> למבט מהעיניים.
+        </p>
+        <h4>4. משחקים עם הבית</h4>
+        <p>
+          כשהדמות מתקרבת לפריט אינטראקטיבי (מסומן ✨ בקטלוג) מופיעים כפתורי פעולה – <kbd>E</kbd> <kbd>F</kbd> <kbd>G</kbd> <kbd>T</kbd>: להדליק
+          טלוויזיה ולהחליף ערוצים, לנגן בפסנתר, בגיטרה ובתופים, להפעיל מוזיקה ולרקוד, לבשל, להתקלח, להדליק אח, לישון (ולהעביר יום ולילה), לרוץ
+          על הליכון, לקפוץ בטרמפולינה, להתנדנד, לגלוש, לבעוט בכדור, לזרוק לסל ולחצים, ללטף את הכלב ולקרוא לו לבוא אחריכם.
+        </p>
+        <p>
+          <kbd>1</kbd>–<kbd>5</kbd> תנועות (נפנוף, ריקוד, מחיאות כפיים…) · <kbd>רווח</kbd> קפיצה · <kbd>C</kbd> לקרוא לחיות · <kbd>P</kbd> צילום ·{' '}
+          <kbd>N</kbd> יום / שקיעה / לילה · <kbd>M</kbd> השתקה. ב"הדמות שלי" משנים תסרוקת, צבעים וגובה.
         </p>
         <h4>קיצורי מקלדת</h4>
         <p>

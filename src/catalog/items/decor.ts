@@ -304,6 +304,7 @@ const wallClock: FurnitureDef = {
   mount: 'wall',
   elevation: 1.75,
   colors: [slot('rim', 'מסגרת', PAL.oak), slot('face', 'לוח', PAL.white)],
+  actions: [{ kind: 'clock' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const r = 0.17;
@@ -322,15 +323,14 @@ const wallClock: FurnitureDef = {
       const rr = r - 0.04;
       m.position.set(Math.sin(a) * rr, r + Math.cos(a) * rr, d / 2 + 0.002);
     }
-    // hands at ten past ten
-    const hand = (len: number, wd: number, ang: number, z: number, mat: THREE.Material) => {
-      const m = k.box(wd, len, 0.002, mat, 0, 0, 0);
-      m.rotation.z = -ang;
-      m.position.set(Math.sin(ang) * (len / 2 - 0.012), r + Math.cos(ang) * (len / 2 - 0.012), d / 2 + z);
+    // hands: animated parts pointing up at rest, turned to the real time by the runtime
+    const hand = (name: string, len: number, wd: number, z: number, mat: THREE.Material) => {
+      const p = k.part(name, 0, r, d / 2 + z);
+      p.box(wd, len, 0.002, mat, 0, -0.012, -0.001);
     };
-    hand(0.085, 0.009, -Math.PI / 3 + 0.09, 0.004, ink);
-    hand(0.125, 0.006, Math.PI / 3, 0.0065, ink);
-    hand(0.13, 0.002, Math.PI * 1.08, 0.009, M.matte(PAL.terracotta));
+    hand('hour', 0.085, 0.009, 0.004, ink);
+    hand('minute', 0.125, 0.006, 0.0065, ink);
+    hand('second', 0.13, 0.002, 0.009, M.matte(PAL.terracotta));
     const cap = k.cyl(0.008, 0.012, M.brass(), 0, 0, 0, 0.008, 12);
     cap.rotation.x = Math.PI / 2;
     cap.position.set(0, r, d / 2 + 0.006);

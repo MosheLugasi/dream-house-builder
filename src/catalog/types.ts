@@ -21,6 +21,10 @@ export type FurnitureCategory =
   | 'kids'
   | 'lighting'
   | 'decor'
+  | 'accessories'
+  | 'entertainment'
+  | 'sports'
+  | 'pets'
   | 'outdoor';
 
 export interface ColorSlot {
@@ -54,6 +58,87 @@ export interface LightSpec {
   distance: number;
 }
 
+/**
+ * Interactive behaviours an item offers in walk mode (see docs/catalog-authoring.md).
+ *
+ * Animated pieces are marked as PARTS: an Object3D whose `userData.part` is one of the names
+ * below (use `Kit.part(...)`). Parts survive baking as separate groups named `part:<name>`, with
+ * their own transform, so the runtime can rotate / move / hide them per placed instance.
+ */
+export type ActionKind =
+  /** toggle `light`; parts 'glow' (emissive meshes dim when off) */
+  | 'light'
+  /** TV / monitor: part 'screen' = flat mesh facing +Z that shows animated channels */
+  | 'tv'
+  /** desk computer / laptop: part 'screen'; the character types */
+  | 'computer'
+  /** radio / record player / jukebox / speakers: parts 'spin' (turns around local Y), 'pulse' (scales to the beat) */
+  | 'music'
+  /** keyboard instruments (sit at seats[0]) */
+  | 'piano'
+  | 'guitar'
+  | 'drums'
+  /** ceiling / standing fan: part 'rotor' spins around local Y (use `axis` for others) */
+  | 'fan'
+  /** fireplace, fire pit, candles: flames at `at` */
+  | 'fire'
+  /** sink, shower, bathtub, fountain, garden hose: water stream from `at` */
+  | 'water'
+  /** stove, oven, BBQ: steam / smoke at `at`, the character cooks standing in front */
+  | 'cook'
+  /** fridge, fruit bowl, coffee machine, kettle, snack bar: the character eats / drinks */
+  | 'snack'
+  /** wardrobes, cabinets, fridges: parts 'door' (rotate about local Y, `userData.open` radians) / 'drawer' (slide +Z, `userData.open` meters) */
+  | 'open'
+  /** beds: lie down and sleep (fast-forward day/night); needs a 'lie' seat */
+  | 'sleep'
+  /** bookshelves / books: take a book and read */
+  | 'read'
+  /** treadmill (run), exercise bike (pedal), rowing machine (row): parts 'spin' turn around local X */
+  | 'run'
+  | 'pedal'
+  | 'row'
+  /** weights, punching bag, yoga mat */
+  | 'workout'
+  /** trampoline */
+  | 'bounce'
+  /** swings & hammocks: part 'swing' pivots at its origin around local X; character rides at seats[0] */
+  | 'swing'
+  /** rocking chair / rocking horse: part 'rock' pivots at its origin (on the floor) around local X */
+  | 'rock'
+  /** playground slide: `path` = local points from the top of the slide to its end */
+  | 'slide'
+  /** the item itself becomes a kickable ball in walk mode */
+  | 'ball'
+  /** basketball hoop: ring centre at `at` */
+  | 'hoop'
+  /** dart board: board centre at `at` (board faces +Z) */
+  | 'darts'
+  /** arcade cabinet / game console: part 'screen' */
+  | 'game'
+  /** dogs, cats...: parts 'body', 'head', 'tail', 'leg0'..'leg3' (pivots at hips / shoulders) */
+  | 'pet'
+  /** aquarium: every child of part 'fish' swims around inside `area` */
+  | 'fish'
+  /** wall / table clocks: parts 'hour', 'minute' (and 'second'), pivot at the dial centre, turning around local Z */
+  | 'clock'
+  /** pool / ping-pong / foosball / board games: the character plays a round */
+  | 'play';
+
+export interface ActionSpec {
+  kind: ActionKind;
+  /** optional Hebrew button label overriding the default for the kind */
+  label?: string;
+  /** local anchor: effect origin (spout, flame, ring...) */
+  at?: { x: number; y: number; z: number };
+  /** local polyline (slides) */
+  path?: Array<{ x: number; y: number; z: number }>;
+  /** local box the effect lives in (aquarium water volume): min/max corners */
+  area?: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } };
+  /** free-form variant, e.g. pet species 'dog' | 'cat', music style, fire size */
+  variant?: string;
+}
+
 export interface BuildContext {
   /** resolved colors: every ColorSlot key is present */
   colors: Record<string, string>;
@@ -75,6 +160,12 @@ export interface FurnitureDef {
   /** true for rugs etc.: the character can walk over it */
   walkable?: boolean;
   light?: LightSpec;
+  /** interactive behaviours in walk mode */
+  actions?: ActionSpec[];
+  /** Hebrew sub-group inside the category (e.g. "ספות", "כורסאות") used to organise the catalog */
+  group?: string;
+  /** extra Hebrew search words (materials, styles, synonyms) */
+  tags?: string[];
   /** Build the 3D object. Meshes should set castShadow/receiveShadow. */
   build(ctx: BuildContext): THREE.Object3D;
   /** Draw the plan symbol (see conventions above). Caller sets up transform; lineWidth is in meters. */
@@ -91,5 +182,9 @@ export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {
   kids: 'חדר ילדים',
   lighting: 'תאורה',
   decor: 'דקורציה',
+  accessories: 'אביזרים',
+  entertainment: 'בידור ומוזיקה',
+  sports: 'ספורט ומשחק',
+  pets: 'חיות מחמד',
   outdoor: 'חוץ וגינה',
 };

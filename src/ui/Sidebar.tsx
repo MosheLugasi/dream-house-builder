@@ -209,6 +209,26 @@ function OpeningThumb({ id }: { id: string }) {
   );
 }
 
+function FurnitureGroup({ title, list, tool, pick }: { title: string; list: FurnitureDef[]; tool: Tool; pick: (t: Tool) => void }) {
+  return (
+    <>
+      {title && <h5 className="catalog-group">{title}</h5>}
+      {list.map((f) => (
+        <button
+          key={f.id}
+          className={`card ${tool.type === 'furniture' && tool.catalogId === f.id ? 'active' : ''}`}
+          onClick={() => pick({ type: 'furniture', catalogId: f.id })}
+          title={`${f.name} · ${Math.round(f.size.w * 100)}×${Math.round(f.size.d * 100)} ס"מ${f.actions?.length ? ' · אינטראקטיבי' : ''}`}
+        >
+          <FurnitureThumb def={f} />
+          <span>{f.name}</span>
+          {!!f.actions?.length && <i className="interactive-badge" title="אפשר לשחק עם זה בסיור">✨</i>}
+        </button>
+      ))}
+    </>
+  );
+}
+
 function FurnitureTab() {
   const { tool, pick } = useTool();
   const [category, setCategory] = useState<FurnitureCategory | 'all'>('living');
@@ -217,11 +237,23 @@ function FurnitureTab() {
     const present = new Set(FURNITURE.map((f) => f.category));
     return (Object.keys(CATEGORY_LABELS) as FurnitureCategory[]).filter((c) => present.has(c));
   }, []);
-  const items = FURNITURE.filter((f) => (query ? f.name.includes(query.trim()) : category === 'all' || f.category === category));
+  const q = query.trim();
+  const items = FURNITURE.filter((f) =>
+    q ? f.name.includes(q) || (f.group ?? '').includes(q) || (f.tags ?? []).some((t) => t.includes(q)) : category === 'all' || f.category === category,
+  );
+  // keep catalog order but gather each sub-group together
+  const groups = new Map<string, FurnitureDef[]>();
+  for (const f of items) {
+    const g = q ? '' : (f.group ?? '');
+    const list = groups.get(g) ?? [];
+    list.push(f);
+    groups.set(g, list);
+  }
+  const ordered = [...groups.entries()].sort((a, b) => (a[0] === '' ? -1 : b[0] === '' ? 1 : 0));
   return (
     <div className="tab-body">
-      <input className="search" placeholder="חיפוש רהיט…" value={query} onChange={(e) => setQuery(e.target.value)} />
-      {!query && (
+      <input className="search" placeholder="חיפוש: ספה, קטיפה, כלב, מנורה…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      {!q && (
         <div className="pills">
           {categories.map((c) => (
             <button key={c} className={category === c ? 'active' : ''} onClick={() => setCategory(c)}>
@@ -230,17 +262,10 @@ function FurnitureTab() {
           ))}
         </div>
       )}
+      <p className="note">{q ? `${items.length} תוצאות` : `${items.length} פריטים`} · {FURNITURE.length} בקטלוג</p>
       <div className="grid">
-        {items.map((f) => (
-          <button
-            key={f.id}
-            className={`card ${tool.type === 'furniture' && tool.catalogId === f.id ? 'active' : ''}`}
-            onClick={() => pick({ type: 'furniture', catalogId: f.id })}
-            title={`${f.name} · ${Math.round(f.size.w * 100)}×${Math.round(f.size.d * 100)} ס"מ`}
-          >
-            <FurnitureThumb def={f} />
-            <span>{f.name}</span>
-          </button>
+        {ordered.map(([g, list]) => (
+          <FurnitureGroup key={g || '_'} title={groups.size > 1 ? g || 'כללי' : ''} list={list} tool={tool} pick={pick} />
         ))}
         {!items.length && <p className="note">לא נמצאו פריטים.</p>}
       </div>

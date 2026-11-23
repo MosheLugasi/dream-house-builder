@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Engine } from '../render3d/Engine';
 import { useStore } from '../store/store';
 import { Icon } from './icons';
+import { TimeOfDayChips, WalkHUD } from './WalkHUD';
 
 export function View3D({ active }: { active: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -10,8 +11,8 @@ export function View3D({ active }: { active: boolean }) {
   const mode = useStore((s) => s.mode);
   const view = useStore((s) => s.view);
   const hint = useStore((s) => s.hint);
+  const [engine, setEngine] = useState<Engine | null>(null);
   const setView = useStore((s) => s.setView);
-  const setMode = useStore((s) => s.setMode);
 
   // create the engine the first time the 3D view is shown
   useEffect(() => {
@@ -23,6 +24,7 @@ export function View3D({ active }: { active: boolean }) {
         if (disposed || !hostRef.current) return;
         const engine = new Engine(hostRef.current);
         engineRef.current = engine;
+        setEngine(engine);
         (window as unknown as { __engine?: Engine }).__engine = engine;
         ro = new ResizeObserver(([entry]) => engine.resize(entry.contentRect.width, entry.contentRect.height));
         ro.observe(hostRef.current);
@@ -70,6 +72,7 @@ export function View3D({ active }: { active: boolean }) {
             <input type="checkbox" checked={view.showRoof} onChange={(e) => setView({ showRoof: e.target.checked })} />
             גג
           </label>
+          <TimeOfDayChips />
           <label className={`chip toggle ${view.quality === 'high' ? 'on' : ''}`}>
             <input
               type="checkbox"
@@ -82,29 +85,7 @@ export function View3D({ active }: { active: boolean }) {
       )}
       {mode === 'walk' && (
         <>
-          <div className="walk-help">
-            <div>
-              <kbd>W</kbd>
-              <kbd>A</kbd>
-              <kbd>S</kbd>
-              <kbd>D</kbd> או חיצים – הליכה
-            </div>
-            <div>
-              <kbd>Shift</kbd> – ריצה · גרירת עכבר – מבט · גלגלת – מרחק
-            </div>
-            <div>
-              <kbd>E</kbd> – לשבת / לקום · <kbd>V</kbd> – מבט מהעיניים
-            </div>
-          </div>
-          <div className="view-controls">
-            <label className={`chip toggle ${view.firstPerson ? 'on' : ''}`}>
-              <input type="checkbox" checked={view.firstPerson} onChange={(e) => setView({ firstPerson: e.target.checked })} />
-              מבט מהעיניים
-            </label>
-            <button className="chip" onClick={() => setMode('view3d')}>
-              סיום הסיור
-            </button>
-          </div>
+          <WalkHUD engine={engine} />
           {hint && <div className="walk-hint">{hint}</div>}
         </>
       )}

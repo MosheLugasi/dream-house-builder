@@ -178,6 +178,7 @@ const bbq: FurnitureDef = {
   category: 'outdoor',
   size: { w: 1.3, d: 0.6, h: 1.17 },
   colors: [slot('body', 'גוף', '#2b2c2f')],
+  actions: [{ kind: 'cook', at: { x: 0, y: 0.95, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const body = M.metal(c.body, 0.45, 0.6);
@@ -527,6 +528,7 @@ const swingSet: FurnitureDef = {
     { x: -0.5, z: 0, height: 0.5, facing: 0, kind: 'sit' },
     { x: 0.5, z: 0, height: 0.5, facing: 0, kind: 'sit' },
   ],
+  actions: [{ kind: 'swing' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.wood(c.frame, 0.7);
@@ -542,12 +544,14 @@ const swingSet: FurnitureDef = {
     const rope = M.matte('#d8cdb6');
     const seat = M.plastic(c.seat);
     for (const sx of [-0.5, 0.5]) {
+      // each swing hangs from the top beam and is animated around it
+      const sw = k.part('swing', sx, top, 0);
       for (const s of [-1, 1]) {
-        const x = sx + s * 0.2;
-        k.cyl(0.012, 0.05, metal, x, top - 0.09, 0, 0.012, 8);
-        k.rod([x, 0.5, 0], [x, top - 0.06, 0], 0.007, rope, 0.007, 6);
+        const x = s * 0.2;
+        sw.cyl(0.012, 0.05, metal, x, -0.09, 0, 0.012, 8);
+        sw.rod([x, 0.5 - top, 0], [x, -0.06, 0], 0.007, rope, 0.007, 6);
       }
-      k.rbox(0.46, 0.03, 0.17, 0.012, seat, sx, 0.475, 0, 1);
+      sw.rbox(0.46, 0.03, 0.17, 0.012, seat, 0, 0.475 - top, 0, 1);
     }
     return k.g;
   },
@@ -581,6 +585,7 @@ const trampoline: FurnitureDef = {
   category: 'outdoor',
   size: { w: 3.08, d: 3.08, h: TR.h },
   colors: [slot('pad', 'ריפוד', PAL.dustyBlue)],
+  actions: [{ kind: 'bounce', at: { x: 0, y: TR.deck + 0.01, z: 0 } }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const steel = M.metal('#b9bcbf', 0.4, 0.9);
@@ -748,6 +753,7 @@ const gardenLamp: FurnitureDef = {
   size: { w: 0.4, d: 0.4, h: 2.6 },
   colors: [slot('metal', 'מתכת', '#2f3235')],
   light: { x: 0, y: 2.3, z: 0, color: '#ffdca8', intensity: 90, distance: 10 },
+  actions: [{ kind: 'light' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const metal = M.metal(c.metal, 0.55, 0.6);
