@@ -194,6 +194,8 @@ export interface ResizeSpec {
   w?: [number, number];
   d?: [number, number];
   h?: [number, number];
+  /** width and depth change together (round things: a shade, a globe, a round table) */
+  linked?: boolean;
 }
 
 /** Stairs connect the level they stand on with the level above. Geometry lives in model/stairs.ts. */

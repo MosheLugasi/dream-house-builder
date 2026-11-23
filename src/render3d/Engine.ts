@@ -1,10 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import { N8AOPass } from 'n8ao';
+import { Realism } from './render/Realism';
+import type { Quality } from '../store/quality';
 import { getFurniture, itemSize, type ItemAnchors } from '../catalog';
 import { placedBoxes, placedLight, placedSeats } from '../catalog/placed';
 import { setWindowGlow } from '../catalog/openings';
@@ -47,7 +44,8 @@ import { useWalk } from '../store/walk';
 import { normalizeLook, type Activity } from './Character';
 
 /** Named moments of the day (the HUD buttons and the N key jump between them). */
-export const DAY_MOMENTS = { day: 14.5, sunset: 18.6, night: 21.5 } as const;
+// (the sun sets at 18:00 in Atmosphere's model: 17:42 is the golden hour, 18:36 was already full night)
+export const DAY_MOMENTS = { day: 14.5, sunset: 17.7, night: 21.5 } as const;
 export type TimeOfDay = keyof typeof DAY_MOMENTS;
 export function momentOf(hours: number): TimeOfDay {
   return hours >= 20 || hours < 5.5 ? 'night' : hours >= 17.5 ? 'sunset' : 'day';
@@ -80,11 +78,10 @@ export class Engine {
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1200);
   private controls: OrbitControls;
-  private composer: EffectComposer | null = null;
-  private aoPass: N8AOPass | null = null;
+  /** post-processing, daylight through windows, grading, photo (see render/Realism.ts) */
+  readonly realism: Realism;
   readonly atmosphere: Atmosphere;
   readonly lights = new LightManager();
-  private bloom: UnrealBloomPass | null = null;
   private time = 14.5;
   private storeTime = 14.5;
   private clockTimer = 0;
@@ -118,7 +115,7 @@ export class Engine {
   private drag: { kind: 'furniture' | 'prop' | 'building'; id: string; offset: Vec2; y: number; started: boolean } | null = null;
   private width = 1;
   private height = 1;
-  private quality: 'low' | 'high' = 'high';
+  private quality: Quality = 'high';
   private framedKey = '';
   private walkProject: unknown = null;
   private nearBuildings = new Set<string>();
@@ -130,8 +127,7 @@ export class Engine {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer = renderer;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.82;
+    // tone mapping and exposure: see render/Realism.ts (colour pipeline) and Atmosphere (exposure by time of day)
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     host.appendChild(renderer.domElement);
@@ -143,6 +139,7 @@ export class Engine {
     this.atmosphere = new Atmosphere(renderer, this.scene);
     this.time = this.storeTime = useStore.getState().view.timeOfDay;
     this.atmosphere.setTime(this.time);
+    this.realism = new Realism(renderer, this.scene, this.camera, this.atmosphere, this.lights);
     this.scene.add(this.lights.group, this.particles.group, this.stars.group, this.traffic.group);
     this.stars.group.visible = false;
     this.traffic.group.visible = false;
@@ -244,7 +241,7 @@ export class Engine {
     window.removeEventListener('keydown', this.onKeyDown);
     this.controls.dispose();
     for (const v of this.buildings.values()) v.dispose();
-    this.composer?.dispose();
+    this.realism.dispose();
     this.renderer.dispose();
     el.remove();
   }
@@ -256,50 +253,13 @@ export class Engine {
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
-    this.composer?.setSize(width, height);
-    this.aoPass?.setSize(width, height);
+    this.realism.setSize(width, height);
     this.interactions.particles.setViewport(height * this.renderer.getPixelRatio(), this.camera.fov);
   }
 
-  private applyQuality(q: 'low' | 'high'): void {
+  private applyQuality(q: Quality): void {
     this.quality = q;
-    const ratio = q === 'high' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-    this.renderer.setPixelRatio(ratio);
-    const sun = this.atmosphere.sun;
-    sun.shadow.mapSize.setScalar(q === 'high' ? 4096 : 2048);
-    sun.shadow.map?.dispose();
-    sun.shadow.map = null;
-    this.bloom = null;
-    this.composer?.dispose();
-    this.composer = null;
-    this.aoPass = null;
-    if (q === 'high') {
-      try {
-        const composer = new EffectComposer(this.renderer);
-        const ao = new N8AOPass(this.scene, this.camera, this.width, this.height);
-        ao.configuration.aoRadius = 1.1;
-        ao.configuration.distanceFalloff = 1.0;
-        ao.configuration.intensity = 2.6;
-        ao.configuration.color = new THREE.Color(0, 0, 0);
-        ao.configuration.halfRes = false;
-        ao.configuration.gammaCorrection = false;
-        ao.setQualityMode('Medium');
-        composer.addPass(ao);
-        // glow around lamps, windows at night and the low sun
-        const bloom = new UnrealBloomPass(new THREE.Vector2(this.width, this.height), 0.03, 0.5, 4);
-        composer.addPass(bloom);
-        this.bloom = bloom;
-        composer.addPass(new OutputPass());
-        composer.addPass(new SMAAPass());
-        composer.setPixelRatio(ratio);
-        composer.setSize(this.width, this.height);
-        this.composer = composer;
-        this.aoPass = ao;
-      } catch (err) {
-        console.warn('post-processing unavailable, falling back to direct rendering', err);
-        this.composer = null;
-      }
-    }
+    this.realism.setQuality(q, this.width, this.height);
   }
 
   // ---- run loop ------------------------------------------------------------------------------
@@ -334,6 +294,7 @@ export class Engine {
     if (this.dirty) {
       this.dirty = false;
       this.sync();
+      this.realism.invalidate();
     }
     this.advanceClock(dt);
     if (this.mode === 'walk') {
@@ -357,8 +318,9 @@ export class Engine {
     }
     this.interactions.update(dt, this.mode === 'walk' ? this.walk.character.root.position : null);
     this.updateSun();
-    if (this.composer) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
+    const walking = this.mode === 'walk';
+    this.realism.update(dt, { walking, indoors: walking && this.walk.indoors, project: useStore.getState().project });
+    this.realism.render();
     if (this.photoPending) {
       this.photoPending = false;
       this.savePhoto();
@@ -428,13 +390,20 @@ export class Engine {
 
   private savePhoto(): void {
     try {
-      const url = this.renderer.domElement.toDataURL('image/png');
-      const a = document.createElement('a');
+      // supersampled at a higher resolution when the quality preset allows it, else the canvas as shown
+      const canvas = this.realism.photo() ?? this.renderer.domElement;
       const d = new Date();
-      a.download = `בית-החלומות-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}-${d.getHours()}${d.getMinutes()}${d.getSeconds()}.png`;
-      a.href = url;
-      a.click();
-      useWalk.getState().toast('📸 התמונה נשמרה');
+      const name = `בית-החלומות-${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}-${d.getHours()}${d.getMinutes()}${d.getSeconds()}.png`;
+      const download = (href: string, revoke: boolean) => {
+        const a = document.createElement('a');
+        a.download = name;
+        a.href = href;
+        a.click();
+        if (revoke) setTimeout(() => URL.revokeObjectURL(href), 10000);
+        useWalk.getState().toast('📸 התמונה נשמרה');
+      };
+      if (canvas === this.renderer.domElement) download(canvas.toDataURL('image/png'), false);
+      else canvas.toBlob((blob) => blob && download(URL.createObjectURL(blob), true), 'image/png');
     } catch (err) {
       console.warn('photo failed', err);
     }
@@ -499,11 +468,12 @@ export class Engine {
       this.windowGlow = glow < 0.004 ? 0 : glow;
       setWindowGlow(this.windowGlow);
     }
-    if (this.bloom) {
+    const bloom = this.realism.pipeline.bloom;
+    if (bloom) {
       // by day the sky itself is far brighter than any lamp: keep the glow for the evening,
       // and keep it gentle in a lit room
-      this.bloom.threshold = 4 - 2.9 * night;
-      this.bloom.strength = 0.03 + 0.25 * night * (indoors ? 0.3 : 1);
+      bloom.threshold = 4 - 2.9 * night;
+      bloom.strength = 0.03 + 0.25 * night * (indoors ? 0.3 : 1);
     }
   }
 
@@ -741,14 +711,16 @@ export class Engine {
       const c = Math.cos(rot);
       const s = Math.sin(rot);
       const l = def.light;
-      // the light sits where the (resized / mirrored) fitting really has its bulb
+      // the light sits where the (resized / mirrored) fitting really has its bulb; a bigger fitting gives more light
       const at = placedLight(def, f, holder?.userData.body?.userData.anchors) ?? l;
+      const sz = itemSize(def, f);
+      const grow = Math.min(2.2, Math.max(0.6, Math.sqrt((sz.w * sz.d) / (def.size.w * def.size.d))));
       out.push({
         id: f.id,
         pos: new THREE.Vector3(p.x + at.x * c - at.z * s, floorY + f.elevation + at.y + (def.mount === 'ceiling' ? lift : 0), p.y + at.x * s + at.z * c),
         color: l.color,
-        intensity: l.intensity,
-        distance: l.distance,
+        intensity: l.intensity * grow,
+        distance: l.distance * Math.sqrt(grow),
       });
     };
     for (const f of project.site.props) add(f, { x: 0, y: 0, rotation: 0 }, groundHeight(this.roads, f.x, f.y), 0, this.props.entries.get(f.id)?.holder);

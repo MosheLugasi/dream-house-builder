@@ -7,7 +7,7 @@
  * the repeat below makes one canvas cover `PERIOD` meters.
  */
 import * as THREE from 'three';
-import { darken, lighten, mix, rng } from '../kit';
+import { M, darken, lighten, mix, rng } from '../kit';
 
 export type TilePattern = 'subway' | 'square' | 'zellige' | 'herring' | 'vstack' | 'brick';
 
@@ -192,4 +192,75 @@ export function luma(c: string): number {
   const n = parseInt(h.slice(0, 6), 16);
   if (!Number.isFinite(n)) return 0.5;
   return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+}
+
+/**
+ * Stone / quartz / concrete with the soft mottling of `M.stone`, but mapped in METERS (so a long
+ * backsplash or a row of concrete fronts shows the same grain as the worktop instead of one
+ * stretched blotch). `bump` > 0 adds a faint pitted relief (concrete).
+ */
+export function stoneMat(color: string, rough: number, bump = 0): THREE.Material {
+  const key = `kstone|${color}|${rough}|${bump}`;
+  let m = matCache.get(key);
+  if (!m) {
+    const src = (M.stone(color, rough) as THREE.MeshStandardMaterial).map;
+    const map = src ? src.clone() : null;
+    if (map) {
+      map.repeat.set(1.4, 1.4);
+      map.needsUpdate = true;
+    }
+    const mm = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, map, bumpMap: bump > 0 ? map : null, bumpScale: bump });
+    mm.userData.uvMeters = true;
+    mm.name = key;
+    m = mm;
+    matCache.set(key, m);
+  }
+  return m;
+}
+
+/** Engineered quartz / granite: fine speckles (granite: coarser flecks with more contrast). */
+function speckleTex(coarse: boolean): THREE.CanvasTexture | null {
+  return canvasTex(`speckle|${coarse}`, 256, true, (c, s) => {
+    const r = rng(coarse ? 77 : 33);
+    c.fillStyle = '#f2f2f2';
+    c.fillRect(0, 0, s, s);
+    // faint cloudy variation
+    for (let i = 0; i < 40; i++) {
+      const x = r() * s;
+      const y = r() * s;
+      const rad = 20 + r() * 50;
+      const g = c.createRadialGradient(x, y, 0, x, y, rad);
+      g.addColorStop(0, `rgba(${r() > 0.5 ? '255,255,255' : '215,215,215'},0.07)`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g;
+      for (const ox of [-s, 0, s]) for (const oy of [-s, 0, s]) c.fillRect(x - rad + ox, y - rad + oy, rad * 2, rad * 2);
+    }
+    const n = coarse ? 1400 : 2600;
+    for (let i = 0; i < n; i++) {
+      const v = coarse ? Math.floor(60 + r() * 170) : Math.floor(120 + r() * 110);
+      const a = coarse ? 0.7 : 0.6;
+      c.fillStyle = `rgba(${v},${v},${v},${a})`;
+      const rad = coarse ? 0.6 + r() * 2.2 : 0.4 + r() * 1.1;
+      const x = r() * s;
+      const y = r() * s;
+      c.beginPath();
+      c.arc(x, y, rad, 0, Math.PI * 2);
+      c.fill();
+    }
+  });
+}
+
+/** Speckled quartz / granite worktop material (UVs in meters). */
+export function quartzMat(color: string, rough: number, coarse = false): THREE.Material {
+  const key = `kquartz|${color}|${rough}|${coarse}`;
+  let m = matCache.get(key);
+  if (!m) {
+    const map = repeated(speckleTex(coarse), 0.45);
+    const mm = new THREE.MeshPhysicalMaterial({ color, roughness: rough, metalness: 0, map, clearcoat: coarse ? 0.6 : 0.25, clearcoatRoughness: 0.2 });
+    mm.userData.uvMeters = true;
+    mm.name = key;
+    m = mm;
+    matCache.set(key, m);
+  }
+  return m;
 }

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { clampSize, getFurniture, isResizable, itemSize, resizeRange, resolveColors } from '../catalog';
+import { clampSize, getFurniture, isResizable, itemSize, linkedWD, resizeRange, resolveColors } from '../catalog';
 import type { FurnitureDef, ItemSize } from '../catalog';
 import { fitAlongWall } from '../model/fitWall';
 import type { FurnitureItem, Wall } from '../model/types';
@@ -71,6 +71,8 @@ export function ItemEditor({
 
   /** new size with one axis changed (and the others following when proportions are locked) */
   const withAxis = (axis: Axis, value: number): ItemSize => {
+    // round things have one diameter: width and depth move together
+    if (!locked && linkedWD(def) && axis !== 'h') return clampSize(def, { ...size, w: value, d: value });
     if (!locked) return clampSize(def, { ...size, [axis]: value });
     const k = value / size[axis];
     const next = { w: size.w, d: size.d, h: size.h };
@@ -96,7 +98,8 @@ export function ItemEditor({
   return (
     <div className="item-editor">
       <h4 className="ie-title">מידות</h4>
-      {AXES.map(({ key, label }) => {
+      {AXES.filter(({ key }) => !(linkedWD(def) && key === 'd')).map(({ key, label: base }) => {
+        const label = linkedWD(def) && key === 'w' ? 'קוטר' : base;
         const [lo, hi] = range[key];
         const cm = Math.round(size[key] * 100);
         if (!resizable || lo >= hi) {

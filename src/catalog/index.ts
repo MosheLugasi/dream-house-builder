@@ -55,7 +55,7 @@ function fixedSize(def: FurnitureDef): boolean {
 }
 
 /** Allowed range per axis; an axis that cannot change has min === max === the catalog size. */
-export function resizeRange(def: FurnitureDef): Required<ResizeSpec> {
+export function resizeRange(def: FurnitureDef): Required<Pick<ResizeSpec, 'w' | 'd' | 'h'>> {
   const { w, d, h } = def.size;
   if (fixedSize(def)) return { w: [w, w], d: [d, d], h: [h, h] };
   const spec = def.resize || null;
@@ -78,7 +78,15 @@ export function clampSize(def: FurnitureDef, size?: Partial<ItemSize> | null): I
     const n = typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback;
     return Math.round(Math.min(hi, Math.max(lo, n)) * 1000) / 1000;
   };
-  return { w: pick(size?.w, def.size.w, r.w), d: pick(size?.d, def.size.d, r.d), h: pick(size?.h, def.size.h, r.h) };
+  const out = { w: pick(size?.w, def.size.w, r.w), d: pick(size?.d, def.size.d, r.d), h: pick(size?.h, def.size.h, r.h) };
+  // round things: one diameter for both axes
+  if (def.resize && def.resize.linked) out.d = out.w = pick(size?.w ?? size?.d, def.size.w, r.w);
+  return out;
+}
+
+/** Width and depth of this item change together (round shades, globes…). */
+export function linkedWD(def: FurnitureDef): boolean {
+  return !!(def.resize && def.resize.linked);
 }
 
 /** The size an item is shown at. */

@@ -10,6 +10,12 @@ export interface LampSource {
 }
 
 const POOL = 8;
+
+interface Slot {
+  light: THREE.PointLight;
+  source: LampSource | null;
+  target: number;
+}
 /** catalog intensities are scaled down: by day a lamp only adds a faint pool of light */
 const DAY_SCALE = 0.025;
 const NIGHT_SCALE = 0.075;
@@ -38,7 +44,10 @@ function glowMap(): THREE.CanvasTexture {
  */
 export class LightManager {
   readonly group = new THREE.Group();
-  private pool: { light: THREE.PointLight; source: LampSource | null; target: number }[] = [];
+  private pool: Slot[] = [];
+  /** the first `shadowSlots` lights of the pool cast shadows */
+  private shadowSlots = 0;
+  private frame = 0;
   private glows = new Map<string, THREE.Sprite>();
   private sources: LampSource[] = [];
   /** switches flipped by the player: id -> on/off (otherwise lamps follow the time of day) */
@@ -105,31 +114,73 @@ export class LightManager {
       const score = (s: LampSource) => s.pos.distanceTo(focus) / s.distance;
       on.sort((a, b) => score(a) - score(b));
       const wanted = on.slice(0, POOL);
-      const wantedIds = new Set(wanted.map((s) => s.id));
       const scale = DAY_SCALE + (NIGHT_SCALE - DAY_SCALE) * night;
-      for (const slot of this.pool) {
-        if (slot.source && !wantedIds.has(slot.source.id)) slot.target = 0;
-        else if (slot.source) slot.target = slot.source.intensity * scale * (slot.source.distance > 15 ? 2 : 1);
-      }
-      const held = new Set(this.pool.filter((s) => s.source && s.target > 0).map((s) => s.source!.id));
-      for (const s of wanted) {
-        if (held.has(s.id)) continue;
-        const free = this.pool.find((slot) => slot.light.intensity < 1e-3 && (slot.target === 0 || !slot.source));
-        if (!free) break;
-        free.source = s;
-        free.target = s.intensity * scale * (s.distance > 15 ? 2 : 1);
-        free.light.position.copy(s.pos);
-        free.light.color.set(s.color);
-        free.light.distance = s.distance;
-      }
+      const strength = (src: LampSource) => src.intensity * scale * (src.distance > 15 ? 2 : 1);
+      // the shadow-casting slots (if any) take the nearest lamps; the others take the rest. A lamp that
+      // moves into a shadow slot cross-fades from its old slot.
+      const casters = this.pool.slice(0, this.shadowSlots);
+      const plain = this.pool.slice(this.shadowSlots);
+      const assign = (slots: Slot[], want: LampSource[]) => {
+        const ids = new Set(want.map((w) => w.id));
+        for (const slot of slots) slot.target = slot.source && ids.has(slot.source.id) ? strength(slot.source) : 0;
+        const held = new Set(slots.filter((sl) => sl.source && sl.target > 0).map((sl) => sl.source!.id));
+        for (const src of want) {
+          if (held.has(src.id)) continue;
+          const free = slots.find((slot) => slot.light.intensity < 1e-3 && (slot.target === 0 || !slot.source));
+          if (!free) break;
+          free.source = src;
+          free.target = strength(src);
+          free.light.position.copy(src.pos);
+          free.light.color.set(src.color);
+          free.light.distance = src.distance;
+        }
+      };
+      assign(casters, wanted.slice(0, casters.length));
+      const cast = new Set(casters.filter((sl) => sl.source && sl.target > 0).map((sl) => sl.source!.id));
+      assign(
+        plain,
+        wanted.filter((w) => !cast.has(w.id)),
+      );
     }
     const k = Math.min(1, dt * 6);
-    for (const slot of this.pool) {
+    this.frame++;
+    for (const [i, slot] of this.pool.entries()) {
       slot.light.intensity += (slot.target - slot.light.intensity) * k;
       if (slot.target === 0 && slot.light.intensity < 1e-3) {
         slot.light.intensity = 0;
         slot.source = null;
       }
+      // shadow maps of lit casters: refreshed every other frame (furniture rarely moves; people and pets do)
+      if (i < this.shadowSlots) slot.light.shadow.needsUpdate = !slot.light.shadow.map || (slot.light.intensity > 1e-3 && this.frame % 2 === 0);
     }
+  }
+
+  /**
+   * Let the `n` lamps nearest to the viewer cast soft shadows (0 = none). Their number is fixed so that
+   * switching lamps on and off never recompiles shaders; the maps are only rendered while lit.
+   */
+  setShadowCasters(n: number): void {
+    n = Math.max(0, Math.min(POOL, Math.floor(n)));
+    if (n === this.shadowSlots) return;
+    this.shadowSlots = n;
+    this.pool.forEach((slot, i) => {
+      const light = slot.light;
+      const cast = i < n;
+      if (light.castShadow === cast) return;
+      light.castShadow = cast;
+      light.shadow.map?.dispose();
+      light.shadow.map = null;
+      if (cast) {
+        light.shadow.mapSize.set(512, 512);
+        light.shadow.bias = -0.004;
+        light.shadow.normalBias = 0.02;
+        light.shadow.radius = 5;
+        light.shadow.camera.near = 0.08;
+        light.shadow.autoUpdate = false;
+        light.shadow.needsUpdate = true;
+      }
+      // a lamp moving between slots must not be lit twice for long
+      slot.target = 0;
+    });
   }
 }
