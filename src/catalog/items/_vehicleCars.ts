@@ -116,6 +116,12 @@ const compactSpec: BodySpec = {
   halfW: 0.825,
   zRear: -1.85,
   zFront: 1.85,
+  width: [
+    [-1.85, 0.95],
+    [-1.0, 1],
+    [0.5, 1],
+    [1.85, 0.94],
+  ],
   front: { rz: 0.34, rx: 0.26 },
   rear: { rz: 0.24, rx: 0.2 },
   under: [
@@ -256,6 +262,12 @@ const familySpec: BodySpec = {
   halfW: 0.9,
   zRear: -2.15,
   zFront: 2.15,
+  width: [
+    [-2.15, 0.96],
+    [-1.1, 1],
+    [0.6, 1],
+    [2.15, 0.94],
+  ],
   front: { rz: 0.36, rx: 0.24 },
   rear: { rz: 0.22, rx: 0.16 },
   under: [

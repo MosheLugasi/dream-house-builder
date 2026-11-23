@@ -25,7 +25,7 @@ function bottleGeo(): THREE.BufferGeometry {
         [0.07, 1],
         [0, 1],
       ],
-      8,
+      6,
     );
   }
   return bottleCache;
@@ -34,7 +34,7 @@ function bottleGeo(): THREE.BufferGeometry {
 function bottle(k: Kit, x: number, y: number, z: number, h: number, ci: number, capColor = '#f3f1ec'): void {
   const m = k.geo(bottleGeo(), prod(ci), x, y, z);
   m.scale.set(h, h, h);
-  k.cyl(h * 0.075, h * 0.07, M.paint(capColor, 0.5), x, y + h * 0.94, z, h * 0.075, 8);
+  k.cyl(h * 0.075, h * 0.07, M.paint(capColor, 0.5), x, y + h * 0.94, z, h * 0.075, 6);
 }
 
 type Stock = 'boxes' | 'cans' | 'bottles' | 'jugs' | 'jars';
@@ -62,8 +62,8 @@ function stockRow(k: Kit, kind: Stock, x0: number, x1: number, y: number, zFront
       const rad = 0.034;
       if (x + rad * 2 > x1) break;
       for (let j = 0; j < 2; j++) {
-        k.cyl(rad, 0.105, prod(ci), x + rad, y + j * 0.107, zFront - rad, rad, 8);
-        k.cyl(rad + 0.0015, 0.045, LABEL(), x + rad, y + j * 0.107 + 0.03, zFront - rad, rad + 0.0015, 8);
+        k.cyl(rad, 0.105, prod(ci), x + rad, y + j * 0.107, zFront - rad, rad, 7);
+        k.box(rad * 1.1, 0.05, 0.002, LABEL(), x + rad, y + j * 0.107 + 0.028, zFront + 0.0005);
       }
       x += rad * 2 + 0.008;
     } else if (kind === 'bottles') {
@@ -75,15 +75,15 @@ function stockRow(k: Kit, kind: Stock, x0: number, x1: number, y: number, zFront
       const w = 0.13;
       const h = Math.min(maxH - 0.03, 0.27);
       if (x + w > x1) break;
-      k.rbox(w, h, 0.11, 0.02, prod(ci), x + w / 2, y, zFront - 0.06, 1);
-      k.cyl(0.022, 0.035, M.paint('#f3f1ec', 0.5), x + w / 2 - 0.03, y + h, zFront - 0.06, 0.022, 8);
+      k.box(w, h, 0.11, prod(ci), x + w / 2, y, zFront - 0.06);
+      k.cyl(0.022, 0.035, LABEL(), x + w / 2 - 0.03, y + h, zFront - 0.06, 0.022, 6);
       k.box(w * 0.66, h * 0.36, 0.002, LABEL(), x + w / 2, y + h * 0.3, zFront - 0.004);
       x += w + 0.01;
     } else {
       const rad = 0.04;
       if (x + rad * 2 > x1) break;
-      k.cyl(rad, 0.1, prod(ci), x + rad, y, zFront - rad, rad, 8);
-      k.cyl(rad * 0.92, 0.018, M.paint('#d9b23a', 0.4), x + rad, y + 0.1, zFront - rad, rad * 0.92, 8);
+      k.cyl(rad, 0.1, prod(ci), x + rad, y, zFront - rad, rad, 7);
+      k.cyl(rad * 0.92, 0.018, LABEL(), x + rad, y + 0.1, zFront - rad, rad * 0.92, 7);
       x += rad * 2 + 0.01;
     }
   }
@@ -204,8 +204,7 @@ const shopFridge: FurnitureDef = {
         for (let row = 0; row < 2; row++) {
           for (let j = 0; j < n; j++) {
             const x = x0 + ((x1 - x0) * j) / (n - 1);
-            k.cyl(0.033, 0.12, prod(ci + (j > 3 ? 4 : 0)), x, y, zf - 0.03 - row * 0.08, 0.033, 8);
-            if (row === 0) k.cyl(0.03, 0.006, M.metal('#d8dadc', 0.3, 0.9), x, y + 0.12, zf - 0.03, 0.03, 8);
+            k.cyl(0.033, 0.12, prod(ci + (j > 3 ? 4 : 0)), x, y, zf - 0.03 - row * 0.08, 0.033, 7);
           }
         }
       }
@@ -234,7 +233,7 @@ const shopFridge: FurnitureDef = {
 
 /* ------------------------------------------------------------------ fruit & vegetable stand */
 
-const PS = { w: 1.5, d: 0.92, h: 1.22, cw: 0.46, cd: 0.36, ch: 0.13 };
+const PS = { w: 1.5, d: 0.9, h: 1.13, cw: 0.46, cd: 0.36, ch: 0.13 };
 
 type Produce = 'orange' | 'tomato' | 'cucumber' | 'apple' | 'lemon' | 'banana';
 const PRODUCE_COLOR: Record<Produce, string> = {
@@ -250,7 +249,7 @@ const PS_LAYOUT: Produce[][] = [
   ['apple', 'lemon', 'banana'],
 ];
 
-function crate(kind: Produce, wood: THREE.Material, seed: number): Kit {
+function crate(kind: Produce | null, wood: THREE.Material, seed: number): Kit {
   const k = new Kit();
   const { cw, cd, ch } = PS;
   const t = 0.012;
@@ -259,6 +258,7 @@ function crate(kind: Produce, wood: THREE.Material, seed: number): Kit {
     k.box(cw, ch - 0.03, t, wood, 0, 0.03, s * (cd / 2 - t / 2));
     k.box(t, ch, cd - 2 * t, wood, s * (cw / 2 - t / 2), 0, 0);
   }
+  if (!kind) return k;
   const col = PRODUCE_COLOR[kind];
   const m = M.paint(col, 0.45);
   // a bed underneath so the heap reads as full
@@ -279,9 +279,9 @@ function crate(kind: Produce, wood: THREE.Material, seed: number): Kit {
       }
     }
   } else {
-    const rad = kind === 'orange' ? 0.046 : kind === 'apple' ? 0.042 : kind === 'tomato' ? 0.04 : 0.036;
-    const nx = Math.floor((cw - 0.04) / (rad * 2));
-    const nz = Math.floor((cd - 0.04) / (rad * 2));
+    const rad = kind === 'orange' ? 0.05 : kind === 'apple' ? 0.047 : kind === 'tomato' ? 0.046 : 0.042;
+    const nx = Math.min(4, Math.floor((cw - 0.04) / (rad * 2)));
+    const nz = Math.min(3, Math.floor((cd - 0.04) / (rad * 2)));
     const alt = kind === 'apple' ? M.paint('#8fb83f', 0.45) : m;
     let n = 0;
     for (let iz = 0; iz < nz; iz++) {
@@ -289,7 +289,7 @@ function crate(kind: Produce, wood: THREE.Material, seed: number): Kit {
         if (n++ % 9 === 7) continue;
         const x = -cw / 2 + 0.02 + rad + ix * ((cw - 0.04 - 2 * rad) / (nx - 1)) + (r() - 0.5) * 0.008;
         const z = -cd / 2 + 0.02 + rad + iz * ((cd - 0.04 - 2 * rad) / (nz - 1)) + (r() - 0.5) * 0.008;
-        k.sphere(rad, kind === 'apple' && (ix + iz) % 3 === 0 ? alt : m, x, y + rad * 0.55 + r() * 0.012, z, 1, kind === 'tomato' ? 0.82 : 1, kind === 'lemon' ? 1.3 : 1, 7);
+        k.sphere(rad, kind === 'apple' && (ix + iz) % 3 === 0 ? alt : m, x, y + rad * 0.55 + r() * 0.012, z, 1, kind === 'tomato' ? 0.82 : 1, kind === 'lemon' ? 1.3 : 1, 6);
       }
     }
   }
@@ -338,19 +338,16 @@ const produceStand: FurnitureDef = {
         const ty = tr.y + 0.2;
         const tz = tr.z - 0.14;
         k.rod([tx, tr.y + 0.05, tz], [tx, ty, tz], 0.004, M.matte('#8a6a48'), 0.004, 4);
-        const tag = k.rbox(0.1, 0.07, 0.006, 0.004, M.matte('#2b2f2c'), tx, ty, tz, 1);
+        const tag = k.box(0.1, 0.07, 0.006, M.matte('#2b2f2c'), tx, ty, tz);
         tag.rotation.x = -0.2;
         const line = k.box(0.06, 0.008, 0.002, M.matte('#f4f3ea'), tx, ty + 0.035, tz + 0.005);
         line.rotation.x = -0.2;
       });
     });
-    // spare crates and a sack underneath
-    for (const [x, z] of [
-      [-0.42, -0.12],
-      [0.1, -0.12],
-    ]) {
-      k.sub(crate('apple', crateWood, 3), x, 0.0, z);
-    }
+    // empty crates stacked underneath, and a sack
+    k.sub(crate(null, crateWood, 3), -0.4, 0, -0.12);
+    k.sub(crate(null, crateWood, 3), -0.38, PS.ch, -0.1).rotation.y = 0.12;
+    k.sub(crate('apple', crateWood, 3), 0.1, 0, -0.12);
     k.sphere(0.17, M.fabric('#c9b089', 9), 0.52, 0.15, -0.1, 1, 0.9, 1, 10);
     return k.g;
   },
@@ -371,7 +368,7 @@ const produceStand: FurnitureDef = {
 
 /* ------------------------------------------------------------------ checkout counter */
 
-const CK = { w: 2.2, d: 0.9, h: 1.34, topY: 0.86, bz: 0.12, bd: 0.62 };
+const CK = { w: 2.2, d: 0.86, h: 1.34, topY: 0.86, bz: 0.097, bd: 0.62 };
 
 const checkoutCounter: FurnitureDef = {
   id: 'checkout-counter',
@@ -457,7 +454,7 @@ const checkoutCounter: FurnitureDef = {
 
 /* ------------------------------------------------------------------ shopping cart */
 
-const CART = { w: 0.6, d: 1.02, h: 1.02 };
+const CART = { w: 0.57, d: 1.02, h: 1.02 };
 
 const shoppingCart: FurnitureDef = {
   id: 'shopping-cart',
@@ -659,7 +656,7 @@ const bakeryDisplay: FurnitureDef = {
       if (i % 3 === 2) {
         for (let j = 0; j < 4; j++) k.cyl(0.04, 0.012, j % 2 ? crust : dough, x + (j % 2) * 0.006, y + j * 0.013, z, 0.04, 9);
       } else {
-        k.cyl(0.026, 0.04, M.paint(PRODUCT[(i * 2) % 9], 0.6), x, y, z, 0.036, 9);
+        k.cyl(0.026, 0.04, M.matte(i % 2 ? '#e9a5b8' : '#f6f4ee'), x, y, z, 0.036, 9);
         k.sphere(0.036, M.matte(['#f6f4ee', '#e9a5b8', '#8a5a3a'][i % 3]), x, y + 0.052, z, 1, 0.75, 1, 7);
         k.sphere(0.01, M.paint('#c8372d', 0.3), x, y + 0.083, z, 1, 1, 1, 5);
       }

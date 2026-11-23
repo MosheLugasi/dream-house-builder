@@ -1,7 +1,7 @@
 /** Café furniture. */
 import * as THREE from 'three';
 import type { FurnitureDef } from '../types';
-import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, darken, lighten, sym, tint } from '../kit';
+import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, darken, sym, tint } from '../kit';
 import { slot } from './_parts';
 import { type C2D, axisCyl, canvasMat, faceGeo, squiggle } from './_street_shared';
 
@@ -92,13 +92,13 @@ const cafeChair: FurnitureDef = {
   id: 'cafe-chair',
   name: 'כיסא ביסטרו',
   category: 'public',
-  size: { w: 0.44, d: 0.5, h: 0.88 },
+  size: { w: 0.44, d: 0.46, h: 0.88 },
   colors: [slot('frame', 'מסגרת', '#3a2a20'), slot('seat', 'מושב', '#d9bd8f')],
-  seats: [{ x: 0, z: 0.03, height: CH_SEAT, facing: 0, kind: 'sit' }],
+  seats: [{ x: 0, z: 0.02, height: CH_SEAT, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
     const k = new Kit();
     const wood = M.wood(c.frame, 0.4);
-    const zc = 0.03;
+    const zc = 0.02;
     const R = 0.2;
     // seat: bent ring with a woven cane panel
     k.cyl(R, 0.028, wood, 0, CH_SEAT - 0.03, zc, R, 24);
@@ -145,11 +145,11 @@ const cafeChair: FurnitureDef = {
   },
   draw2d: (ctx, c) =>
     sym(ctx, () => {
-      D.circle(ctx, 0, 0.03, 0.2, tint(c.frame, 0.45));
-      D.circle(ctx, 0, 0.03, 0.165, tint(c.seat, 0.35), INK_SOFT, LINE_THIN);
+      D.circle(ctx, 0, 0.02, 0.2, tint(c.frame, 0.45));
+      D.circle(ctx, 0, 0.02, 0.165, tint(c.seat, 0.35), INK_SOFT, LINE_THIN);
       ctx.beginPath();
-      ctx.moveTo(-0.17, -0.11);
-      ctx.quadraticCurveTo(0, -0.27, 0.17, -0.11);
+      ctx.moveTo(-0.17, -0.12);
+      ctx.quadraticCurveTo(0, -0.28, 0.17, -0.12);
       ctx.strokeStyle = '#3a3d42';
       ctx.lineWidth = 0.04;
       ctx.stroke();
@@ -161,7 +161,7 @@ const cafeChair: FurnitureDef = {
 
 /* ------------------------------------------------------------------ service counter with espresso machine */
 
-const CO = { w: 2.0, d: 0.78, h: 1.56, topY: 1.08, bd: 0.62, bz: -0.06 };
+const CO = { w: 2.0, d: 0.8, h: 1.56, topY: 1.08, bd: 0.62, bz: -0.06 };
 
 const cafeCounter: FurnitureDef = {
   id: 'cafe-counter',
@@ -181,7 +181,7 @@ const cafeCounter: FurnitureDef = {
     k.box(w, topY - 0.14, bd, M.wood(darken(c.front, 0.15), 0.65), 0, 0.1, bz);
     const fz = bz + bd / 2;
     const n = 26;
-    for (let i = 0; i < n; i++) k.rbox(w / n - 0.012, topY - 0.19, 0.022, 0.006, front, -w / 2 + (i + 0.5) * (w / n), 0.12, fz + 0.008, 1);
+    for (let i = 0; i < n; i++) k.box(w / n - 0.012, topY - 0.19, 0.022, front, -w / 2 + (i + 0.5) * (w / n), 0.12, fz + 0.008);
     k.box(w, 0.05, 0.03, M.metal('#b98d4a', 0.35, 1), 0, 0.1, fz + 0.012);
     k.rbox(w, 0.04, d, 0.01, M.stone(c.top, 0.3), 0, topY - 0.04, 0, 1);
     // staff side: open shelf niche
@@ -283,7 +283,7 @@ const cafeCounter: FurnitureDef = {
 
 /* ------------------------------------------------------------------ upholstered booth bench */
 
-const BO = { w: 1.4, d: 0.7, h: 1.1, seat: 0.46 };
+const BO = { w: 1.4, d: 0.66, h: 1.1, seat: 0.46 };
 
 const cafeBooth: FurnitureDef = {
   id: 'cafe-booth',
@@ -443,6 +443,3 @@ const menuBoard: FurnitureDef = {
 };
 
 export const PUBLIC_CAFE: FurnitureDef[] = [cafeTable, cafeChair, cafeCounter, cafeBooth, menuBoard];
-
-// keep the tone helpers available to sibling files without re-importing kit
-export const tone = { lighten, darken };

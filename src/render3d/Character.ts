@@ -45,6 +45,9 @@ export class Character {
   private poseBlend = 0; // 0 stand .. 1 sit/lie
   private lieBlend = 0;
   private rideBlend = 0;
+  private reachBlend = 0;
+  /** hold on to a handlebar while standing (kick scooter) */
+  reach = false;
   readonly eyeHeight: number;
 
   constructor(look: CharacterLook = DEFAULT_LOOK) {
@@ -161,6 +164,7 @@ export class Character {
     this.poseBlend = damp(this.poseBlend, this.pose === 'stand' ? 0 : 1, 9, dt);
     this.lieBlend = damp(this.lieBlend, this.pose === 'lie' ? 1 : 0, 7, dt);
     this.rideBlend = damp(this.rideBlend, this.pose === 'ride' ? 1 : 0, 9, dt);
+    this.reachBlend = damp(this.reachBlend, this.reach ? 1 : 0, 9, dt);
     this.phase += this.pose === 'ride' ? dt * speed * 2.4 : dt * (4.2 + speed * 2.6) * (moving ? 1 : 0.25);
     const t = this.phase;
     const mb = this.moveBlend;
@@ -198,8 +202,10 @@ export class Character {
       const s = Math.sin(t + (i ? 0 : Math.PI));
       const walkS = -s * stride * 0.85;
       const walkE = -0.18 - Math.max(0, -s) * stride * 0.7 - 0.25 * mb;
-      arm.shoulder.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkS, -0.55, sit), -1.05, ride);
-      arm.elbow.rotation.x = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkE, -0.75, sit), -0.35, ride);
+      const sh = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkS, -0.55, sit), -1.05, ride);
+      const el = THREE.MathUtils.lerp(THREE.MathUtils.lerp(walkE, -0.75, sit), -0.35, ride);
+      arm.shoulder.rotation.x = THREE.MathUtils.lerp(sh, -0.95, this.reachBlend);
+      arm.elbow.rotation.x = THREE.MathUtils.lerp(el, -0.5, this.reachBlend);
     });
 
     // lying down: rotate the whole body onto its back

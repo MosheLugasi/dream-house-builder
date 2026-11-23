@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { getFurniture } from '../src/catalog';
 import { parseProject } from '../src/io/storage';
 import { emptyProject } from '../src/model/defaults';
+import { sampleProject } from '../src/model/neighborhood';
 import { buildGraph } from '../src/model/graph';
 import { roofPlan } from '../src/model/roofPlan';
 import { stairBarriers, stairFraction, U_LANDING } from '../src/model/stairs';
@@ -75,7 +76,7 @@ describe('buildings on the site', () => {
   it('stacks levels with a slab in between', () => {
     const b = TEMPLATES.find((t) => t.id === 'house-two-storey')!.build();
     expect(b.levels).toHaveLength(2);
-    expect(levelElevation(b, 1)).toBeCloseTo(b.levels[0].height + SLAB);
+    expect(levelElevation(b, 1)).toBeCloseTo(levelElevation(b, 0) + b.levels[0].height + SLAB);
   });
 
   it('converts between building and site coordinates', () => {
@@ -135,6 +136,33 @@ function inside(p: { x: number; y: number }, poly: { x: number; y: number }[]): 
   }
   return c;
 }
+
+describe('starter neighborhood', () => {
+  it('uses only existing catalog items and templates', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const p = sampleProject();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+    expect(p.buildings.map((b) => b.kind)).toEqual(expect.arrayContaining(['house', 'school', 'shop', 'cafe', 'library']));
+    expect(p.site.props.length).toBeGreaterThan(100);
+    expect(p.site.props.some((f) => getFurniture(f.catalogId)?.vehicle)).toBe(true);
+    // survives a save / load round trip
+    expect(parseProject(JSON.stringify(p))).toEqual(p);
+  });
+
+  it('keeps buildings off the roads', () => {
+    const p = sampleProject();
+    const roads = new Set(p.site.roads.map(([i, j]) => `${i},${j}`));
+    for (const b of p.buildings) {
+      for (const w of b.levels[0].walls) {
+        for (const q of [w.a, w.b]) {
+          const s = toSite(b, q);
+          expect(roads.has(`${Math.floor(s.x / 10)},${Math.floor(s.y / 10)}`), `${b.name} wall at ${s.x.toFixed(1)},${s.y.toFixed(1)}`).toBe(false);
+        }
+      }
+    }
+  });
+});
 
 describe('roads', () => {
   const set = new Set(['0,0', '1,0', '0,1']);

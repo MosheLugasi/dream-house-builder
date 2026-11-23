@@ -160,7 +160,7 @@ const slide: FurnitureDef = {
 
 /* ------------------------------------------------------------------ seesaw */
 
-const SEE = { w: 3.0, d: 0.62, h: 0.96, beamY: 0.5, seatX: 1.24 };
+const SEE = { w: 3.0, d: 0.58, h: 0.96, beamY: 0.5, seatX: 1.24 };
 
 const seesaw: FurnitureDef = {
   id: 'seesaw',
@@ -376,7 +376,7 @@ const climbingFrame: FurnitureDef = {
   id: 'climbing-frame',
   name: 'כיפת טיפוס',
   category: 'playground',
-  size: { w: DOME.R * 2 + 0.1, d: DOME.R * 2 + 0.16, h: DOME.R + 0.1 },
+  size: { w: DOME.R * 2 + 0.04, d: DOME.R * 2 + 0.16, h: DOME.R + 0.1 },
   colors: [slot('frame', 'מוטות', '#2f8fd0'), slot('joints', 'מחברים', '#f2b824')],
   build: ({ colors: c }) => {
     const k = new Kit();
@@ -674,7 +674,7 @@ const playhouse: FurnitureDef = {
 
 /* ------------------------------------------------------------------ basketball hoop */
 
-const BB = { w: 1.2, d: 1.46, h: 3.82, pz: -0.6, hoopY: 3.05, boardZ: 0.02 };
+const BB = { w: 1.2, d: 1.4, h: 3.82, pz: -0.56, hoopY: 3.05, boardZ: 0.02 };
 
 const boardFace = (): THREE.Material =>
   canvasMat(
@@ -974,7 +974,7 @@ const rubberMat: FurnitureDef = {
 
 /* ------------------------------------------------------------------ drinking fountain */
 
-const DF_Z = -0.0125;
+const DF_Z = -0.027;
 
 const drinkingFountain: FurnitureDef = {
   id: 'drinking-fountain',

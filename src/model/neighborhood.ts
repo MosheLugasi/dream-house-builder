@@ -153,6 +153,7 @@ export function sampleProject(): Project {
   prop('car-compact', -30, 6.6, FACE.E);
   prop('car-family', 19, 17.5, FACE.S, { body: '#3f6d8f' });
   prop('minibus', 27, 18.6, FACE.S);
+  prop('tractor', 35.5, 19, FACE.S);
   prop('bicycle', -31.2, -2.8, FACE.E);
   prop('kids-bike', -45.6, -3.0, FACE.E);
   prop('kick-scooter', -28.6, -24.2, FACE.E);

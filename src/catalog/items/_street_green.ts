@@ -104,10 +104,6 @@ const fenceGate: FurnitureDef = {
   draw2d: (ctx, c) =>
     sym(ctx, () => {
       const { w } = FG;
-      // swing arc of the leaf
-      ctx.setLineDash([0.04, 0.035]);
-      D.arc(ctx, -0.395, 0, 0.79, 0, Math.PI / 2, INK_SOFT, 0.007);
-      ctx.setLineDash([]);
       D.rr(ctx, 0, 0, 0.79, 0.04, 0.004, tint(c.wood, 0.3), undefined, 0.008);
       for (const s of [-1, 1]) D.rr(ctx, s * (w / 2 - 0.045), 0, 0.09, 0.09, 0.008, tint(c.wood, 0.2), undefined, 0.008);
     }),
@@ -380,21 +376,22 @@ const palmTree: FurnitureDef = {
 
 /* ------------------------------------------------------------------ olive tree */
 
-const OLIVE = { w: 3.7, h: 4.0 };
+const OLIVE = { w: 3.56, h: 3.66 };
 
 function oliveBlobs(): Array<[number, number, number, number]> {
   const r = rng(52);
   const blobs: Array<[number, number, number, number]> = [];
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2 + r() * 0.5;
-    const rad = 0.95 + r() * 0.2;
-    blobs.push([Math.cos(a) * rad, 2.45 + r() * 0.45, Math.sin(a) * rad, 0.58 + r() * 0.12]);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + r() * 0.4;
+    const rad = 1.1 + r() * 0.22;
+    blobs.push([Math.cos(a) * rad, 2.3 + r() * 0.4, Math.sin(a) * rad, 0.44 + r() * 0.1]);
   }
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + 0.7;
-    blobs.push([Math.cos(a) * 0.42, 3.05 + r() * 0.2, Math.sin(a) * 0.42, 0.62 + r() * 0.08]);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.5 + r() * 0.3;
+    const rad = 0.52 + r() * 0.16;
+    blobs.push([Math.cos(a) * rad, 2.85 + r() * 0.25, Math.sin(a) * rad, 0.5 + r() * 0.08]);
   }
-  blobs.push([0.05, 3.35, -0.05, 0.6]);
+  blobs.push([0.12, 3.25, -0.08, 0.5], [-0.2, 3.15, 0.15, 0.44]);
   return blobs;
 }
 
@@ -433,7 +430,7 @@ const oliveTree: FurnitureDef = {
       const p0: [number, number, number] = [dx * 0.1, 1.22, dz * 0.1];
       const p1: [number, number, number] = [dx * k1 + dz * 0.12, 1.75 + r() * 0.1, dz * k1 - dx * 0.12];
       const p2: [number, number, number] = [dx * 0.78 - dz * 0.1, 2.2 + r() * 0.15, dz * 0.78 + dx * 0.1];
-      const p3: [number, number, number] = [dx * 1.0, 2.62, dz * 1.0];
+      const p3: [number, number, number] = [dx * 1.12, 2.5, dz * 1.12];
       k.rod(p0, p1, 0.13, bark, 0.095, 7);
       k.sphere(0.097, bark, p1[0], p1[1], p1[2], 1, 1, 1, 7);
       k.rod(p1, p2, 0.095, bark, 0.065, 7);

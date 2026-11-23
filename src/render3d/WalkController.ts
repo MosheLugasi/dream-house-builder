@@ -282,6 +282,7 @@ export class WalkController {
     this.seat = null;
     const spec = v.def.vehicle!;
     this.character.setPose(spec.rider.pose === 'stand' ? 'stand' : spec.rider.pose, spec.rider.y);
+    this.character.reach = spec.rider.pose === 'stand';
     this.distance = spec.cameraDistance ?? 6;
     this.camDist = this.distance;
     this.yaw = v.holder.rotation.y + Math.PI;
@@ -298,6 +299,7 @@ export class WalkController {
     this.facing = phi;
     this.y = 0;
     this.character.setPose('stand');
+    this.character.reach = false;
     this.distance = 3.2;
     this.resolveCollisions(this.pos, RADIUS);
     this.onVehicleParked(v.id, v.holder.position.x, v.holder.position.z, -phi);
@@ -489,6 +491,10 @@ export class WalkController {
       if (best > 0) {
         this.floorCtx = { floors, level: best };
         return floors.levels[best].y;
+      }
+      if (best === 0) {
+        this.floorCtx = null;
+        return floors.levels[0].y;
       }
     }
     this.floorCtx = null;

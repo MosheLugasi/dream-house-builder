@@ -50,6 +50,8 @@ export interface Architecture {
 }
 
 const LOW_HEIGHT = 1.05;
+/** how far exterior wall faces continue below the floor line */
+const FOOTING = 0.2;
 /** height of the flat roof / terrace surface above the ceiling line */
 const TOP_SLAB_Y = 0.22;
 const TOP_KEY = '__top';
@@ -237,16 +239,18 @@ export function buildArchitecture(level: Level, building: Building, opts: ArchOp
           [0, 1],
         ]);
       };
+      // outdoor faces reach below the floor so that no gap shows above the ground
+      const foot = room < 0 ? -FOOTING : 0;
       let cursor = uA;
       for (const c of cuts) {
-        rect(cursor, c.u0, 0, wallH);
+        rect(cursor, c.u0, foot, wallH);
         baseboard(cursor, c.u0);
-        rect(c.u0, c.u1, 0, c.y0);
+        rect(c.u0, c.u1, foot, c.y0);
         if (c.y0 > 0.1) baseboard(c.u0, c.u1);
         rect(c.u0, c.u1, c.y1, wallH);
         cursor = c.u1;
       }
-      rect(cursor, uB, 0, wallH);
+      rect(cursor, uB, foot, wallH);
       baseboard(cursor, uB);
     }
 
@@ -291,7 +295,7 @@ export function buildArchitecture(level: Level, building: Building, opts: ArchOp
     const cap = (neg: Vec2, pos: Vec2, joined: boolean, normal: V3) => {
       if (joined) return;
       const key = e.posRoom >= 0 ? roomWall[e.posRoom] : e.negRoom >= 0 ? roomWall[e.negRoom] : building.exterior;
-      mb.quad(key, [neg.x, 0, neg.y], [pos.x, 0, pos.y], [pos.x, wallH, pos.y], [neg.x, wallH, neg.y], normal, [
+      mb.quad(key, [neg.x, -FOOTING, neg.y], [pos.x, -FOOTING, pos.y], [pos.x, wallH, pos.y], [neg.x, wallH, neg.y], normal, [
         [0, 0],
         [e.thickness, 0],
         [e.thickness, wallH],

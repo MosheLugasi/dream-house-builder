@@ -145,7 +145,8 @@ export class Engine {
     this.scene.add(new THREE.HemisphereLight('#fff9f0', '#b3a78f', 0.35));
 
     // ground (the finish library adds its own large-scale variation, so plain tiling UVs in meters are enough)
-    const groundGeo = new THREE.PlaneGeometry(900, 900).rotateX(-Math.PI / 2);
+    // (tessellated: depth is interpolated more precisely over small triangles than over two 900 m ones)
+    const groundGeo = new THREE.PlaneGeometry(900, 900, 60, 60).rotateX(-Math.PI / 2);
     const uv = groundGeo.attributes.uv;
     const gp = groundGeo.attributes.position;
     for (let i = 0; i < gp.count; i++) uv.setXY(i, gp.getX(i), gp.getZ(i));
@@ -292,6 +293,12 @@ export class Engine {
     }
     if (this.mode === 'walk') this.walk.update(dt);
     else this.controls.update();
+    // a far-away overview needs a farther near plane to keep roads and floors from z-fighting
+    const near = this.mode === 'walk' ? 0.1 : Math.max(0.1, Math.min(3, this.camera.position.distanceTo(this.controls.target) / 150));
+    if (Math.abs(near - this.camera.near) > this.camera.near * 0.2) {
+      this.camera.near = near;
+      this.camera.updateProjectionMatrix();
+    }
     this.updateSun();
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
@@ -422,7 +429,7 @@ export class Engine {
       this.roads = roadSet(project.site);
       changed = true;
     }
-    if (this.props.sync(project.site.props, { levelHeight: 2.7, rise: 3, lights: true })) {
+    if (this.props.sync(project.site.props, { levelHeight: 2.7, rise: 3, lights: false })) {
       changed = true;
       // props stand on the ground, which is a little higher on sidewalks
       for (const e of this.props.entries.values()) e.holder.position.y = e.item.elevation + groundHeight(this.roads, e.item.x, e.item.y);

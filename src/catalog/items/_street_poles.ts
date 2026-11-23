@@ -343,7 +343,7 @@ interface SignOpts {
 function signDef(o: SignOpts): FurnitureDef {
   const w = +(o.R * 2).toFixed(3);
   const h = +(o.centerY + o.R).toFixed(3);
-  const d = 0.14;
+  const d = 0.12;
   const pz = -0.012;
   return {
     id: o.id,
@@ -423,7 +423,7 @@ const streetNameSign: FurnitureDef = {
   id: 'street-name-sign',
   name: 'שלט שם רחוב',
   category: 'street',
-  size: { w: NAME.w, d: 0.14, h: NAME.h },
+  size: { w: NAME.w, d: 0.1, h: NAME.h },
   colors: [slot('sign', 'שלט', '#1f5fae')],
   build: ({ colors: c }) => {
     const k = new Kit();

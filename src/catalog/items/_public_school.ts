@@ -368,7 +368,7 @@ const blackboard: FurnitureDef = {
 
 /* ------------------------------------------------------------------ cubby cabinet */
 
-const CC = { w: 1.2, d: 0.4, h: 0.98, bodyH: 0.84, cols: 4, rows: 2 };
+const CC = { w: 1.2, d: 0.4, h: 1.05, bodyH: 0.84, cols: 4, rows: 2 };
 const BIN_COLORS = ['#e0483e', '#f2b824', '#3f8fd0', '#4f9a4a', '#e8822a', '#8a5fb0'];
 
 const classroomCabinet: FurnitureDef = {
@@ -404,23 +404,23 @@ const classroomCabinet: FurnitureDef = {
         }
         if (j === 1 && i === 3) {
           k.sphere(0.085, M.plastic('#e0483e'), x - 0.03, y + 0.085, 0.04, 1, 1, 1, 14);
-          k.rbox(0.07, 0.07, 0.07, 0.008, M.paint('#f2b824', 0.5), x + 0.08, y, 0.1, 1);
-          k.rbox(0.07, 0.07, 0.07, 0.008, M.paint('#3f8fd0', 0.5), x + 0.075, y + 0.07, 0.09, 1);
+          k.rbox(0.07, 0.07, 0.07, 0.008, M.plastic('#f2b824'), x + 0.08, y, 0.1, 1);
+          k.rbox(0.07, 0.07, 0.07, 0.008, M.plastic('#3f8fd0'), x + 0.075, y + 0.07, 0.09, 1);
           continue;
         }
         const col = BIN_COLORS[n++ % BIN_COLORS.length];
         const bm = M.plastic(col);
         k.rbox(cw - 0.024, ch - 0.07, d - 0.05, 0.02, bm, x, y + 0.002, 0.012, 1);
         k.rbox(cw - 0.012, 0.022, d - 0.04, 0.008, bm, x, y + ch - 0.075, 0.012, 1);
-        k.rbox(0.11, 0.028, 0.006, 0.012, M.matte(darken(col, 0.55)), x, y + ch - 0.14, d / 2 - 0.015, 1);
+        k.rbox(0.11, 0.028, 0.006, 0.012, M.matte('#3a3531'), x, y + ch - 0.14, d / 2 - 0.015, 1);
       }
     }
     // on top: plant + box of crayons
     k.cyl(0.055, 0.09, M.ceramic('#f3f1ec'), -0.4, bodyH, 0, 0.065, 14);
     k.sphere(0.09, M.foliage(PAL.leaf), -0.4, bodyH + 0.14, 0, 1, 0.75, 1, 10);
-    k.rbox(0.2, 0.05, 0.13, 0.006, M.paint('#f2b824', 0.5), 0.3, bodyH, 0.02, 1);
+    k.rbox(0.2, 0.05, 0.13, 0.006, M.plastic('#f2b824'), 0.3, bodyH, 0.02, 1);
     ['#e0483e', '#3f8fd0', '#4f9a4a', '#8a5fb0', '#e8822a'].forEach((col, i) => {
-      k.cyl(0.008, 0.03, M.matte(col), 0.23 + i * 0.035, bodyH + 0.05, 0.02, 0.003, 6);
+      k.cyl(0.008, 0.03, M.plastic(col), 0.23 + i * 0.035, bodyH + 0.05, 0.02, 0.003, 6);
     });
     return k.g;
   },
@@ -435,7 +435,7 @@ const classroomCabinet: FurnitureDef = {
 
 /* ------------------------------------------------------------------ lockers */
 
-const LK = { n: 4, w: 1.2, d: 0.46, h: 1.82 };
+const LK = { n: 4, w: 1.2, d: 0.48, h: 1.82 };
 
 const schoolLockers: FurnitureDef = {
   id: 'school-lockers',
@@ -452,10 +452,10 @@ const schoolLockers: FurnitureDef = {
     const steel = M.steel();
     const legH = 0.1;
     // carcass on short legs
-    k.box(w, h - legH, d - 0.02, body, 0, legH, -0.01);
+    k.box(w, h - legH, d - 0.03, body, 0, legH, -0.015);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) k.box(0.04, legH, 0.04, body, sx * (w / 2 - 0.03), 0, sz * (d / 2 - 0.05) - 0.01);
     const dw = w / n;
-    const fz = d / 2 - 0.01;
+    const fz = d / 2 - 0.022;
     for (let i = 0; i < n; i++) {
       const x = -w / 2 + dw * (i + 0.5);
       const dh = h - legH - 0.03;
@@ -476,8 +476,8 @@ const schoolLockers: FurnitureDef = {
   draw2d: (ctx, c) =>
     sym(ctx, () => {
       const { n, w, d } = LK;
-      D.rr(ctx, 0, -0.01, w, d - 0.02, 0.004, tint(c.body, 0.5));
-      D.rr(ctx, 0, d / 2 - 0.012, w, 0.022, 0.002, tint(c.doors, 0.3), undefined, 0.008);
+      D.rr(ctx, 0, -0.015, w, d - 0.03, 0.004, tint(c.body, 0.5));
+      D.rr(ctx, 0, d / 2 - 0.022, w, 0.022, 0.002, tint(c.doors, 0.3), undefined, 0.008);
       for (let i = 1; i < n; i++) D.line(ctx, -w / 2 + (w / n) * i, -d / 2, -w / 2 + (w / n) * i, d / 2, INK_SOFT, LINE_THIN);
     }),
 };

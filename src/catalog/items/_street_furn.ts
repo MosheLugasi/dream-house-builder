@@ -1,7 +1,7 @@
 /** Street furniture: bus stop, benches, bins, mailbox, hydrant, bike rack, bollard, planter, fountain, picnic table, kiosk. */
 import * as THREE from 'three';
 import type { FurnitureDef } from '../types';
-import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, blobGeo, darken, extrudeZ, lighten, mix, rng, roundedRectShape, sym, tint } from '../kit';
+import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, blobGeo, darken, extrudeZ, lighten, mix, rng, sym, tint } from '../kit';
 import { slot } from './_parts';
 import { axisCyl, canvasMat, crr, extrudeX, faceGeo, galv, polyShape, squiggle } from './_street_shared';
 

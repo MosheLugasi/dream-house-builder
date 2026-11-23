@@ -140,9 +140,15 @@ export const SLAB = 0.3;
 export const ROAD_CELL = 10;
 export const ROAD_SIDEWALK = 2;
 
+/**
+ * Buildings stand on a low plinth so that their floors never fight for depth with the ground
+ * plane right under them.
+ */
+export const BUILDING_BASE = 0.04;
+
 /** Height of a level's floor above the ground. */
 export function levelElevation(building: Building, index: number): number {
-  let y = 0;
+  let y = BUILDING_BASE;
   for (let i = 0; i < index && i < building.levels.length; i++) y += building.levels[i].height + SLAB;
   return y;
 }

@@ -3,10 +3,10 @@ import { finishes } from '../materials/finishes';
 import { ROAD_CELL, ROAD_SIDEWALK, type Site } from '../model/types';
 import { MeshBuilder, type V3 } from './MeshBuilder';
 
-export const SIDEWALK_HEIGHT = 0.1;
-const ASPHALT_Y = 0.02;
-const MARK_Y = 0.028;
-const AREA_Y = 0.012;
+export const SIDEWALK_HEIGHT = 0.12;
+const ASPHALT_Y = 0.035;
+const MARK_Y = 0.045;
+const AREA_Y = 0.018;
 const MARK = '__mark';
 const markMaterial = new THREE.MeshStandardMaterial({ color: '#f2f0e6', roughness: 0.75 });
 
