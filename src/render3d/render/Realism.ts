@@ -181,3 +181,22 @@ export class Realism {
     this.grass.dispose();
   }
 }
+
+const _x = new THREE.Vector3();
+const _y = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Move a shadow map's centre onto the texel grid of the light's view, so that a camera-following map
+ * does not make shadow edges crawl and shimmer as the camera moves.
+ */
+export function snapToShadowTexels(center: THREE.Vector3, lightDir: THREE.Vector3, texel: number): void {
+  if (!(texel > 0)) return;
+  _x.crossVectors(_up, lightDir);
+  if (_x.lengthSq() < 1e-6) return;
+  _x.normalize();
+  _y.crossVectors(lightDir, _x).normalize();
+  const u = center.dot(_x);
+  const v = center.dot(_y);
+  center.addScaledVector(_x, Math.round(u / texel) * texel - u).addScaledVector(_y, Math.round(v / texel) * texel - v);
+}

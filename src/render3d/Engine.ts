@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Realism } from './render/Realism';
+import { Realism, snapToShadowTexels } from './render/Realism';
 import type { Quality } from '../store/quality';
 import { getFurniture, itemSize, type ItemAnchors } from '../catalog';
 import { placedBoxes, placedLight, placedSeats } from '../catalog/placed';
@@ -542,7 +542,9 @@ export class Engine {
   private updateSun(): void {
     const sun = this.atmosphere.sun;
     const focus = this.mode === 'walk' ? this.walk.character.root.position : this.controls.target;
-    const range = this.mode === 'walk' ? 26 : Math.max(22, Math.min(170, this.camera.position.distanceTo(this.controls.target) * 0.9));
+    const center = this.sunCenter;
+    const range = this.realism.sunShadowFit(this.mode === 'walk', focus, this.camera.position.distanceTo(this.controls.target), center);
+    snapToShadowTexels(center, this.atmosphere.lightDir, (2 * range) / sun.shadow.mapSize.x);
     const cam = sun.shadow.camera;
     if (cam.right !== range) {
       cam.left = -range;
@@ -553,9 +555,10 @@ export class Engine {
       cam.far = 420;
       cam.updateProjectionMatrix();
     }
-    sun.target.position.set(focus.x, 0, focus.z);
+    sun.target.position.copy(center);
     sun.position.copy(sun.target.position).addScaledVector(this.atmosphere.lightDir, 200);
   }
+  private sunCenter = new THREE.Vector3();
 
   /** Interiors are only furnished for buildings close to the walker. */
   private updateNearBuildings(): void {
