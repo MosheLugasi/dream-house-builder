@@ -1,4 +1,4 @@
-import { getFurniture, resolveColors } from '../catalog';
+import { getFurniture } from '../catalog';
 import { getOpeningDef, OPENINGS } from '../catalog/openings';
 import { finishes } from '../materials/finishes';
 import { dist } from '../model/geom';
@@ -21,6 +21,7 @@ import {
 import type { FurnitureItem, RoofType } from '../model/types';
 import { currentBuilding, currentLevel, useStore } from '../store/store';
 import { Icon } from './icons';
+import { ItemEditor } from './ItemEditor';
 
 const ROOF_TYPES: { id: RoofType; label: string }[] = [
   { id: 'flat', label: 'שטוח' },
@@ -118,30 +119,12 @@ export function Inspector() {
     const isProp = selection.kind === 'prop';
     const item = (isProp ? project.site.props : lvl.furniture).find((f) => f.id === selection.id);
     const def = item && getFurniture(item.catalogId);
-    const updateFurniture = (id: string, patch: Partial<FurnitureItem>) => (isProp ? updateProp(id, patch) : updateItem(id, patch));
+    const updateFurniture = (id: string, patch: Partial<FurnitureItem>, transient = false) => (isProp ? updateProp(id, patch, transient) : updateItem(id, patch, transient));
     if (item && def) {
       title = def.name;
-      const colors = resolveColors(def, item.colors);
       body = (
         <>
-          <p className="note">
-            {Math.round(def.size.w * 100)}×{Math.round(def.size.d * 100)}×{Math.round(def.size.h * 100)} ס"מ
-          </p>
-          {def.colors?.map((slot) => (
-            <label key={slot.key} className="field">
-              <span>{slot.label}</span>
-              <input
-                type="color"
-                value={colors[slot.key]}
-                onChange={(e) => updateFurniture(item.id, { colors: { ...item.colors, [slot.key]: e.target.value } })}
-              />
-            </label>
-          ))}
-          {def.colors?.length && item.colors ? (
-            <button className="link" onClick={() => updateFurniture(item.id, { colors: undefined })}>
-              חזרה לצבעי המקור
-            </button>
-          ) : null}
+          <ItemEditor item={item} walls={isProp ? undefined : lvl.walls} onChange={(patch, transient) => updateFurniture(item.id, patch, transient)} />
           <div className="row">
             <button className="btn" onClick={() => updateFurniture(item.id, { rotation: item.rotation - Math.PI / 4 })}>
               <Icon name="rotate" size={16} /> סיבוב 45°
@@ -150,8 +133,13 @@ export function Inspector() {
               סיבוב 90°
             </button>
           </div>
-          {def.mount === 'wall' && (
-            <NumberField label="גובה מהרצפה" value={item.elevation} max={2.6} onChange={(v) => updateFurniture(item.id, { elevation: v })} />
+          {def.mount !== 'ceiling' && !def.stair && !def.vehicle && (
+            <NumberField
+              label={def.mount === 'wall' ? 'גובה מהרצפה' : 'הגבהה מהרצפה'}
+              value={item.elevation}
+              max={2.6}
+              onChange={(v) => updateFurniture(item.id, { elevation: v })}
+            />
           )}
           <div className="row">
             <button className="btn" onClick={duplicateSelection}>

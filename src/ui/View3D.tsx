@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Engine } from '../render3d/Engine';
 import { useStore } from '../store/store';
+import { saveQuality, type Quality } from '../store/quality';
 import { Icon } from './icons';
 import { TimeOfDayChips, WalkHUD } from './WalkHUD';
 
@@ -28,6 +29,36 @@ function TimeControl() {
       <button className={`time-auto ${auto ? 'on' : ''}`} onClick={() => setView({ autoTime: !auto })} title="הזמן רץ מעצמו">
         {auto ? '❚❚' : '▶'}
       </button>
+    </div>
+  );
+}
+
+const QUALITY_CHOICES: { id: Quality; label: string; title: string }[] = [
+  { id: 'low', label: 'רגיל', title: 'מהיר: בלי אפקטים (למחשבים חלשים)' },
+  { id: 'high', label: 'גבוה', title: 'צללים, הצללת סביבה, אור מהחלונות' },
+  { id: 'ultra', label: 'אולטרה', title: 'הכי מציאותי: צללים חדים, דשא, החלקת קצוות כשהמצלמה עומדת (דורש כרטיס מסך חזק)' },
+];
+
+/** Rendering quality: רגיל / גבוה / אולטרה (remembered on this device). */
+function QualityChips() {
+  const quality = useStore((s) => s.view.quality);
+  const setView = useStore((s) => s.setView);
+  return (
+    <div className="chip-group" role="group" aria-label="איכות תצוגה">
+      {QUALITY_CHOICES.map((q) => (
+        <button
+          key={q.id}
+          className={`chip ${quality === q.id ? 'on' : ''}`}
+          title={q.title}
+          aria-pressed={quality === q.id}
+          onClick={() => {
+            saveQuality(q.id);
+            setView({ quality: q.id });
+          }}
+        >
+          {q.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -107,14 +138,7 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
             </>
           )}
           <TimeOfDayChips />
-          <label className={`chip toggle ${view.quality === 'high' ? 'on' : ''}`}>
-            <input
-              type="checkbox"
-              checked={view.quality === 'high'}
-              onChange={(e) => setView({ quality: e.target.checked ? 'high' : 'low' })}
-            />
-            איכות גבוהה
-          </label>
+          <QualityChips />
         </div>
       )}
       {mode === 'walk' && (

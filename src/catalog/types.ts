@@ -149,6 +149,53 @@ export interface BuildContext {
   colors: Record<string, string>;
   /** floor-to-floor height (m); only meaningful for stairs */
   rise?: number;
+  /**
+   * The size the player chose (always present for `parametric` items, clamped to `resize`).
+   * Non-parametric items ignore it: the game scales their default-size object instead.
+   */
+  size?: ItemSize;
+}
+
+export interface ItemSize {
+  w: number;
+  d: number;
+  h: number;
+}
+
+/** A local point (meters, item frame: origin at the footprint center on the floor, front = +Z). */
+export interface LocalPoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Things a PARAMETRIC build publishes for the size it was built at, on `object.userData.anchors`
+ * (local coordinates, real meters). Anything left out is derived from the static definition by
+ * scaling it with the size (see `scaleLocal` in catalog/index.ts).
+ */
+export interface ItemAnchors {
+  /** where the lamp's light comes from */
+  light?: LocalPoint;
+  seats?: SeatAnchor[];
+  /** effect origins per action kind (spout of the sink, middle of the hob…) */
+  actions?: Partial<Record<ActionKind, LocalPoint>>;
+  /** polylines per action kind (slides) */
+  paths?: Partial<Record<ActionKind, LocalPoint[]>>;
+  /**
+   * Solid footprint as several boxes (x/z = box center, w along X, d along Z, h = top above the floor).
+   * Lets the character walk INTO an L / U shaped kitchen or between a kitchen run and its island.
+   */
+  boxes?: Array<{ x: number; z: number; w: number; d: number; h: number }>;
+}
+
+/** Allowed size range per axis, meters [min, max]. */
+export interface ResizeSpec {
+  w?: [number, number];
+  d?: [number, number];
+  h?: [number, number];
+  /** width and depth change together (round things: a shade, a globe, a round table) */
+  linked?: boolean;
 }
 
 /** Stairs connect the level they stand on with the level above. Geometry lives in model/stairs.ts. */
@@ -270,10 +317,24 @@ export interface FurnitureDef {
    * or when the geometry depends on more than the colors). Default: baked + cached per color set.
    */
   noBake?: boolean;
+  /**
+   * true = `build` and `draw2d` honour the requested size (`ctx.size` / the `size` argument) and
+   * rebuild the item properly (more cabinets in a longer kitchen, a longer pendant cord…) instead of
+   * being stretched. Baked templates are then cached per size as well.
+   */
+  parametric?: boolean;
+  /**
+   * How the player may resize the item. Default (absent): every axis from 50% to 200% of `size`.
+   * `false` = fixed size (vehicles, pets, rides, stairs). An axis left out of a ResizeSpec stays fixed.
+   */
+  resize?: ResizeSpec | false;
   /** Build the 3D object. Meshes should set castShadow/receiveShadow. */
   build(ctx: BuildContext): THREE.Object3D;
-  /** Draw the plan symbol (see conventions above). Caller sets up transform; lineWidth is in meters. */
-  draw2d(ctx: CanvasRenderingContext2D, colors: Record<string, string>): void;
+  /**
+   * Draw the plan symbol (see conventions above). Caller sets up transform; lineWidth is in meters.
+   * Parametric items get the chosen size and draw at it; the caller stretches the others.
+   */
+  draw2d(ctx: CanvasRenderingContext2D, colors: Record<string, string>, size?: ItemSize): void;
 }
 
 export const CATEGORY_LABELS: Record<FurnitureCategory, string> = {

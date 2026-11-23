@@ -43,6 +43,10 @@ export interface FurnitureItem {
   /** height of the item's bottom above the level floor */
   elevation: number;
   colors?: Record<string, string>;
+  /** size chosen by the player (meters); absent = the catalog size */
+  size?: { w: number; d: number; h: number };
+  /** mirrored left ↔ right (L-shaped kitchens, asymmetric pieces) */
+  mirror?: boolean;
 }
 
 /**

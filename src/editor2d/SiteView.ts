@@ -1,4 +1,4 @@
-import { getFurniture, resolveColors } from '../catalog';
+import { getFurniture, itemSize, resolveColors } from '../catalog';
 import { finishes } from '../materials/finishes';
 import { rotate, snapTo, sub } from '../model/geom';
 import { getGraph, roomAt } from '../model/graph';
@@ -203,10 +203,11 @@ export class SiteView {
       const def = getFurniture(f.catalogId);
       if (!def) continue;
       const local = rotate(sub(p, { x: f.x, y: f.y }), -f.rotation);
-      const hw = Math.max(def.size.w / 2, this.px(9));
-      const hd = Math.max(def.size.d / 2, this.px(9));
+      const size = itemSize(def, f);
+      const hw = Math.max(size.w / 2, this.px(9));
+      const hd = Math.max(size.d / 2, this.px(9));
       if (Math.abs(local.x) <= hw && Math.abs(local.y) <= hd) {
-        const area = def.size.w * def.size.d * (def.walkable ? 100 : 1);
+        const area = size.w * size.d * (def.walkable ? 100 : 1);
         if (area < bestArea) {
           bestArea = area;
           best = f;
@@ -236,7 +237,7 @@ export class SiteView {
   private rotateHandle(f: FurnitureItem): Vec2 | null {
     const def = getFurniture(f.catalogId);
     if (!def) return null;
-    const r = rotate({ x: 0, y: -def.size.d / 2 - this.px(22) }, f.rotation);
+    const r = rotate({ x: 0, y: -itemSize(def, f).d / 2 - this.px(22) }, f.rotation);
     return { x: f.x + r.x, y: f.y + r.y };
   }
 
@@ -657,10 +658,12 @@ export class SiteView {
     ctx.globalAlpha = alpha;
     ctx.lineWidth = 0.02;
     ctx.lineJoin = 'round';
+    const size = itemSize(def, f);
+    if (f.mirror) ctx.scale(-1, 1);
     try {
-      def.draw2d(ctx, resolveColors(def, f.colors));
+      def.draw2d(ctx, resolveColors(def, f.colors), size);
     } catch {
-      ctx.strokeRect(-def.size.w / 2, -def.size.d / 2, def.size.w, def.size.d);
+      ctx.strokeRect(-size.w / 2, -size.d / 2, size.w, size.d);
     }
     ctx.restore();
   }
@@ -719,8 +722,8 @@ export class SiteView {
         const c = this.toScreen({ x: f.x, y: f.y });
         ctx.translate(c.x, c.y);
         ctx.rotate(f.rotation);
-        const hw = (def.size.w / 2) * this.scale + 4;
-        const hd = (def.size.d / 2) * this.scale + 4;
+        const hw = (itemSize(def, f).w / 2) * this.scale + 4;
+        const hd = (itemSize(def, f).d / 2) * this.scale + 4;
         ctx.strokeRect(-hw, -hd, hw * 2, hd * 2);
         ctx.setLineDash([]);
         ctx.beginPath();

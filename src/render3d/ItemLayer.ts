@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { getFurniture, resolveColors } from '../catalog';
+import { DESIGN_CEILING, getFurniture, resolveColors } from '../catalog';
+import { placedObjectScale, placedSize } from '../catalog/placed';
 import type { FurnitureItem } from '../model/types';
 
 /** Notified when placed items appear, move or disappear (interactive behaviours hook in here). */
@@ -25,19 +26,28 @@ export interface ItemEntry {
   key: string;
 }
 
-export function makeItemHolder(item: Pick<FurnitureItem, 'catalogId' | 'colors'>, ctx: ItemContext): THREE.Group | null {
+export function makeItemHolder(item: Pick<FurnitureItem, 'catalogId' | 'colors' | 'size' | 'mirror'>, ctx: ItemContext): THREE.Group | null {
   const def = getFurniture(item.catalogId);
   if (!def) return null;
   const holder = new THREE.Group();
+  const size = placedSize(def, item);
   let obj: THREE.Object3D;
   try {
-    obj = def.build({ colors: resolveColors(def, item.colors), rise: ctx.rise });
+    obj = def.build({ colors: resolveColors(def, item.colors), rise: ctx.rise, size });
   } catch (err) {
     console.warn('failed to build', item.catalogId, err);
     obj = new THREE.Mesh(new THREE.BoxGeometry(def.size.w, def.size.h, def.size.d), new THREE.MeshStandardMaterial({ color: '#bbb' }));
     obj.position.y = def.size.h / 2;
   }
-  const lift = def.mount === 'ceiling' ? ctx.levelHeight - 2.7 : 0;
+  // the player's size (stretch for non-parametric items) and mirror
+  const k = placedObjectScale(def, item);
+  if (k.x !== 1 || k.y !== 1 || k.z !== 1) {
+    obj.scale.set(obj.scale.x * k.x, obj.scale.y * k.y, obj.scale.z * k.z);
+    obj.position.y *= k.y;
+    // ceiling pieces stretch downwards from the ceiling, not upwards from the floor
+    if (def.mount === 'ceiling') obj.position.y += DESIGN_CEILING * (1 - k.y);
+  }
+  const lift = def.mount === 'ceiling' ? ctx.levelHeight - DESIGN_CEILING : 0;
   obj.position.y += lift;
   holder.add(obj);
   holder.userData.body = obj;
@@ -58,7 +68,7 @@ export class ItemLayer {
       seen.add(item.id);
       let entry = this.entries.get(item.id);
       const def = getFurniture(item.catalogId);
-      const key = `${item.catalogId}|${JSON.stringify(item.colors ?? {})}|${ctx.levelHeight}|${def?.stair ? ctx.rise : 0}|${ctx.lights}`;
+      const key = `${item.catalogId}|${JSON.stringify(item.colors ?? {})}|${ctx.levelHeight}|${def?.stair ? ctx.rise : 0}|${ctx.lights}|${item.size ? `${item.size.w},${item.size.d},${item.size.h}` : ''}|${item.mirror ? 1 : 0}`;
       if (entry && entry.item === item && entry.key === key) continue;
       changed = true;
       if (!entry || entry.key !== key) {

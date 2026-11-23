@@ -34,6 +34,12 @@ export class Atmosphere {
   readonly lightDir = new THREE.Vector3(0, 1, 0);
   /** 0 = full day … 1 = full night */
   night = 0;
+  /** 0 = sun below the horizon … 1 = sun high: how much daylight comes in through a window */
+  daylight = 1;
+  /** tone-mapping exposure for this time of day (the renderer may adapt it further, e.g. indoors) */
+  exposure = 0.82;
+  /** average colour of the sky dome (linear, for light coming in through windows) */
+  readonly skyColor = new THREE.Color();
   hours = -1;
   private sky = new Sky();
   private hemi = new THREE.HemisphereLight('#fff9f0', '#b3a78f', 0.35);
@@ -207,7 +213,13 @@ export class Atmosphere {
     mix('fog', this.fog.color);
     this.envUniforms.sunDir.value.copy(this.lightDir);
     this.envUniforms.glow.value = day + dusk * 0.8 + night * 0.05;
-    this.renderer.toneMappingExposure = 0.82 + 0.18 * dusk + 0.3 * night;
+    // (tuned for the Neutral tone curve, which keeps the darks of the night brighter than ACES did)
+    this.exposure = 0.82 + 0.1 * dusk + 0.05 * night;
+    this.renderer.toneMappingExposure = this.exposure;
+    this.daylight = smooth(-4, 30, elev);
+    const z = this.envUniforms.zenith.value;
+    const h = this.envUniforms.horizon.value;
+    this.skyColor.setRGB((z.r + h.r * 2) / 3, (z.g + h.g * 2) / 3, (z.b + h.b * 2) / 3);
     // clouds catch less light at night
     this.sky.material.uniforms.cloudDensity.value = 0.45 - 0.2 * night;
   }

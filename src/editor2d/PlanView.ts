@@ -1,4 +1,4 @@
-import { getFurniture, resolveColors } from '../catalog';
+import { getFurniture, itemSize, resolveColors } from '../catalog';
 import { getOpeningDef } from '../catalog/openings';
 import { finishes } from '../materials/finishes';
 import { add, closestOnSegment, dist, dot, mul, norm, perp, rotate, snapTo, sub } from '../model/geom';
@@ -279,10 +279,11 @@ export class PlanView {
       const def = getFurniture(f.catalogId);
       if (!def) continue;
       const local = rotate(sub(p, { x: f.x, y: f.y }), -f.rotation);
-      const hw = Math.max(def.size.w / 2, this.px(8));
-      const hd = Math.max(def.size.d / 2, this.px(8));
+      const size = itemSize(def, f);
+      const hw = Math.max(size.w / 2, this.px(8));
+      const hd = Math.max(size.d / 2, this.px(8));
       if (Math.abs(local.x) <= hw && Math.abs(local.y) <= hd) {
-        const area = def.size.w * def.size.d * (def.walkable ? 100 : 1); // rugs lose against things on them
+        const area = size.w * size.d * (def.walkable ? 100 : 1); // rugs lose against things on them
         if (area < bestArea) {
           bestArea = area;
           best = f;
@@ -328,7 +329,7 @@ export class PlanView {
   private rotateHandlePos(f: FurnitureItem): Vec2 | null {
     const def = getFurniture(f.catalogId);
     if (!def) return null;
-    return add({ x: f.x, y: f.y }, rotate({ x: 0, y: -def.size.d / 2 - this.px(22) }, f.rotation));
+    return add({ x: f.x, y: f.y }, rotate({ x: 0, y: -itemSize(def, f).d / 2 - this.px(22) }, f.rotation));
   }
 
   // ---- events --------------------------------------------------------------------------------
@@ -572,7 +573,7 @@ export class PlanView {
             st.checkpoint();
             drag.moved = true;
           }
-          const placed = this.furniturePlacement(sub(world, drag.grab), f.catalogId, f.rotation, e.altKey);
+          const placed = this.furniturePlacement(sub(world, drag.grab), f.catalogId, f.rotation, e.altKey, f);
           updateFurniture(f.id, { x: placed.pos.x, y: placed.pos.y, rotation: placed.rotation }, true);
           break;
         }
@@ -695,11 +696,11 @@ export class PlanView {
     return best;
   }
 
-  private furniturePlacement(world: Vec2, catalogId: string, rotation: number, free = false): { pos: Vec2; rotation: number } {
+  private furniturePlacement(world: Vec2, catalogId: string, rotation: number, free = false, item?: Pick<FurnitureItem, 'size'>): { pos: Vec2; rotation: number } {
     const def = getFurniture(catalogId);
     const snapOn = this.state().view.snap && !free;
     if (def && snapOn && !def.walkable && !def.stair && def.mount !== 'ceiling') {
-      const s = snapFurnitureToWall(world, def.size, this.level().walls, def.mount === 'wall' ? 1.0 : 0.22);
+      const s = snapFurnitureToWall(world, itemSize(def, item), this.level().walls, def.mount === 'wall' ? 1.0 : 0.22);
       if (s) {
         // slide along the wall on a 5 cm grid
         return s;
@@ -852,11 +853,13 @@ export class PlanView {
     ctx.globalAlpha = alpha * (def.mount === 'ceiling' ? 0.55 : 1);
     ctx.lineWidth = 0.02;
     ctx.lineJoin = 'round';
+    const size = itemSize(def, f);
+    if (f.mirror) ctx.scale(-1, 1);
     try {
-      def.draw2d(ctx, resolveColors(def, f.colors));
+      def.draw2d(ctx, resolveColors(def, f.colors), size);
     } catch {
       ctx.strokeStyle = '#555';
-      ctx.strokeRect(-def.size.w / 2, -def.size.d / 2, def.size.w, def.size.d);
+      ctx.strokeRect(-size.w / 2, -size.d / 2, size.w, size.d);
     }
     ctx.restore();
   }
@@ -968,8 +971,8 @@ export class PlanView {
       ctx.save();
       ctx.translate(c.x, c.y);
       ctx.rotate(f.rotation);
-      const hw = (def.size.w / 2) * this.scale + 4;
-      const hd = (def.size.d / 2) * this.scale + 4;
+      const hw = (itemSize(def, f).w / 2) * this.scale + 4;
+      const hd = (itemSize(def, f).d / 2) * this.scale + 4;
       ctx.strokeStyle = COLORS.accent;
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 4]);

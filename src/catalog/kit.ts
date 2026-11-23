@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import { addWind } from '../render3d/effects';
+import { getMaxAnisotropy } from '../materials/textureGen';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries, mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
@@ -145,7 +146,7 @@ function canvasTexture(
       tex = new THREE.CanvasTexture(cv);
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-      tex.anisotropy = 4;
+      tex.anisotropy = getMaxAnisotropy();
     }
   }
   texCache.set(key, tex);
@@ -1010,16 +1011,20 @@ export const M = {
     });
   },
   /** Woven upholstery / bedding. `scale` = weave repeats per meter. */
-  fabric(color: string, scale = 14): THREE.MeshStandardMaterial {
+  fabric(color: string, scale = 14): THREE.MeshPhysicalMaterial {
     return cached(`fabric|${color}|${scale}`, () => {
       const map = texRep('weave', scale, scale);
-      const m = new THREE.MeshStandardMaterial({
+      // a soft sheen at grazing angles (fibres catching the light) is what makes cloth read as cloth
+      const m = new THREE.MeshPhysicalMaterial({
         color,
         roughness: 0.94,
         metalness: 0,
         map,
         bumpMap: map,
         bumpScale: 0.9,
+        sheen: 0.55,
+        sheenColor: new THREE.Color(lighten(color || '#ffffff', 0.3)),
+        sheenRoughness: 0.55,
       });
       m.userData.uvMeters = true;
       return m;
@@ -1218,7 +1223,7 @@ export const M = {
         metalness: 0,
         map,
         sheen: 1,
-        sheenColor: new THREE.Color(lighten(color, 0.45)),
+        sheenColor: new THREE.Color(lighten(color || '#ffffff', 0.45)),
         sheenRoughness: 0.32,
       });
       m.userData.uvMeters = true;
@@ -1237,7 +1242,7 @@ export const M = {
         bumpMap: map,
         bumpScale: 3,
         sheen: 0.5,
-        sheenColor: new THREE.Color(lighten(color, 0.3)),
+        sheenColor: new THREE.Color(lighten(color || '#ffffff', 0.3)),
         sheenRoughness: 0.7,
       });
       m.userData.uvMeters = true;
@@ -1299,10 +1304,11 @@ export const M = {
     });
   },
   /** Brushed metal (stainless appliances, lamp bases). */
-  brushed(color: string = '#c9ccce', metalness = 1): THREE.MeshStandardMaterial {
+  brushed(color: string = '#c9ccce', metalness = 1): THREE.MeshPhysicalMaterial {
     return cached(`brushed|${color}|${metalness}`, () => {
       const rough = texRep('brushed', 4, 4);
-      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.42, metalness, roughnessMap: rough });
+      // highlights stretched across the brushing direction, like real brushed steel
+      const m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.42, metalness, roughnessMap: rough, anisotropy: 0.55, anisotropyRotation: Math.PI / 2 });
       m.userData.uvMeters = true;
       return m;
     });
@@ -1326,7 +1332,7 @@ export const M = {
         bumpMap: map,
         bumpScale: 1.5,
         sheen: 0.8,
-        sheenColor: new THREE.Color(lighten(color, 0.35)),
+        sheenColor: new THREE.Color(lighten(color || '#ffffff', 0.35)),
         sheenRoughness: 0.6,
       });
       m.userData.uvMeters = true;
@@ -1914,6 +1920,8 @@ export function bake(root: THREE.Object3D, name = ''): THREE.Group {
   visit(root);
   const out = new THREE.Group();
   out.name = name;
+  // size-dependent anchors of parametric builds travel with the baked template
+  if (root.userData.anchors) out.userData.anchors = root.userData.anchors;
   for (const b of buckets.values()) {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false);
     if (!merged) continue;

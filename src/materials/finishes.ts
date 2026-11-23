@@ -13,6 +13,7 @@ import {
   surfaceToTextures,
 } from './textureGen';
 import { CATALOG, type FinishSpec } from './catalog';
+import { applyShaderPatches } from './shaderPatches';
 
 export { setMaxAnisotropy } from './textureGen';
 
@@ -135,6 +136,7 @@ function addMacroVariation(
     finishMacroTint: { value: new THREE.Color(macro.tint ?? '#ffffff') },
   };
   mat.onBeforeCompile = (shader) => {
+    applyShaderPatches(shader);
     Object.assign(shader.uniforms, uniforms);
     shader.fragmentShader = shader.fragmentShader
       .replace(

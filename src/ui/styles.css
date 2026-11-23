@@ -1360,3 +1360,71 @@ kbd {
   font-weight: 700;
   color: var(--accent-dark);
 }
+
+/* ---- item editor (size, mirror, colours) ---- */
+.item-editor .ie-title {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.ie-axis {
+  margin: 8px 0 10px;
+}
+.ie-axis-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13.5px;
+}
+.ie-axis-head .field-input input[type='number'] {
+  width: 70px;
+  padding: 4px 6px;
+  border: 1.5px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.ie-slider {
+  width: 100%;
+  margin: 4px 0 0;
+  accent-color: var(--accent);
+}
+.ie-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ie-check input {
+  accent-color: var(--accent);
+}
+.ie-row {
+  margin: 6px 0;
+}
+.ie-color .field {
+  margin-bottom: 4px;
+}
+.ie-swatches {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 3px;
+  margin: 0 0 10px;
+}
+.ie-swatch {
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+.ie-swatch:hover {
+  transform: scale(1.15);
+}
+.ie-swatch.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

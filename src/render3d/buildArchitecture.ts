@@ -61,7 +61,13 @@ const BASEBOARD_KEY = '__baseboard';
 
 const topMaterial = new THREE.MeshStandardMaterial({ color: '#30343b', roughness: 0.9 });
 // ceilings only receive bounced light, which a real-time renderer lacks: lift them with a little emissive
-const ceilingMaterial = new THREE.MeshStandardMaterial({ color: '#fbfaf6', roughness: 0.95, emissive: '#fff6ea', emissiveIntensity: 0.42 });
+const CEILING_GLOW = 0.42;
+const ceilingMaterial = new THREE.MeshStandardMaterial({ color: '#fbfaf6', roughness: 0.95, emissive: '#fff6ea', emissiveIntensity: CEILING_GLOW });
+
+/** Scale the ceilings' fake bounce light (the renderer lowers it where it lights rooms through their windows). */
+export function setCeilingGlow(k: number): void {
+  ceilingMaterial.emissiveIntensity = CEILING_GLOW * k;
+}
 const baseboardMaterial = new THREE.MeshStandardMaterial({ color: '#f6f5f1', roughness: 0.5 });
 
 function materialFor(key: string): THREE.Material {

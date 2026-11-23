@@ -4,7 +4,8 @@
  * ambient animations that run in every mode (clocks, fish, fans).
  */
 import * as THREE from 'three';
-import type { ActionKind, ActionSpec, FurnitureDef, PetRuntime, RideRuntime } from '../catalog/types';
+import type { ActionKind, ActionSpec, FurnitureDef, ItemAnchors, ItemSize, PetRuntime, RideRuntime, SeatAnchor } from '../catalog/types';
+import { clampSize, itemSize, scaleLocal } from '../catalog';
 import { report } from '../game/progress';
 import type { FurnitureItem, Vec2 } from '../model/types';
 import { sound, STATIONS, type Voice } from '../audio/sound';
@@ -105,6 +106,20 @@ interface Inst {
   restY: number;
   /** world yaw of the holder's parent (buildings can be rotated) */
   parentYaw: number;
+  /** real size of the placed item (the player may have resized it) */
+  size: ItemSize;
+  /**
+   * extents in the frame of `obj`: the catalog size for stretched items (their `obj` carries the
+   * scale), the real size for parametric ones (built at that size). Local points fed to `world3`
+   * and `plan` are in this frame.
+   */
+  lsize: ItemSize;
+  /** |scale| of `obj` (1 for parametric items): turns local heights into real heights */
+  k: { x: number; y: number; z: number };
+  /** the item is mirrored left ↔ right */
+  mirror: boolean;
+  /** seats in the frame of `obj` */
+  seats: SeatAnchor[];
 }
 
 interface Choice {
@@ -265,8 +280,34 @@ export class Interactions {
       const mat = m.material as THREE.MeshStandardMaterial;
       if (def.light && mat.emissive && mat.emissiveIntensity > 0 && (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.05) glow.push({ mesh: m, on: mat });
     });
+    // parametric items are built at their real size: their action points come from the anchors the
+    // build published, or are scaled from the catalog's; stretched items keep the catalog's points
+    // (their `obj` is scaled, so `world3` maps them correctly)
+    const size = itemSize(def, item);
+    const anchors = obj.userData.anchors as ItemAnchors | undefined;
+    const real = !!def.parametric;
+    const lsize = real ? clampSize(def, item.size) : def.size;
+    const local = (p: { x: number; y: number; z: number }) => (real ? scaleLocal(def, lsize, p) : p);
     const act = new Map<ActionKind, ActionSpec>();
-    for (const a of def.actions ?? []) if (!act.has(a.kind)) act.set(a.kind, a);
+    for (const a of def.actions ?? []) {
+      if (act.has(a.kind)) continue;
+      if (!real) {
+        act.set(a.kind, a);
+        continue;
+      }
+      const at = anchors?.actions?.[a.kind] ?? (a.at ? local(a.at) : undefined);
+      const path = anchors?.paths?.[a.kind] ?? a.path?.map(local);
+      const area = a.area ? { min: local(a.area.min), max: local(a.area.max) } : undefined;
+      act.set(a.kind, { ...a, at, path, area });
+    }
+    const seats: SeatAnchor[] =
+      real && anchors?.seats
+        ? anchors.seats
+        : (def.seats ?? []).map((st0) => {
+            if (!real) return st0;
+            const l = local({ x: st0.x, y: st0.height, z: st0.z });
+            return { ...st0, x: l.x, z: l.z, height: l.y };
+          });
     const inst: Inst = {
       id: item.id,
       def,
@@ -291,6 +332,11 @@ export class Interactions {
       act,
       restY: holder.position.y,
       parentYaw: 0,
+      size,
+      lsize,
+      k: { x: Math.abs(obj.scale.x), y: Math.abs(obj.scale.y), z: Math.abs(obj.scale.z) },
+      mirror: !!item.mirror,
+      seats,
     };
     // fish
     for (const fp of parts.get('fish') ?? []) {
@@ -404,7 +450,7 @@ export class Interactions {
       };
     }
     if (has(def, 'ball')) {
-      const r = def.size.w / 2;
+      const r = inst.size.w / 2;
       inst.ball = { floor: pose.floor, p: new THREE.Vector3(pose.x, pose.floor + inst.item.elevation + r, pose.y), v: new THREE.Vector3(), r };
     }
   }
@@ -479,7 +525,18 @@ export class Interactions {
 
   /** world facing (character convention) of a local direction angle (0 = +Z) */
   private facingOf(inst: Inst, local: number): number {
-    return local - this.pose(inst).rot;
+    return (inst.mirror ? -local : local) - this.pose(inst).rot;
+  }
+
+  /**
+   * How far the character is from what an action works on: the footprint for most items, the
+   * action's own point (sink, hob…) on big pieces such as a whole kitchen.
+   */
+  private kindDist(inst: Inst, kind: ActionKind, footprint: number): number {
+    const at = inst.act.get(kind)?.at;
+    if (!at || !this.walk || Math.max(inst.size.w, inst.size.d) < 1.4 || inst.pet || inst.ball) return footprint;
+    const p = this.world3(inst, at.x, 0, at.z, new THREE.Vector3());
+    return Math.max(footprint, Math.hypot(p.x - this.walk.pos.x, p.z - this.walk.pos.y) - 0.45);
   }
 
   private floorOf(inst: Inst): number {
@@ -499,13 +556,35 @@ export class Interactions {
     const ry = p.y - pos.y;
     const lx = rx * c - ry * s;
     const ly = rx * s + ry * c;
-    const dx = Math.max(0, Math.abs(lx) - inst.def.size.w / 2);
-    const dy = Math.max(0, Math.abs(ly) - inst.def.size.d / 2);
+    const dx = Math.max(0, Math.abs(lx) - inst.size.w / 2);
+    const dy = Math.max(0, Math.abs(ly) - inst.size.d / 2);
     return Math.hypot(dx, dy);
   }
 
+  /**
+   * Where to stand to use an action of a big parametric piece (the hob of an L-shaped kitchen, the
+   * sink in an island) and the world facing there: in front of the counter run that holds the
+   * action point. Ordinary items: in front of the item, facing it.
+   */
+  private standFor(inst: Inst, kind: ActionKind, gap = 0.35): { p: Vec2; facing: number } {
+    const at = inst.act.get(kind)?.at;
+    const boxes = (inst.obj.userData.anchors as ItemAnchors | undefined)?.boxes;
+    const box = at && inst.def.parametric ? boxes?.find((b) => Math.abs(at.x - b.x) <= b.w / 2 + 0.05 && Math.abs(at.z - b.z) <= b.d / 2 + 0.05) : undefined;
+    if (!at || !box) return { p: this.standInFront(inst, gap), facing: this.facingOf(inst, Math.PI) };
+    if (box.w >= box.d) {
+      // a run along X: stand on the side that faces the room (runs at the back face forwards, islands backwards)
+      const side = box.z > 0.05 ? -1 : 1;
+      const z = box.z + side * (box.d / 2 + gap);
+      return { p: this.plan(inst, at.x, z), facing: this.facingOf(inst, side > 0 ? Math.PI : 0) };
+    }
+    // a leg along Z (L / U kitchens): stand towards the middle of the kitchen
+    const side = box.x < 0 ? 1 : -1;
+    const x = box.x + side * (box.w / 2 + gap);
+    return { p: this.plan(inst, x, at.z), facing: this.facingOf(inst, side > 0 ? -Math.PI / 2 : Math.PI / 2) };
+  }
+
   private standInFront(inst: Inst, gap = 0.4): Vec2 {
-    return this.plan(inst, 0, inst.def.size.d / 2 + gap);
+    return this.plan(inst, 0, inst.lsize.d / 2 + gap / inst.k.z);
   }
 
   // ---- choices -------------------------------------------------------------------------------
@@ -577,15 +656,16 @@ export class Interactions {
     return out;
   }
 
-  private choicesFor(inst: Inst, d: number): Choice[] {
+  private choicesFor(inst: Inst, d0: number): Choice[] {
     const out: Choice[] = [];
     const name = inst.def.name;
     const id = inst.id;
     const on = inst.st.on;
-    const near = d < 0.9;
     const mk = (k: string, label: string, icon: string, run: () => void) => out.push({ id: `${id}:${k}`, label, icon, run });
-    if (inst.def.ride && d < 0.9) mk('ride', inst.def.ride.prompt, ICON.swing!, () => this.ride(inst));
+    if (inst.def.ride && d0 < 0.9) mk('ride', inst.def.ride.prompt, ICON.swing!, () => this.ride(inst));
     for (const kind of inst.act.keys()) {
+      const d = this.kindDist(inst, kind, d0);
+      const near = d < 0.9;
       switch (kind) {
         case 'light':
           if (d < 1.3) mk('light', inst.st.lightOn ? `לכבות · ${name}` : `להדליק · ${name}`, ICON.light!, () => this.toggleLight(inst));
@@ -653,10 +733,10 @@ export class Interactions {
           if (near) mk('bounce', 'לקפוץ על הטרמפולינה', ICON.bounce!, () => this.bounce(inst));
           break;
         case 'swing':
-          if (d < 0.7 && inst.def.seats?.length) mk('swing', 'להתנדנד', ICON.swing!, () => this.swing(inst, 'swing'));
+          if (d < 0.7 && inst.seats.length) mk('swing', 'להתנדנד', ICON.swing!, () => this.swing(inst, 'swing'));
           break;
         case 'rock':
-          if (d < 0.7 && inst.def.seats?.length) mk('rock', 'לשבת ולהתנדנד', ICON.rock!, () => this.swing(inst, 'rock'));
+          if (d < 0.7 && inst.seats.length) mk('rock', 'לשבת ולהתנדנד', ICON.rock!, () => this.swing(inst, 'rock'));
           break;
         case 'slide':
           if (d < 1.2) mk('slide', 'לגלוש במגלשה', ICON.slide!, () => this.slide(inst));
@@ -710,10 +790,10 @@ export class Interactions {
     if (kind === 'fire') {
       if (on) {
         const a = inst.act.get('fire')!;
-        const small = a.variant === 'candle' || inst.def.size.w < 0.4;
+        const small = a.variant === 'candle' || inst.size.w < 0.4;
         if (!small) inst.voices[key] = sound.loop('fire') ?? undefined;
         const l = new THREE.PointLight('#ff9a4a', small ? 0.6 : 3, small ? 3 : 7, 2);
-        const at = a.at ?? { x: 0, y: inst.def.size.h * 0.4, z: 0 };
+        const at = a.at ?? { x: 0, y: inst.lsize.h * 0.4, z: 0 };
         l.position.set(at.x, at.y + 0.1 + inst.obj.position.y, at.z + 0.1);
         inst.holder.add(l);
         inst.fireLight = l;
@@ -822,7 +902,12 @@ export class Interactions {
     const walk = this.walk!;
     const t = textOf(inst.def);
     const drink = /קפה|coffee|espresso|קומקום|kettle|תה|tea|יין|wine|מים|water|כוס/.test(t);
-    walk.faceTo(this.pose(inst));
+    const snackAt = inst.act.get('snack')?.at;
+    if (snackAt && Math.max(inst.size.w, inst.size.d) > 1.4) {
+      // a fridge inside a whole kitchen: face the fridge, not the middle of the kitchen
+      const w = this.world3(inst, snackAt.x, 0, snackAt.z);
+      walk.faceTo({ x: w.x, y: w.z });
+    } else walk.faceTo(this.pose(inst));
     if (inst.parts.has('door')) {
       inst.st.openTarget = 1;
       setTimeout(() => (inst.st.openTarget = 0), 2200);
@@ -830,7 +915,7 @@ export class Interactions {
     const brew = /קפה|coffee|espresso|קומקום|kettle/.test(t);
     if (brew) {
       sound.sfx('sizzle', 0.4);
-      const top = this.world3(inst, 0, inst.def.size.h, 0);
+      const top = this.world3(inst, 0, inst.lsize.h, 0);
       for (let i = 0; i < 6; i++) setTimeout(() => this.particles.emit('steam', top, { count: 2, spread: 0.05 }), i * 250);
     }
     setTimeout(() => {
@@ -886,11 +971,11 @@ export class Interactions {
 
   private instrument(inst: Inst, kind: 'piano' | 'guitar' | 'drums'): void {
     const walk = this.walk!;
-    const seat = inst.def.seats?.[0];
+    const seat = inst.seats[0];
     let frame: OccupationFrame;
     if (seat && kind !== 'guitar') {
       const p = this.plan(inst, seat.x, seat.z);
-      frame = { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, seat.facing), pose: 'sit', seatHeight: seat.height + inst.item.elevation };
+      frame = { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, seat.facing), pose: 'sit', seatHeight: seat.height * inst.k.y + inst.item.elevation };
     } else if (kind === 'guitar') {
       const p = this.standInFront(inst, 0.45);
       frame = { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, 0), pose: 'stand' };
@@ -939,14 +1024,15 @@ export class Interactions {
 
   private cook(inst: Inst): void {
     const walk = this.walk!;
-    const p = this.standInFront(inst, 0.35);
-    const at = inst.act.get('cook')?.at ?? { x: 0, y: inst.def.size.h, z: 0 };
+    const stand = this.standFor(inst, 'cook', 0.35);
+    const p = stand.p;
+    const at = inst.act.get('cook')?.at ?? { x: 0, y: inst.lsize.h, z: 0 };
     let t = 0;
     let done = false;
     sound.sfx('sizzle', 0.6);
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, Math.PI), pose: 'stand' },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: stand.facing, pose: 'stand' },
         {
           activity: 'cook',
           prop: 'spoon',
@@ -971,14 +1057,14 @@ export class Interactions {
 
   private sleep(inst: Inst): void {
     const walk = this.walk!;
-    const seat = inst.def.seats?.find((s) => s.kind === 'lie') ?? inst.def.seats?.[0];
+    const seat = inst.seats.find((s) => s.kind === 'lie') ?? inst.seats[0];
     if (!seat) return;
     const p = this.plan(inst, seat.x, seat.z);
     let t = 0;
     let woke = false;
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, seat.facing), pose: 'lie', seatHeight: seat.height + inst.item.elevation },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, seat.facing), pose: 'lie', seatHeight: seat.height * inst.k.y + inst.item.elevation },
         {
           activity: 'sleep',
           label: 'ישנים… Zzz',
@@ -1052,7 +1138,7 @@ export class Interactions {
     const t = textOf(inst.def);
     const a = inst.act.get('workout')!;
     const activity: Activity = /punch|bag|אגרוף|שק/.test(t) ? 'punch' : /yoga|mat|יוגה|מזרן/.test(t) ? 'yoga' : /bar|wall|מתח|סולם/.test(t) ? 'stretch' : 'lift';
-    const at = a.at ?? { x: 0, y: 0, z: inst.def.size.d / 2 + 0.4 };
+    const at = a.at ?? { x: 0, y: 0, z: inst.lsize.d / 2 + 0.4 / inst.k.z };
     const p = this.plan(inst, at.x, at.z);
     let n = 0;
     let acc = 0;
@@ -1126,7 +1212,7 @@ export class Interactions {
   /** ride a swing / rocking part with a seat */
   private swing(inst: Inst, kind: 'swing' | 'rock'): void {
     const walk = this.walk!;
-    const seats = inst.def.seats ?? [];
+    const seats = inst.seats;
     if (!seats.length) return;
     // nearest seat to the character
     let seat = seats[0];
@@ -1185,8 +1271,8 @@ export class Interactions {
           floor,
           facing: this.facingOf(inst, seat.facing),
           pose: seat.kind === 'lie' ? 'lie' : 'sit',
-          seatHeight: seat.height + inst.item.elevation,
-          lift: w.y - floor - (seat.height + inst.item.elevation),
+          seatHeight: seat.height * inst.k.y + inst.item.elevation,
+          lift: w.y - floor - (seat.height * inst.k.y + inst.item.elevation),
           tilt: th * tiltSign,
         };
       },
@@ -1361,7 +1447,7 @@ export class Interactions {
     const walk = this.walk!;
     const t = textOf(inst.def);
     const a = inst.act.get('play')!;
-    const at = a.at ?? { x: 0, y: 0, z: inst.def.size.d / 2 + 0.3 };
+    const at = a.at ?? { x: 0, y: 0, z: inst.lsize.d / 2 + 0.3 / inst.k.z };
     const p = this.plan(inst, at.x, at.z);
     const prop: Prop = /pool|billiard|ביליארד|סנוקר/.test(t) ? 'cue' : /ping|pong|טניס שולחן|פינג/.test(t) ? 'paddle' : 'none';
     const center = this.pose(inst);
@@ -1386,7 +1472,7 @@ export class Interactions {
                 sound.sfx(win ? 'cheer' : 'miss', 0.7);
                 if (win) {
                   useWalk.getState().addScore(5);
-                  this.particles.emit('confetti', this.world3(inst, 0, inst.def.size.h + 0.3, 0), { count: 40 });
+                  this.particles.emit('confetti', this.world3(inst, 0, inst.lsize.h + 0.3 / inst.k.y, 0), { count: 40 });
                 }
                 useWalk.getState().toast(win ? '🏆 ניצחת את הסיבוב!' : '😅 כמעט! עוד סיבוב?');
               }
@@ -1421,7 +1507,7 @@ export class Interactions {
   private petHead(inst: Inst): THREE.Vector3 {
     const h = inst.parts.get('head')?.[0];
     if (h) return h.getWorldPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.15, 0));
-    return this.world3(inst, 0, inst.def.size.h + 0.1, 0);
+    return this.world3(inst, 0, inst.lsize.h + 0.1 / inst.k.y, 0);
   }
 
   private toggleFollow(inst: Inst): void {
@@ -1683,7 +1769,7 @@ export class Interactions {
       if (g.def.id !== 'football-goal' && g.def.id !== 'goal-soccer') continue;
       g.holder.updateWorldMatrix(true, false);
       const l = g.holder.worldToLocal(tmpV.copy(b.p));
-      const { w, d, h } = g.def.size;
+      const { w, d, h } = g.size;
       if (Math.abs(l.x) > w / 2 - 0.06 || l.y > h - 0.08 || l.z > d / 2 || l.z < -d / 2 - 0.5) continue;
       if (this.goalCooldown <= 0 && l.z < d / 2 - 0.12 && b.v.lengthSq() > 0.3) {
         this.goalCooldown = 4;
@@ -1822,7 +1908,7 @@ export class Interactions {
     walk.playFor('feed', 2);
     inst.st.feedT = 6;
     const area = inst.act.get('fish')?.area;
-    const top = area ? (area.max.y as number) : inst.def.size.h;
+    const top = area ? (area.max.y as number) : inst.lsize.h;
     for (let i = 0; i < 8; i++) {
       setTimeout(() => this.particles.emit('crumb', this.world3(inst, (Math.random() - 0.5) * 0.2, top, (Math.random() - 0.5) * 0.1), { count: 3, gravity: 0.4, life: 3, vy: 0, jitter: 0.05 }), i * 120);
     }
@@ -1990,16 +2076,16 @@ export class Interactions {
     }
     // effects
     inst.emitAcc += dt;
-    if (st.on.music && Math.random() < dt * 1.5) this.particles.emit('note', this.world3(inst, 0, inst.def.size.h + 0.1, 0), { count: 1 });
+    if (st.on.music && Math.random() < dt * 1.5) this.particles.emit('note', this.world3(inst, 0, inst.lsize.h + 0.1 / inst.k.y, 0), { count: 1 });
     if (st.on.fire) {
       const a = inst.act.get('fire')!;
-      const at = a.at ?? { x: 0, y: inst.def.size.h * 0.4, z: 0 };
-      const small = a.variant === 'candle' || inst.def.size.w < 0.4;
+      const at = a.at ?? { x: 0, y: inst.lsize.h * 0.4, z: 0 };
+      const small = a.variant === 'candle' || inst.size.w < 0.4;
       const p = this.world3(inst, at.x, at.y, at.z);
       const rate = small ? 18 : 45;
       const n = Math.floor(inst.emitAcc * rate);
       if (n > 0) {
-        const span = small ? 0.006 : Math.min(0.5, inst.def.size.w * 0.35);
+        const span = small ? 0.006 : Math.min(0.5, inst.size.w * 0.35);
         this.particles.emit('fire', p, { count: n, spread: span, size: small ? 0.025 : 0.13, vy: small ? 0.12 : 0.55, life: small ? 0.35 : 0.8, wobble: small ? 0.02 : 0.15 });
         if (!small && Math.random() < 0.3) this.particles.emit('smoke', p.clone().add(new THREE.Vector3(0, 0.35, 0)), { count: 1, spread: 0.2, alpha: 0.15 });
         if (!small && Math.random() < 0.15) this.particles.emit('spark', p, { count: 1, spread: 0.2 });
@@ -2007,7 +2093,7 @@ export class Interactions {
       if (inst.fireLight) inst.fireLight.intensity = (small ? 0.5 : 2.6) * (0.8 + Math.random() * 0.35) * (this.lampScale > 0.2 ? 1.6 : 1);
     }
     if (st.on.water) {
-      const at = inst.act.get('water')!.at ?? { x: 0, y: inst.def.size.h, z: 0 };
+      const at = inst.act.get('water')!.at ?? { x: 0, y: inst.lsize.h, z: 0 };
       const p = this.world3(inst, at.x, at.y, at.z);
       const shower = at.y > 1.5;
       const n = Math.floor(inst.emitAcc * (shower ? 140 : 70));

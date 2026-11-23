@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { applyShaderPatches } from '../materials/shaderPatches';
 
 /** Shared clock for wind and water so that every material animates in sync. */
 export const windTime = { value: 0 };
@@ -10,6 +11,7 @@ export const windStrength = { value: 1 };
  */
 export function addWind<T extends THREE.Material>(mat: T, amount = 1): T {
   mat.onBeforeCompile = (shader) => {
+    applyShaderPatches(shader);
     shader.uniforms.uWindTime = windTime;
     shader.uniforms.uWindStrength = windStrength;
     shader.vertexShader = shader.vertexShader
