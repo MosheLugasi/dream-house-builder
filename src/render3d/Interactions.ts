@@ -1681,7 +1681,6 @@ export class Interactions {
   private checkGoals(b: BallState): void {
     for (const g of this.insts.values()) {
       if (g.def.id !== 'football-goal' && g.def.id !== 'goal-soccer') continue;
-      if (Math.abs(g.holder.position.x - b.p.x) + Math.abs(g.holder.position.z - b.p.z) > 60 && !g.holder.parent) continue;
       g.holder.updateWorldMatrix(true, false);
       const l = g.holder.worldToLocal(tmpV.copy(b.p));
       const { w, d, h } = g.def.size;
