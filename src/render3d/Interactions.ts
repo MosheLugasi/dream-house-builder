@@ -1077,7 +1077,7 @@ export class Interactions {
     const tiltSign = Math.cos(seat.facing);
     const exitP = this.plan(inst, seat.x + Math.sin(seat.facing) * 0.7, seat.z + Math.cos(seat.facing) * 0.7);
     walk.occupy({
-      activity: kind === 'swing' ? 'swing' : 'none',
+      activity: kind === 'swing' && seat.kind !== 'lie' ? 'swing' : 'none',
       label: kind === 'swing' ? 'מתנדנדים!' : 'מתנדנדים',
       exit: exitP,
       frame: (dt) => {
@@ -1098,7 +1098,7 @@ export class Interactions {
           x: w.x,
           y: w.z,
           facing: this.facingOf(inst, seat.facing),
-          pose: 'sit',
+          pose: seat.kind === 'lie' ? 'lie' : 'sit',
           seatHeight: seat.height + inst.item.elevation,
           lift: w.y - (seat.height + inst.item.elevation),
           tilt: th * tiltSign,
@@ -1208,6 +1208,7 @@ export class Interactions {
     const center = { x: inst.item.x, y: inst.item.y };
     let time = 0;
     let hits = 0;
+    if (inst.parts.has('spin')) inst.st.spinSpeed = 2.5;
     walk.occupy(
       this.stay(
         { x: p.x, y: p.y, facing: Math.atan2(center.x - p.x, center.y - p.y), pose: 'stand' },
@@ -1232,6 +1233,9 @@ export class Interactions {
               }
             }
             return f;
+          },
+          onEnd: () => {
+            inst.st.spinSpeed = 0;
           },
         },
       ),
@@ -1757,7 +1761,7 @@ export class Interactions {
       if (vel < 0.01 && !spinning) st.spin = 0;
       for (const r of parts.get('rotor') ?? []) r.quaternion.copy(inst.rest.get(r)!.q).multiply(tmpQ.setFromAxisAngle(AY, st.spin));
       for (const r of parts.get('spin') ?? []) {
-        const axis = inst.act.has('music') ? AY : AX;
+        const axis = inst.act.has('music') || r.userData.axis === 'y' ? AY : AX;
         r.quaternion.copy(inst.rest.get(r)!.q).multiply(tmpQ.setFromAxisAngle(axis, st.spin));
       }
     }
