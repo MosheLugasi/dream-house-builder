@@ -1,4 +1,4 @@
-import type { Project } from '../model/types';
+import type { FurnitureItem, Project } from '../model/types';
 
 /**
  * Local persistence (localStorage) + backup files.
@@ -77,6 +77,18 @@ export function deleteProject(id: string): void {
 }
 
 /** Validates and normalizes project JSON (from storage or a backup file). Throws on invalid input. */
+/** Optional per-item size / mirror (added within v2): drop anything that is not a sane value. */
+function cleanItem(f: FurnitureItem): void {
+  const sz = f.size as unknown;
+  const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v > 0.005 && v < 100;
+  if (sz !== undefined) {
+    const o = sz as Record<string, unknown> | null;
+    if (!o || typeof o !== 'object' || !ok(o.w) || !ok(o.d) || !ok(o.h)) delete f.size;
+    else f.size = { w: o.w as number, d: o.d as number, h: o.h as number };
+  }
+  if (f.mirror !== undefined && typeof f.mirror !== 'boolean') delete f.mirror;
+}
+
 export function parseProject(raw: string): Project {
   const data = JSON.parse(raw) as Partial<Project>;
   if (!data || data.format !== 'dream-house-builder' || !Array.isArray(data.buildings) || !data.buildings.length) {
@@ -91,6 +103,7 @@ export function parseProject(raw: string): Project {
   site.roads ??= [];
   site.areas ??= [];
   site.props ??= [];
+  site.props.forEach(cleanItem);
   data.site = site as Project['site'];
   for (const b of data.buildings) {
     if (!Array.isArray(b.levels) || !b.levels.length) throw new Error('קובץ פגום: חסרות קומות');
@@ -104,6 +117,7 @@ export function parseProject(raw: string): Project {
       l.walls ??= [];
       l.openings ??= [];
       l.furniture ??= [];
+      l.furniture.forEach(cleanItem);
       l.roomStyles ??= [];
     }
   }

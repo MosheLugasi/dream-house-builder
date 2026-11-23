@@ -4,6 +4,7 @@ import type { Building, Level, Project } from '../model/types';
 import { emptyProject } from '../model/defaults';
 import { sampleProject } from '../model/neighborhood';
 import { loadCurrentProject, saveProject } from '../io/storage';
+import { loadQuality, type Quality } from './quality';
 
 export type Mode = 'site' | 'plan' | 'view3d' | 'walk';
 /** what is being edited: the whole neighborhood, or the inside of one building */
@@ -33,7 +34,8 @@ export type Selection =
 export interface ViewOptions {
   wallsLow: boolean;
   showRoof: boolean;
-  quality: 'low' | 'high';
+  /** rendering preset of the 3D view (a device preference, remembered in localStorage) */
+  quality: Quality;
   snap: boolean;
   showDimensions: boolean;
   firstPerson: boolean;
@@ -94,7 +96,7 @@ export const useStore = create<State>((set, get) => ({
   tool: { type: 'select' },
   selection: null,
   levelIndex: 0,
-  view: { wallsLow: false, showRoof: false, quality: 'high', snap: true, showDimensions: true, firstPerson: false, timeOfDay: 14.5, autoTime: false },
+  view: { wallsLow: false, showRoof: false, quality: loadQuality(), snap: true, showDimensions: true, firstPerson: false, timeOfDay: 14.5, autoTime: false },
   hint: '',
   wallThickness: 0.2,
 

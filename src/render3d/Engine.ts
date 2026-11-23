@@ -5,7 +5,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { N8AOPass } from 'n8ao';
-import { getFurniture } from '../catalog';
+import { getFurniture, itemSize, type ItemAnchors } from '../catalog';
+import { placedBoxes, placedLight, placedSeats } from '../catalog/placed';
 import { setWindowGlow } from '../catalog/openings';
 import { finishes } from '../materials/finishes';
 import { setMaxAnisotropy } from '../materials/textureGen';
@@ -732,7 +733,7 @@ export class Engine {
   private collectLamps(): LampSource[] {
     const { project } = useStore.getState();
     const out: LampSource[] = [];
-    const add = (f: FurnitureItem, origin: Pick<Building, 'x' | 'y' | 'rotation'>, floorY: number, lift: number) => {
+    const add = (f: FurnitureItem, origin: Pick<Building, 'x' | 'y' | 'rotation'>, floorY: number, lift: number, holder?: THREE.Object3D) => {
       const def = getFurniture(f.catalogId);
       if (!def?.light) return;
       const rot = f.rotation + origin.rotation;
@@ -740,21 +741,23 @@ export class Engine {
       const c = Math.cos(rot);
       const s = Math.sin(rot);
       const l = def.light;
+      // the light sits where the (resized / mirrored) fitting really has its bulb
+      const at = placedLight(def, f, holder?.userData.body?.userData.anchors) ?? l;
       out.push({
         id: f.id,
-        pos: new THREE.Vector3(p.x + l.x * c - l.z * s, floorY + f.elevation + l.y + (def.mount === 'ceiling' ? lift : 0), p.y + l.x * s + l.z * c),
+        pos: new THREE.Vector3(p.x + at.x * c - at.z * s, floorY + f.elevation + at.y + (def.mount === 'ceiling' ? lift : 0), p.y + at.x * s + at.z * c),
         color: l.color,
         intensity: l.intensity,
         distance: l.distance,
       });
     };
-    for (const f of project.site.props) add(f, { x: 0, y: 0, rotation: 0 }, groundHeight(this.roads, f.x, f.y), 0);
+    for (const f of project.site.props) add(f, { x: 0, y: 0, rotation: 0 }, groundHeight(this.roads, f.x, f.y), 0, this.props.entries.get(f.id)?.holder);
     for (const b of project.buildings) {
       const bv = this.buildings.get(b.id);
       b.levels.forEach((lvl, i) => {
         const layer = bv?.levels[i]?.items;
         if (!layer) return;
-        for (const entry of layer.entries.values()) add(entry.item, b, levelElevation(b, i), lvl.height - 2.7);
+        for (const entry of layer.entries.values()) add(entry.item, b, levelElevation(b, i), lvl.height - 2.7, entry.holder);
       });
     }
     return out;
@@ -784,11 +787,11 @@ export class Engine {
       const c = Math.cos(rot);
       const s = Math.sin(rot);
       const tx = (q: Vec2): Vec2 => ({ x: p.x + q.x * c - q.y * s, y: p.y + q.x * s + q.y * c });
-      void holder;
       void home;
+      const anchors = holder?.userData.body?.userData.anchors as ItemAnchors | undefined;
       // swings / rocking things are ridden through their action, not as a plain seat
       const ridden = def.ride || def.actions?.some((a) => a.kind === 'swing' || a.kind === 'rock');
-      if (!ridden) world.seats.push(...seatsOf(def, p.x, p.y, rot, floorY, f.elevation, f.id));
+      if (!ridden) world.seats.push(...seatsOf(def, p.x, p.y, rot, floorY, f.elevation, f.id, placedSeats(def, f, anchors)));
       // pets walk around and balls roll: they are not fixed obstacles
       if (def.actions?.some((a) => a.kind === 'pet' || a.kind === 'ball')) return;
       if (def.stair && rise !== null) {
@@ -801,18 +804,20 @@ export class Engine {
         world.walls.push({ a: tx(bars.exit[0]), b: tx(bars.exit[1]), half: 0.05, y0, y1, openY: floorY + rise });
         return;
       }
-      const foot = collisionFootprint(def);
-      if (!foot) return;
-      world.boxes.push({
-        id: f.id,
-        x: p.x,
-        y: p.y,
-        hw: foot.w / 2,
-        hd: foot.d / 2,
-        rotation: rot,
-        y0: floorY + f.elevation,
-        y1: floorY + f.elevation + def.size.h,
-      });
+      // one solid box, or several for L / U shaped pieces (local boxes → world)
+      for (const b of placedBoxes(def, f, collisionFootprint(def), anchors)) {
+        const at = tx({ x: b.x, y: b.z });
+        world.boxes.push({
+          id: f.id,
+          x: at.x,
+          y: at.y,
+          hw: b.w / 2,
+          hd: b.d / 2,
+          rotation: rot,
+          y0: floorY + f.elevation,
+          y1: floorY + f.elevation + b.h,
+        });
+      }
     };
 
     for (const b of project.buildings) {
@@ -1025,12 +1030,12 @@ export class Engine {
   }
 
   /** Where an item lands: against a wall when one is near (building scope), else on the grid. */
-  private placement(p: Vec2, catalogId: string, rotation: number): { pos: Vec2; rotation: number } {
+  private placement(p: Vec2, catalogId: string, rotation: number, item?: Pick<FurnitureItem, 'size'>): { pos: Vec2; rotation: number } {
     const st = useStore.getState();
     const def = getFurniture(catalogId);
     const snapOn = st.view.snap;
     if (st.scope === 'building' && def && snapOn && !def.walkable && !def.stair && def.mount !== 'ceiling') {
-      const s = snapFurnitureToWall(p, def.size, this.level().walls, def.mount === 'wall' ? 1.0 : 0.22);
+      const s = snapFurnitureToWall(p, itemSize(def, item), this.level().walls, def.mount === 'wall' ? 1.0 : 0.22);
       if (s) return s;
     }
     const step = snapOn ? 0.05 : 0.01;
@@ -1091,7 +1096,7 @@ export class Engine {
       const p = this.editPoint(drag.y);
       const entry = (drag.kind === 'furniture' ? this.activeItems() : this.props)?.entries.get(drag.id);
       if (!p || !entry) return;
-      const placed = this.placement({ x: p.x - drag.offset.x, y: p.y - drag.offset.y }, entry.item.catalogId, entry.item.rotation);
+      const placed = this.placement({ x: p.x - drag.offset.x, y: p.y - drag.offset.y }, entry.item.catalogId, entry.item.rotation, entry.item);
       const patch = { x: placed.pos.x, y: placed.pos.y, rotation: placed.rotation };
       if (drag.kind === 'furniture') updateFurniture(drag.id, patch, true);
       else updateProp(drag.id, patch, true);

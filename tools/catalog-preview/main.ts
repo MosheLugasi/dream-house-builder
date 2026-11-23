@@ -19,7 +19,7 @@
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { FURNITURE, resolveColors } from '/src/catalog/index.ts';
+import { clampSize, FURNITURE, itemScale, resolveColors } from '/src/catalog/index.ts';
 import type { FurnitureDef, RideRuntime } from '/src/catalog/types.ts';
 import { CATEGORY_LABELS } from '/src/catalog/types.ts';
 
@@ -32,6 +32,11 @@ const [tw, th] = (q.get('tile') ?? '460x380').split('x').map(Number);
 const LABEL_H = 44;
 const rh = th - LABEL_H;
 const mode = q.get('mode') ?? 'sheet';
+/** `size=w,d,h` (meters): show every item resized to that size (clamped to its range) */
+const sizeParam = (() => {
+  const v = q.get('size')?.split(',').map(Number);
+  return v && v.length === 3 && v.every((n) => n > 0) ? { w: v[0], d: v[1], h: v[2] } : null;
+})();
 const CEILING = 2.7;
 
 const items = FURNITURE.filter((f) => (!cat || f.category === cat) && (!ids || ids.includes(f.id)));
@@ -89,7 +94,13 @@ const report: Report[] = [];
 
 function place(def: FurnitureDef): { root: THREE.Group; box: THREE.Box3; rep: Report } {
   const root = new THREE.Group();
-  const obj = def.build({ colors: resolveColors(def) });
+  const size = sizeParam ? clampSize(def, sizeParam) : def.size;
+  const obj = def.build({ colors: resolveColors(def), size });
+  if (!def.parametric && size !== def.size) {
+    const k = itemScale(def, size);
+    obj.scale.set(k.x, k.y, k.z);
+    if (def.mount === 'ceiling') obj.position.y = CEILING * (1 - k.y);
+  }
   root.add(obj);
   obj.updateMatrixWorld(true);
   const raw = new THREE.Box3().setFromObject(obj, true);
@@ -103,7 +114,7 @@ function place(def: FurnitureDef): { root: THREE.Group; box: THREE.Box3; rep: Re
       tris += (g.index ? g.index.count : g.getAttribute('position').count) / 3;
     }
   });
-  const { w, d, h } = def.size;
+  const { w, d, h } = size;
   const tol = 0.006;
   const notes: string[] = [];
   const mount = def.mount ?? 'floor';

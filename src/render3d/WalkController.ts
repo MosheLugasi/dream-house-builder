@@ -220,10 +220,20 @@ export const emptyWorld = (): WalkWorld => ({
   groundAt: () => 0,
 });
 
-export function seatsOf(def: FurnitureDef, x: number, y: number, rotation: number, floorY: number, elevation: number, itemId?: string): SeatInstance[] {
+export function seatsOf(
+  def: FurnitureDef,
+  x: number,
+  y: number,
+  rotation: number,
+  floorY: number,
+  elevation: number,
+  itemId?: string,
+  /** the seats of the placed item (resized / mirrored); default: the catalog's */
+  local: SeatAnchor[] = def.seats ?? [],
+): SeatInstance[] {
   const c = Math.cos(rotation);
   const s = Math.sin(rotation);
-  return (def.seats ?? []).map((a: SeatAnchor) => {
+  return local.map((a: SeatAnchor) => {
     const fx = Math.sin(a.facing);
     const fz = Math.cos(a.facing);
     return {

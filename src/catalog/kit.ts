@@ -1914,6 +1914,8 @@ export function bake(root: THREE.Object3D, name = ''): THREE.Group {
   visit(root);
   const out = new THREE.Group();
   out.name = name;
+  // size-dependent anchors of parametric builds travel with the baked template
+  if (root.userData.anchors) out.userData.anchors = root.userData.anchors;
   for (const b of buckets.values()) {
     const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false);
     if (!merged) continue;
