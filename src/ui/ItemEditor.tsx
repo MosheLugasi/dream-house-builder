@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
 import { clampSize, getFurniture, isResizable, itemSize, resizeRange, resolveColors } from '../catalog';
 import type { FurnitureDef, ItemSize } from '../catalog';
-import type { FurnitureItem } from '../model/types';
+import { fitAlongWall } from '../model/fitWall';
+import type { FurnitureItem, Wall } from '../model/types';
 import { useStore } from '../store/store';
 
 type Axis = 'w' | 'd' | 'h';
@@ -20,7 +21,16 @@ type Patch = Partial<FurnitureItem>;
  * Size, mirror and colours of a placed catalog item. Sliders update live without filling the
  * undo history: one checkpoint when a drag starts, transient updates while it runs.
  */
-export function ItemEditor({ item, onChange }: { item: FurnitureItem; onChange: (patch: Patch, transient?: boolean) => void }) {
+export function ItemEditor({
+  item,
+  onChange,
+  walls,
+}: {
+  item: FurnitureItem;
+  onChange: (patch: Patch, transient?: boolean) => void;
+  /** walls of the level (building items): enables "fit along the wall" */
+  walls?: Wall[];
+}) {
   const def = getFurniture(item.catalogId);
   const [locked, setLocked] = useState(false);
   const dragging = useRef(false);
@@ -67,15 +77,15 @@ export function ItemEditor({ item, onChange }: { item: FurnitureItem; onChange: 
     for (const a of ['w', 'd', 'h'] as Axis[]) if (range[a][0] < range[a][1]) next[a] = size[a] * k;
     return clampSize(def, next);
   };
-  const apply = (next: ItemSize, transient = false) => {
+  const apply = (next: ItemSize, transient = false, extra: Patch = {}) => {
     const same = next.w === def.size.w && next.d === def.size.d && next.h === def.size.h;
     // most things stand with their back against a wall: a deeper item grows forwards, not into the wall
     const cur = itemSize(def, latest.current);
     const grow = (next.d - cur.d) / 2;
     const r = latest.current.rotation;
     const moved = Math.abs(grow) > 1e-6 ? { x: latest.current.x - Math.sin(r) * grow, y: latest.current.y + Math.cos(r) * grow } : {};
-    latest.current = { ...latest.current, ...moved, size: same ? undefined : next };
-    onChange({ size: same ? undefined : next, ...moved }, transient);
+    latest.current = { ...latest.current, ...moved, ...extra, size: same ? undefined : next };
+    onChange({ size: same ? undefined : next, ...moved, ...extra }, transient);
   };
   const scaleAll = (k: number) => {
     const next = { w: size.w, d: size.d, h: size.h };
@@ -148,6 +158,21 @@ export function ItemEditor({ item, onChange }: { item: FurnitureItem; onChange: 
               + גדול יותר
             </button>
           </div>
+          {walls && range.w[0] < range.w[1] && def.mount !== 'ceiling' && (() => {
+            const fit = fitAlongWall(walls, item, size);
+            if (!fit || Math.abs(clampSize(def, { ...size, w: fit.w }).w - size.w) < 0.005) return null;
+            return (
+              <button
+                className="btn block"
+                title="מותחים את הפריט לכל אורך הקיר שמאחוריו"
+                onClick={() => {
+                  apply(clampSize(def, { ...size, w: fit.w }), false, { x: fit.x, y: fit.y });
+                }}
+              >
+                ↔ התאמה לאורך הקיר ({Math.round(clampSize(def, { ...size, w: fit.w }).w * 100)} ס"מ)
+              </button>
+            );
+          })()}
           {item.size && (
             <button className="link" onClick={() => apply(def.size)}>
               חזרה לגודל המקורי

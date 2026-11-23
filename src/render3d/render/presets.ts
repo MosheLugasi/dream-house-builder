@@ -1,0 +1,81 @@
+import type { Quality } from '../../store/quality';
+
+/**
+ * What each quality preset of the 3D view turns on. `low` is the plain forward renderer (no post
+ * processing), `high` (the default) adds ambient occlusion, bloom, grading and the cheap lighting tricks,
+ * `ultra` adds the expensive effects for a strong GPU.
+ */
+export interface RenderPreset {
+  quality: Quality;
+  /** upper limit of the device pixel ratio */
+  pixelRatioCap: number;
+  /** post-processing chain (AO, bloom, graded output, SMAA); off = render straight to the canvas */
+  post: boolean;
+  /** N8AO quality mode */
+  ao: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra';
+  /** frames averaged with sub-pixel jitter while the camera stands still (0 = off) */
+  accumulate: number;
+  /** sun shadow map size (per cascade with cascades) */
+  shadowMapSize: number;
+  /** two cascaded sun shadow maps (crisp near the camera, reaching far) instead of one fitted map */
+  cascades: boolean;
+  /** pool of area lights that bring daylight in through the nearest windows */
+  windowLights: number;
+  /** interior surfaces see less of the sky (ambient + reflections) than outdoor ones */
+  indoorAmbient: boolean;
+  /** nearest lit lamps that cast (soft) shadows at night */
+  lampShadows: number;
+  /** blades of grass around the camera */
+  grass: boolean;
+  /** photo: resolution multiplier and jittered samples per pixel */
+  photoScale: number;
+  photoSamples: number;
+}
+
+export const PRESETS: Record<Quality, RenderPreset> = {
+  low: {
+    quality: 'low',
+    pixelRatioCap: 1,
+    post: false,
+    ao: 'Low',
+    accumulate: 0,
+    shadowMapSize: 2048,
+    cascades: false,
+    windowLights: 0,
+    indoorAmbient: true,
+    lampShadows: 0,
+    grass: false,
+    photoScale: 1,
+    photoSamples: 1,
+  },
+  high: {
+    quality: 'high',
+    pixelRatioCap: 2,
+    post: true,
+    ao: 'Medium',
+    accumulate: 0,
+    shadowMapSize: 4096,
+    cascades: false,
+    windowLights: 3,
+    indoorAmbient: true,
+    lampShadows: 0,
+    grass: false,
+    photoScale: 2,
+    photoSamples: 4,
+  },
+  ultra: {
+    quality: 'ultra',
+    pixelRatioCap: 2,
+    post: true,
+    ao: 'High',
+    accumulate: 16,
+    shadowMapSize: 4096,
+    cascades: true,
+    windowLights: 6,
+    indoorAmbient: true,
+    lampShadows: 1,
+    grass: true,
+    photoScale: 2,
+    photoSamples: 8,
+  },
+};

@@ -124,3 +124,21 @@ describe('saved sizes', () => {
     expect(getFurniture(g[0].catalogId)).toBeDefined();
   });
 });
+
+describe('fit along a wall', () => {
+  it('stretches an item between the inner faces of the walls at both ends', async () => {
+    const { fitAlongWall } = await import('../src/model/fitWall');
+    const t = 0.2;
+    const w = (id: string, ax: number, ay: number, bx: number, by: number) => ({ id, a: { x: ax, y: ay }, b: { x: bx, y: by }, thickness: t });
+    // a 5 × 4 room (centerlines); the back wall runs along y = 0
+    const walls = [w('n', 0, 0, 5, 0), w('e', 5, 0, 5, 4), w('s', 5, 4, 0, 4), w('wst', 0, 4, 0, 0)];
+    // a 2 m kitchen run against the back wall, front facing +y (rotation 0), slightly off-center
+    const fit = fitAlongWall(walls as never, { x: 1.6, y: t / 2 + 0.3, rotation: 0 }, { w: 2, d: 0.6 });
+    expect(fit).not.toBeNull();
+    expect(fit!.w).toBeCloseTo(5 - t - 0.01, 2);
+    expect(fit!.x).toBeCloseTo(2.5, 2);
+    expect(fit!.y).toBeCloseTo(t / 2 + 0.3, 3);
+    // far from any wall: nothing to fit
+    expect(fitAlongWall(walls as never, { x: 2.5, y: 2, rotation: 0 }, { w: 1, d: 0.6 })).toBeNull();
+  });
+});

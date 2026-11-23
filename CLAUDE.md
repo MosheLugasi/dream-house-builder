@@ -22,6 +22,9 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
   coordinates). Convert with `toSite` / `toLocal` from `model/types.ts`.
 - Stairs and vehicles are catalog items (`stair` / `vehicle` on `FurnitureDef`, both `noBake`). Kit `box()` takes the height of
   the box's BOTTOM, not its center.
+- Placed items can be resized and mirrored (`item.size`, `item.mirror`); always read sizes through `itemSize(def, item)` and
+  item-local points through `src/catalog/placed.ts` (never `def.size` / `def.seats` / `def.light` directly for a placed item).
+  `parametric` items rebuild at the size and publish `userData.anchors`; the rest are stretched (docs/catalog-authoring.md).
 - Walk-mode behaviour of items is declared with `FurnitureDef.actions` + animated `Kit.part(...)` pieces and run by
   `render3d/Interactions.ts` (guide: `docs/catalog-authoring.md`). Self-simulating things carry a runtime in `userData`:
   play equipment (`ride` + `userData.ride: RideRuntime`) and realistic pets (`pet` + `userData.pet: PetRuntime`).

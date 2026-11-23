@@ -124,7 +124,7 @@ export function Inspector() {
       title = def.name;
       body = (
         <>
-          <ItemEditor item={item} onChange={(patch, transient) => updateFurniture(item.id, patch, transient)} />
+          <ItemEditor item={item} walls={isProp ? undefined : lvl.walls} onChange={(patch, transient) => updateFurniture(item.id, patch, transient)} />
           <div className="row">
             <button className="btn" onClick={() => updateFurniture(item.id, { rotation: item.rotation - Math.PI / 4 })}>
               <Icon name="rotate" size={16} /> סיבוב 45°

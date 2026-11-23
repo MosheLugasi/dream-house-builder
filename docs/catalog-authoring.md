@@ -89,6 +89,23 @@ const door = k.part('door', -w / 2 + 0.01, 0.1, d / 2 - 0.01, { open: -1.75 }); 
 door.rbox(dw, dh, 0.018, 0.002, front, dw / 2, 0, -0.009); // panel extends to the right of the hinge
 ```
 
+## Sizes: stretched or parametric
+The player can resize every placed item (Inspector → מידות) and mirror it. `item.size` / `item.mirror` live on the
+placed `FurnitureItem`; `itemSize(def, item)` gives the effective size.
+- **Default – stretched.** Nothing to do: the game builds the item at its catalog `size` and scales the object
+  (ceiling pieces stretch down from the ceiling). Seats, the light, action points and the footprint follow the
+  scale (`src/catalog/placed.ts`). Range: 50 %–200 % per axis; `resize: false` fixes the size (vehicles, pets, rides
+  and stairs are always fixed), a `resize: { w: [min, max], … }` spec sets explicit ranges (axes left out stay fixed).
+- **Parametric** (`parametric: true`) – for things that must not be distorted (kitchens, lights): `build(ctx)` gets
+  `ctx.size` (already clamped) and rebuilds properly at it (more cabinets, a longer cord, round stays round);
+  `draw2d(ctx, colors, size)` draws at it. Templates are cached per size. Publish whatever depends on the size on
+  `obj.userData.anchors` (`ItemAnchors`, real local meters): `light`, `seats`, `actions` (effect points per kind),
+  `paths`, and `boxes` – the solid footprint as several boxes so the character can walk into an L / U kitchen.
+  Anything left out is scaled from the static definition.
+- Build one orientation only: mirroring is done by the game (`x → −x`).
+- Check every size: `node tools/catalog-preview/shoot.cjs out.png "id=…&size=w,d,h"` and `tests/resize.test.ts`
+  (parametric items must stay inside the requested size at the smallest, default and largest size).
+
 ## Verifying
 ```
 npx vite --port <your port> &
