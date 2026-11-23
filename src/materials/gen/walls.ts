@@ -318,7 +318,8 @@ export function wallpaperStripes(n: number, w: number, h: number): Surface {
   const ctx = drawingContext(n, '#efe9dd');
   const stripes = Math.round(w / 0.12);
   const pitch = n / stripes;
-  for (let k = 0; k < stripes; k++) {
+  // one extra stripe so the hairline that straddles x = 0 also appears at the right edge
+  for (let k = 0; k <= stripes; k++) {
     const x = k * pitch;
     ctx.fillStyle = '#cdd6c8';
     ctx.fillRect(x + pitch * 0.25, 0, pitch * 0.5, n);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseProject } from '../src/io/storage';
 import { emptyProject } from '../src/model/defaults';
 import { sampleProject } from '../src/model/sample';
@@ -30,6 +30,14 @@ describe('project files', () => {
 describe('sample house', () => {
   const lvl = sampleProject().buildings[0].levels[0];
   const graph = buildGraph(lvl.walls);
+
+  it('only uses catalog items that exist', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const count = sampleProject().buildings[0].levels[0].furniture.length;
+    expect(warn).not.toHaveBeenCalled();
+    expect(count).toBeGreaterThan(60);
+    warn.mockRestore();
+  });
 
   it('has five rooms, each with a named style', () => {
     expect(graph.rooms).toHaveLength(5);

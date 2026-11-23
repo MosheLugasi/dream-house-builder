@@ -144,11 +144,15 @@ export class WalkController {
 
   private nearestSeat(): SeatInstance | null {
     let best: SeatInstance | null = null;
-    let bestD = 1.15;
+    let bestScore = Infinity;
     for (const s of this.world.seats) {
       const d = Math.hypot(s.pos.x - this.pos.x, s.pos.y - this.pos.y);
-      if (d < bestD) {
-        bestD = d;
+      // a bed's anchor is the middle of the mattress, so it must be reachable from the bed's edge
+      const reach = s.kind === 'lie' ? 1.75 : 1.15;
+      if (d > reach) continue;
+      const score = d / reach;
+      if (score < bestScore) {
+        bestScore = score;
         best = s;
       }
     }

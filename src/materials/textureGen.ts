@@ -326,7 +326,8 @@ export function fbm(
     ay *= 2;
     amp *= gain;
   }
-  return normalize(upsample(acc, nx, ny, n, n));
+  // bilinear upsampling never leaves the value range, so normalize on the small grid
+  return upsample(normalize(acc), nx, ny, n, n);
 }
 
 /** per-pixel uniform white noise [0,1) */
@@ -763,6 +764,8 @@ export function heightToNormal(
   strength = 1,
 ): Uint8ClampedArray<ArrayBuffer> {
   const out = new Uint8ClampedArray(n * n * 4);
+  // one packed 32-bit store per pixel (little endian RGBA) instead of four clamped stores
+  const out32 = new Uint32Array(out.buffer);
   const mask = n - 1;
   const kx = strength / (8 * mmPerPxX);
   const ky = strength / (8 * mmPerPxY);
@@ -771,25 +774,35 @@ export function heightToNormal(
     const r0 = ((y - 1) & mask) * n;
     const r1 = y * n;
     const r2 = ((y + 1) & mask) * n;
+    // sliding 3x3 window: left / centre / right columns
+    let tl = height[r0 + mask];
+    let ml = height[r1 + mask];
+    let bl = height[r2 + mask];
+    let tc = height[r0];
+    let mc = height[r1];
+    let bc = height[r2];
     for (let x = 0; x < n; x++) {
-      const xl = (x - 1) & mask;
       const xr = (x + 1) & mask;
-      const tl = height[r0 + xl];
       const tr = height[r0 + xr];
-      const bl = height[r2 + xl];
+      const mr = height[r1 + xr];
       const br = height[r2 + xr];
-      const gx = (tr + 2 * height[r1 + xr] + br - tl - 2 * height[r1 + xl] - bl) * kx;
-      const gy = (bl + 2 * height[r2 + x] + br - tl - 2 * height[r0 + x] - tr) * ky;
-      const inv = 127.5 / Math.sqrt(gx * gx + gy * gy + 1);
+      const gx = (tr + 2 * mr + br - tl - 2 * ml - bl) * kx;
+      const gy = (bl + 2 * bc + br - tl - 2 * tc - tr) * ky;
+      const inv = 127 / Math.sqrt(gx * gx + gy * gy + 1);
       // tiny dither so sub-LSB slopes (tile tilt, glaze waviness) survive 8-bit quantization
       s = (Math.imul(s, 1664525) + 1013904223) | 0;
-      const d1 = ((s >>> 16) & 255) / 255 - 0.5;
-      const d2 = ((s >>> 24) & 255) / 255 - 0.5;
-      const o = (r1 + x) * 4;
-      out[o] = 127.5 - gx * inv + d1;
-      out[o + 1] = 127.5 + gy * inv + d2;
-      out[o + 2] = 127.5 + inv;
-      out[o + 3] = 255;
+      const d1 = ((s >>> 16) & 255) / 255;
+      const d2 = (s >>> 24) / 255;
+      const r = (127 - gx * inv + d1) | 0;
+      const g = (127 + gy * inv + d2) | 0;
+      const b = (127.5 + inv) | 0;
+      out32[r1 + x] = 0xff000000 | (b << 16) | (g << 8) | r;
+      tl = tc;
+      ml = mc;
+      bl = bc;
+      tc = tr;
+      mc = mr;
+      bc = br;
     }
   }
   return out;

@@ -166,21 +166,83 @@ uniform vec3 finishMacroTint;`,
 
 // --- catalog finishes -------------------------------------------------------------------------
 
-function buildMaterial(spec: FinishSpec): THREE.MeshStandardMaterial {
-  const surface: Surface = spec.gen(spec.res, spec.tile[0], spec.tile[1]);
+/** resolution of the instant first version of a finish (see {@link setProgressiveFinishes}) */
+const PREVIEW_RES = 256;
+
+let progressive = typeof window !== 'undefined';
+const upgradeQueue: Array<{ spec: FinishSpec; mat: THREE.MeshStandardMaterial }> = [];
+let upgradeScheduled = false;
+const listeners = new Set<(id: string) => void>();
+
+/**
+ * Progressive generation (default on in browsers): `material(id)` returns immediately with
+ * 256 px textures (a few ms) and the full resolution textures are generated shortly after,
+ * one finish per idle slot, and swapped into the same material. Turn it off to always
+ * generate at full resolution synchronously (screenshots, tests).
+ */
+export function setProgressiveFinishes(enabled: boolean): void {
+  progressive = enabled;
+  if (!enabled) flushFinishUpgrades();
+}
+
+/**
+ * Subscribe to "textures of finish `id` were upgraded to full resolution". Apps that render
+ * on demand should request a new frame from the listener. Returns an unsubscribe function.
+ */
+export function onFinishTexturesUpdated(listener: (id: string) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** finish all pending full-resolution upgrades right now (blocking) */
+export function flushFinishUpgrades(): void {
+  while (upgradeQueue.length) upgradeNext();
+}
+
+function applyTextures(spec: FinishSpec, mat: THREE.MeshStandardMaterial, n: number): void {
+  const surface: Surface = spec.gen(n, spec.tile[0], spec.tile[1]);
   const tex = surfaceToTextures(surface, spec.normalStrength ?? 1, spec.rotation ?? 0);
-  const mat = new THREE.MeshStandardMaterial({
-    map: tex.map,
-    normalMap: tex.normalMap,
-    roughnessMap: tex.roughnessMap,
-    roughness: surface.uniformRough ?? 1,
-    metalness: 0,
-  });
+  const old = [mat.map, mat.normalMap, mat.roughnessMap];
+  mat.map = tex.map;
+  mat.normalMap = tex.normalMap;
+  mat.roughnessMap = tex.roughnessMap;
+  mat.roughness = surface.uniformRough ?? 1;
+  for (const t of old) t?.dispose();
+}
+
+function upgradeNext(): void {
+  const job = upgradeQueue.shift();
+  if (!job) return;
+  applyTextures(job.spec, job.mat, job.spec.res);
+  for (const l of listeners) l(job.spec.id);
+}
+
+function scheduleUpgrade(): void {
+  if (upgradeScheduled || !upgradeQueue.length) return;
+  upgradeScheduled = true;
+  const run = () => {
+    upgradeScheduled = false;
+    upgradeNext();
+    scheduleUpgrade();
+  };
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 250 });
+  else setTimeout(run, 30);
+}
+
+function buildMaterial(spec: FinishSpec): THREE.MeshStandardMaterial {
+  const mat = new THREE.MeshStandardMaterial({ metalness: 0 });
   const ns = spec.normalScale ?? 1;
   mat.normalScale.set(ns, ns);
   if (spec.envMapIntensity !== undefined) mat.envMapIntensity = spec.envMapIntensity;
   if (spec.macro) addMacroVariation(mat, spec.tile[0], spec.tile[1], spec.macro);
   mat.name = spec.id;
+  if (progressive && spec.res > PREVIEW_RES) {
+    applyTextures(spec, mat, PREVIEW_RES);
+    upgradeQueue.push({ spec, mat });
+    scheduleUpgrade();
+  } else {
+    applyTextures(spec, mat, spec.res);
+  }
   return mat;
 }
 

@@ -20,6 +20,7 @@ export function sampleProject(): Project {
   const p = emptyProject('בית לדוגמה');
   const b = p.buildings[0];
   const lvl = b.levels[0];
+  b.exterior = 'jerusalem-stone';
   const EXT = EXTERIOR_WALL_THICKNESS;
   const INT = DEFAULT_WALL_THICKNESS;
   const wall = (ax: number, ay: number, bx: number, by: number, t: number): Wall => {
@@ -41,7 +42,10 @@ export function sampleProject(): Project {
   };
   const put = (catalogId: string, x: number, y: number, rotation = S, colors?: Record<string, string>) => {
     const def = getFurniture(catalogId);
-    if (!def) return;
+    if (!def) {
+      console.warn(`[sample] unknown catalog item "${catalogId}"`);
+      return;
+    }
     lvl.furniture.push({
       id: newId('f'),
       catalogId,
@@ -155,15 +159,17 @@ export function sampleProject(): Project {
   put('ceiling-light', 9.4, 7.45);
 
   // ---- garden ----
-  put('tree-deciduous', -3.2, 2.2);
-  put('tree-deciduous', 15.4, 7.6, 1.2);
+  put('tree', -3.6, 1.6);
+  put('tree-fruit', 15.2, 7.8, 1.2);
   put('tree-cypress', 13.6, -1.6);
   put('tree-cypress', 14.8, -1.9);
   put('bush', 5.2, 10.1);
   put('bush', 6.3, 10.2, 0.7);
   put('flower-bed', 1.6, 10.0);
-  put('garden-bench', -2.6, 7.2, E);
-  put('outdoor-table', -2.8, 4.9);
+  put('garden-bench', 14.2, 3.4, W);
+  put('hedge', 2.0, -1.6);
+  put('hedge', 4.4, -1.6);
+  put('patio-table', -2.8, 5.0);
   put('sun-lounger', -3.4, 9.6, 0.4);
   put('garden-lamp', 4.6, 10.6);
 

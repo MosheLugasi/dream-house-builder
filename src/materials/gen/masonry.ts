@@ -12,6 +12,7 @@ import {
   newSurface,
   pick,
   rasterRects,
+  valueNoise,
   whiteNoise,
 } from '../textureGen';
 
@@ -83,11 +84,11 @@ export function shadeMasonry(s: Surface, cm: CellMap, o: MasonryOpts): void {
     off[k] = Math.floor(rng() * n * n);
   }
   const size = (s.w + s.h) / 2;
-  const mot = fbm(n, size / o.mottleSize, size / o.mottleSize, 4, o.seed + 3);
-  const bmp = fbm(n, size / o.bumpSize, size / o.bumpSize, 4, o.seed + 7, 0.55);
+  const mot = fbm(n, size / o.mottleSize, size / o.mottleSize, 3, o.seed + 3);
+  const bmp = fbm(n, size / o.bumpSize, size / o.bumpSize, 3, o.seed + 7, 0.55);
   const en = o.edgeNoise ? fbm(n, size / (o.edgeNoiseSize ?? 0.025), size / (o.edgeNoiseSize ?? 0.025), 2, o.seed + 11) : null;
   const wn = whiteNoise(n, o.seed + 13);
-  const pit = o.pits ? fbm(n, n / 2.5, n / 2.5, 2, o.seed + 17, 0.7) : null;
+  const pit = o.pits ? valueNoise(n, n / 2.5, n / 2.5, o.seed + 17) : null;
   const stainF = o.stain ? fbm(n, size / o.stain.size, size / o.stain.size, 4, o.seed + 19) : null;
   const veinF = o.veins ? fbm(n, size / o.veins.size, size / o.veins.size, 4, o.seed + 23) : null;
   const stainC = hexToRgb(o.stain?.color ?? '#ffffff');
@@ -96,7 +97,7 @@ export function shadeMasonry(s: Surface, cm: CellMap, o: MasonryOpts): void {
   const half = o.mortarW / 2;
   const pxmm = (size * 1000) / n;
   const aa = Math.max(0.4, 0.6 * pxmm);
-  const pitLevel = 1 - (o.pits ?? 0);
+  const pitLevel = 1 - (o.pits ?? 0) * 1.4;
   const pitDepth = o.pitDepth ?? 0.5;
   const bulge = o.bulge ?? 0;
   const bulgeW = o.bulgeW ?? 10;
@@ -280,7 +281,7 @@ export function jerusalemStone(n: number, w: number, h: number, rockFace: boolea
   shadeMasonry(s, cm, {
     seed,
     color: (_k, r) => jitter(pick(r, palette, weights), r, 0.045, 0.012),
-    mortar: '#b5a88f',
+    mortar: rockFace ? '#a09580' : '#b5a88f',
     mortarW: rockFace ? 12 : 8,
     mortarDepth: rockFace ? 7 : 4,
     bevel: rockFace ? 8 : 4,

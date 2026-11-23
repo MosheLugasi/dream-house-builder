@@ -4,14 +4,22 @@
  *   npx vite --port 5198   ->   http://localhost:5198/tools/materials-preview/index.html
  *
  * Query parameters:
- *   mode=scenes|swatches     (default scenes)
+ *   mode=scenes|swatches|tiling   (default scenes; tiling = color map repeated 2x2 to check seams)
  *   view=room|close|top      camera preset for scenes
  *   ids=a,b,c  kind=floor    filter the finishes
  *   w=640&h=440              render size per scene
+ *   progressive=1            time the app's default path: instant 256 px version first,
+ *                            then the full-resolution upgrade (caption shows both)
  */
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { FINISH_KIND_LABELS, finishes, setMaxAnisotropy } from '../../src/materials/finishes';
+import {
+  FINISH_KIND_LABELS,
+  finishes,
+  flushFinishUpgrades,
+  setMaxAnisotropy,
+  setProgressiveFinishes,
+} from '../../src/materials/finishes';
 import type { FinishDef, FinishKind } from '../../src/materials/types';
 
 const params = new URLSearchParams(location.search);
@@ -19,6 +27,8 @@ const mode = params.get('mode') ?? 'scenes';
 const view = params.get('view') ?? 'room';
 const W = Number(params.get('w') ?? 640);
 const H = Number(params.get('h') ?? 440);
+const progressive = params.get('progressive') === '1';
+setProgressiveFinishes(progressive);
 const grid = document.getElementById('grid')!;
 const status = document.getElementById('status')!;
 
@@ -116,8 +126,11 @@ async function scenes(): Promise<void> {
     const onWall = def.kinds.some((k) => k === 'wall' || k === 'exterior' || k === 'roof');
     const t0 = performance.now();
     const mat = finishes.material(def.id);
+    const first = performance.now() - t0;
+    flushFinishUpgrades();
     const ms = performance.now() - t0;
     timings[def.id] = Math.round(ms * 10) / 10;
+    const timeLabel = progressive ? `${first.toFixed(0)} + ${(ms - first).toFixed(0)} ms` : `${ms.toFixed(0)} ms`;
     floor.material = onFloor ? mat : finishes.material('oak-planks');
     wall.material = onWall ? mat : finishes.material('paint:#f1eee8');
 
@@ -145,7 +158,7 @@ async function scenes(): Promise<void> {
     img.src = renderer.domElement.toDataURL('image/jpeg', 0.92);
     const cap = document.createElement('div');
     cap.className = 'cap';
-    cap.innerHTML = `<b>${def.id}</b><span>${def.kinds.join('/')} · ${ms.toFixed(0)} ms</span><span dir="rtl">${def.name}</span>`;
+    cap.innerHTML = `<b>${def.id}</b><span>${def.kinds.join('/')} · ${timeLabel}</span><span dir="rtl">${def.name}</span>`;
     card.append(img, cap);
     grid.append(card);
   }
@@ -189,7 +202,33 @@ async function swatches(): Promise<void> {
   status.textContent = 'done';
 }
 
-(mode === 'swatches' ? swatches() : scenes())
+/** every color map drawn 2 x 2: any seam would show up as a cross through the middle */
+async function tiling(): Promise<void> {
+  const size = Number(params.get('size') ?? 150);
+  for (const def of selected()) {
+    const mat = finishes.material(def.id);
+    const src = mat.map?.image as HTMLCanvasElement | undefined;
+    if (!src) continue;
+    const c = document.createElement('canvas');
+    c.width = c.height = size * 2;
+    const ctx = c.getContext('2d')!;
+    ctx.imageSmoothingQuality = 'high';
+    for (let k = 0; k < 4; k++) ctx.drawImage(src, (k % 2) * size, (k >> 1) * size, size, size);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.id = def.id;
+    c.style.display = 'block';
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.innerHTML = `<b>${def.id}</b>`;
+    card.append(c, cap);
+    grid.append(card);
+    await nextFrame();
+  }
+  status.textContent = 'done';
+}
+
+(mode === 'swatches' ? swatches() : mode === 'tiling' ? tiling() : scenes())
   .catch((e) => {
     console.error(e);
     status.textContent = String(e);
