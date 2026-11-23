@@ -17,9 +17,11 @@ export interface RealismFrame {
   /** the walker stands inside a room */
   indoors: boolean;
   project: Project;
+  /** what the camera looks at (orbit target / walker) */
+  focus: THREE.Vector3;
 }
 
-const smooth = THREE.MathUtils.smoothstep;
+const _dir = new THREE.Vector3();
 
 /**
  * Everything that makes the image look photographic, per quality preset: the post-processing pipeline,
@@ -42,7 +44,7 @@ export class Realism {
     /** exposure multiplier inside by day (the eye adapts to the darker room) */
     indoorExposure: 2,
     /** … and by night (a lamp-lit room) */
-    indoorExposureNight: 1.25,
+    indoorExposureNight: 1.7,
     /** the ceilings' fake bounce light in walk mode by day / by night (1 = as in the editor) */
     ceilingDay: 0.35,
     ceilingNight: 0.8,
@@ -83,6 +85,7 @@ export class Realism {
     sun.shadow.map = null;
     this.windows.setPoolSize(preset.windowLights);
     this.lamps.setShadowCasters(preset.lampShadows);
+    sun.shadow.radius = preset.sharpShadows ? 1.4 : 2.5;
     this.pipeline.configure(preset, width, height, ratio);
   }
 
@@ -144,7 +147,22 @@ export class Realism {
       this.lastHours = atm.hours;
       this.pipeline.invalidate();
     }
-    void smooth;
+  }
+
+  /**
+   * Where the sun's shadow map goes: a square of ±`range` m around `center`. Walking, ultra uses a
+   * tighter square pushed ahead of the camera (twice the texels where one looks); otherwise the square
+   * is centred on the focus as before.
+   */
+  sunShadowFit(walking: boolean, focus: THREE.Vector3, orbitDistance: number, center: THREE.Vector3): number {
+    center.set(focus.x, 0, focus.z);
+    if (!walking) return Math.max(22, Math.min(170, orbitDistance * 0.9));
+    if (!this.preset.sharpShadows) return 26;
+    const dir = this.camera.getWorldDirection(_dir);
+    const flat = Math.hypot(dir.x, dir.z) || 1;
+    center.x += (dir.x / flat) * 7;
+    center.z += (dir.z / flat) * 7;
+    return 17;
   }
 
   render(): void {

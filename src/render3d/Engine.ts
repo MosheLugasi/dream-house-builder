@@ -319,7 +319,7 @@ export class Engine {
     this.interactions.update(dt, this.mode === 'walk' ? this.walk.character.root.position : null);
     this.updateSun();
     const walking = this.mode === 'walk';
-    this.realism.update(dt, { walking, indoors: walking && this.walk.indoors, project: useStore.getState().project });
+    this.realism.update(dt, { walking, indoors: walking && this.walk.indoors, project: useStore.getState().project, focus });
     this.realism.render();
     if (this.photoPending) {
       this.photoPending = false;

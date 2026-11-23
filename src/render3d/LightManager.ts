@@ -10,6 +10,8 @@ export interface LampSource {
 }
 
 const POOL = 8;
+/** lamps reaching further than this never cast shadows */
+const SHADOW_RANGE = 10;
 
 interface Slot {
   light: THREE.PointLight;
@@ -135,7 +137,8 @@ export class LightManager {
           free.light.distance = src.distance;
         }
       };
-      assign(casters, wanted.slice(0, casters.length));
+      // (only room-sized lamps: a street light's shadow cube would cover half the street – too costly)
+      assign(casters, wanted.filter((w) => w.distance <= SHADOW_RANGE).slice(0, casters.length));
       const cast = new Set(casters.filter((sl) => sl.source && sl.target > 0).map((sl) => sl.source!.id));
       assign(
         plain,

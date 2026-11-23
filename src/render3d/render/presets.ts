@@ -15,10 +15,10 @@ export interface RenderPreset {
   ao: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra';
   /** frames averaged with sub-pixel jitter while the camera stands still (0 = off) */
   accumulate: number;
-  /** sun shadow map size (per cascade with cascades) */
+  /** sun shadow map size 
   shadowMapSize: number;
-  /** two cascaded sun shadow maps (crisp near the camera, reaching far) instead of one fitted map */
-  cascades: boolean;
+  /** walking: a tighter sun shadow map pushed ahead of the camera, with a smaller blur */
+  sharpShadows: boolean;
   /** pool of area lights that bring daylight in through the nearest windows */
   windowLights: number;
   /** interior surfaces see less of the sky (ambient + reflections) than outdoor ones */
@@ -40,7 +40,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     ao: 'Low',
     accumulate: 0,
     shadowMapSize: 2048,
-    cascades: false,
+    sharpShadows: false,
     windowLights: 0,
     indoorAmbient: true,
     lampShadows: 0,
@@ -55,7 +55,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     ao: 'Medium',
     accumulate: 0,
     shadowMapSize: 4096,
-    cascades: false,
+    sharpShadows: false,
     windowLights: 3,
     indoorAmbient: true,
     lampShadows: 0,
@@ -70,7 +70,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     ao: 'High',
     accumulate: 16,
     shadowMapSize: 4096,
-    cascades: true,
+    sharpShadows: true,
     windowLights: 6,
     indoorAmbient: true,
     lampShadows: 1,

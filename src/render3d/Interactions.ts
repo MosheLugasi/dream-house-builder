@@ -561,6 +561,28 @@ export class Interactions {
     return Math.hypot(dx, dy);
   }
 
+  /**
+   * Where to stand to use an action of a big parametric piece (the hob of an L-shaped kitchen, the
+   * sink in an island) and the world facing there: in front of the counter run that holds the
+   * action point. Ordinary items: in front of the item, facing it.
+   */
+  private standFor(inst: Inst, kind: ActionKind, gap = 0.35): { p: Vec2; facing: number } {
+    const at = inst.act.get(kind)?.at;
+    const boxes = (inst.obj.userData.anchors as ItemAnchors | undefined)?.boxes;
+    const box = at && inst.def.parametric ? boxes?.find((b) => Math.abs(at.x - b.x) <= b.w / 2 + 0.05 && Math.abs(at.z - b.z) <= b.d / 2 + 0.05) : undefined;
+    if (!at || !box) return { p: this.standInFront(inst, gap), facing: this.facingOf(inst, Math.PI) };
+    if (box.w >= box.d) {
+      // a run along X: stand on the side that faces the room (runs at the back face forwards, islands backwards)
+      const side = box.z > 0.05 ? -1 : 1;
+      const z = box.z + side * (box.d / 2 + gap);
+      return { p: this.plan(inst, at.x, z), facing: this.facingOf(inst, side > 0 ? Math.PI : 0) };
+    }
+    // a leg along Z (L / U kitchens): stand towards the middle of the kitchen
+    const side = box.x < 0 ? 1 : -1;
+    const x = box.x + side * (box.w / 2 + gap);
+    return { p: this.plan(inst, x, at.z), facing: this.facingOf(inst, side > 0 ? -Math.PI / 2 : Math.PI / 2) };
+  }
+
   private standInFront(inst: Inst, gap = 0.4): Vec2 {
     return this.plan(inst, 0, inst.lsize.d / 2 + gap / inst.k.z);
   }
@@ -880,7 +902,12 @@ export class Interactions {
     const walk = this.walk!;
     const t = textOf(inst.def);
     const drink = /קפה|coffee|espresso|קומקום|kettle|תה|tea|יין|wine|מים|water|כוס/.test(t);
-    walk.faceTo(this.pose(inst));
+    const snackAt = inst.act.get('snack')?.at;
+    if (snackAt && Math.max(inst.size.w, inst.size.d) > 1.4) {
+      // a fridge inside a whole kitchen: face the fridge, not the middle of the kitchen
+      const w = this.world3(inst, snackAt.x, 0, snackAt.z);
+      walk.faceTo({ x: w.x, y: w.z });
+    } else walk.faceTo(this.pose(inst));
     if (inst.parts.has('door')) {
       inst.st.openTarget = 1;
       setTimeout(() => (inst.st.openTarget = 0), 2200);
@@ -997,14 +1024,15 @@ export class Interactions {
 
   private cook(inst: Inst): void {
     const walk = this.walk!;
-    const p = this.standInFront(inst, 0.35);
+    const stand = this.standFor(inst, 'cook', 0.35);
+    const p = stand.p;
     const at = inst.act.get('cook')?.at ?? { x: 0, y: inst.lsize.h, z: 0 };
     let t = 0;
     let done = false;
     sound.sfx('sizzle', 0.6);
     walk.occupy(
       this.stay(
-        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: this.facingOf(inst, Math.PI), pose: 'stand' },
+        { x: p.x, y: p.y, floor: this.floorOf(inst), facing: stand.facing, pose: 'stand' },
         {
           activity: 'cook',
           prop: 'spoon',
