@@ -119,12 +119,30 @@ interface ProgressState extends Saved {
   setFlash(text: string): void;
 }
 
+/**
+ * Two tabs may play at the same time: never write over what the other one achieved. Counters keep
+ * the larger value, finished challenges and collected stars are united; the look is the latest one.
+ */
+export function mergeSaved(mine: Saved, theirs: Saved, look: CharacterLook = mine.look): Saved {
+  const counters: Saved['counters'] = { ...theirs.counters };
+  for (const [k, v] of Object.entries(mine.counters) as Array<[GameEvent, number]>) counters[k] = Math.max(v ?? 0, counters[k] ?? 0);
+  const stars: Saved['stars'] = { ...theirs.stars };
+  for (const [k, v] of Object.entries(mine.stars)) stars[k] = [...new Set([...(stars[k] ?? []), ...v])];
+  return { look, counters, done: [...new Set([...theirs.done, ...mine.done])], stars };
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+/** stars lists this tab reset on purpose (a merge must not bring them back) */
+const resets = new Set<string>();
 function persist(s: Saved): void {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ look: s.look, counters: s.counters, done: s.done, stars: s.stars }));
+      const theirs = load();
+      for (const id of resets) theirs.stars[id] = [];
+      resets.clear();
+      const merged = mergeSaved(s, theirs);
+      localStorage.setItem(KEY, JSON.stringify(merged));
     } catch {
       /* storage unavailable: progress simply is not kept */
     }
@@ -158,6 +176,7 @@ export const useProgress = create<ProgressState>((set, get) => ({
   resetStars: (projectId) => {
     const s = get();
     set({ stars: { ...s.stars, [projectId]: [] } });
+    resets.add(projectId);
     persist(get());
   },
   dismissToast: () => set({ toast: null }),
@@ -172,4 +191,14 @@ export function countRooms(project: Project, roomsOf: (walls: Project['buildings
   let n = 0;
   for (const b of project.buildings) for (const l of b.levels) n += roomsOf(l.walls);
   return n;
+}
+
+// another tab saved progress: take in what it achieved (the browser reports only other tabs' writes)
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY || !e.newValue) return;
+    const s = useProgress.getState();
+    const theirs = load();
+    useProgress.setState(mergeSaved(s, theirs, theirs.look));
+  });
 }

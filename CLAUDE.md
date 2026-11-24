@@ -21,6 +21,10 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
   procedural fallback (Node tests have no DOM/fetch).
 - UI strings are Hebrew; keep code, comments and identifiers in English.
 - The saved file format is versioned (`version: 2`); structural changes need a migration in `io/storage.ts#parseProject`.
+- Saving is per browser (localStorage, no server). Several tabs may have the same project open: only a tab's own changes
+  are saved (`flushSave`), every save carries a revision, a clean tab follows saves from other tabs and a tab whose save
+  would erase another tab's work keeps it as a copy (`io/storage.ts`, end of `store/store.ts`). Player progress and game
+  records are merged on write, never overwritten.
 - Two edit scopes: `site` (neighborhood map; items in site coordinates) and `building` (inside one building; building-local
   coordinates). Convert with `toSite` / `toLocal` from `model/types.ts`.
 - Stairs and vehicles are catalog items (`stair` / `vehicle` on `FurnitureDef`, both `noBake`). Kit `box()` takes the height of

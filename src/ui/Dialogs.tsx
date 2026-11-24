@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { deleteProject, listProjects, loadProject, saveProject, type ProjectMeta } from '../io/storage';
+import { deleteProject, listProjects, loadProject, type ProjectMeta } from '../io/storage';
 import { emptyProject } from '../model/defaults';
 import { sampleProject } from '../model/neighborhood';
-import { useStore } from '../store/store';
+import { flushSave, useStore } from '../store/store';
 import { Icon } from './icons';
 
 export function Modal({ title, onClose, children, className = '' }: { title: string; onClose: () => void; children: React.ReactNode; className?: string }) {
@@ -24,11 +24,11 @@ export function Modal({ title, onClose, children, className = '' }: { title: str
 export function ProjectsDialog({ onClose }: { onClose: () => void }) {
   const currentId = useStore((s) => s.project.id);
   const [list, setList] = useState<ProjectMeta[]>(() => {
-    saveProject(useStore.getState().project);
+    flushSave();
     return listProjects();
   });
   const open = (kind: 'empty' | 'sample') => {
-    saveProject(useStore.getState().project);
+    flushSave();
     useStore.getState().loadProject(kind === 'sample' ? sampleProject() : emptyProject());
     onClose();
   };
@@ -49,7 +49,7 @@ export function ProjectsDialog({ onClose }: { onClose: () => void }) {
               className="project-open"
               onClick={() => {
                 if (m.id !== currentId) {
-                  saveProject(useStore.getState().project);
+                  flushSave();
                   const p = loadProject(m.id);
                   if (p) useStore.getState().loadProject(p);
                 }

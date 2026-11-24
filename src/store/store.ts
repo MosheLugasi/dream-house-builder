@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { produce } from 'immer';
-import type { Building, Level, Project } from '../model/types';
+import { newId, type Building, type Level, type Project } from '../model/types';
 import { emptyProject } from '../model/defaults';
 import { sampleProject } from '../model/neighborhood';
-import { loadCurrentProject, saveProject } from '../io/storage';
+import { changedElsewhere, isStored, loadCurrentProject, loadProject, lostOwnSave, saveProject, watchOtherTabs } from '../io/storage';
 import { loadQuality, loadQualityChoice, type Quality } from './quality';
 
 export type Mode = 'site' | 'plan' | 'view3d' | 'walk';
@@ -164,14 +164,65 @@ export function newProject(kind: 'empty' | 'sample'): void {
   useStore.getState().loadProject(kind === 'sample' ? sampleProject() : emptyProject());
 }
 
-// ---- autosave --------------------------------------------------------------------------------
+// ---- autosave and other tabs -----------------------------------------------------------------
+//
+// Only changes made in this tab are saved (an idle tab never writes over newer work from another
+// tab). When another tab saves the project this tab has open, a tab without unsaved changes simply
+// shows the newer version; if both tabs changed it, this tab keeps its work as a copy.
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-useStore.subscribe((state, prev) => {
-  if (state.project === prev.project) return;
+
+/** Save the open project now if this tab changed it. */
+export function flushSave(): void {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveProject(useStore.getState().project), 400);
+  saveTimer = undefined;
+  const { project } = useStore.getState();
+  if (isStored(project)) return;
+  const r = saveProject(project);
+  if (r === 'conflict') keepAsCopy();
+  else if (r === 'failed') useStore.getState().setHint('⚠️ לא הצלחנו לשמור בדפדפן (אולי אין מקום). כדאי לגבות לקובץ בכפתור "גיבוי לקובץ".');
+}
+
+/** Both this tab and another one changed the project: keep this tab's version under a new id. */
+function keepAsCopy(): void {
+  const { project, past, future } = useStore.getState();
+  const id = newId('prj');
+  const name = `${project.name} (עותק)`;
+  const fix = (p: Project): Project => ({ ...p, id, name });
+  const copy = fix(project);
+  useStore.setState({ project: copy, past: past.map(fix), future: future.map(fix) });
+  saveProject(copy);
+  useStore.getState().setHint(`הפרויקט שונה גם בלשונית אחרת – השינויים שלכם נשמרו בעותק "${name}"`);
+}
+
+useStore.subscribe((state, prev) => {
+  if (state.project === prev.project || isStored(state.project)) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, 400);
 });
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => saveProject(useStore.getState().project));
+  window.addEventListener('beforeunload', flushSave);
+  window.addEventListener('pagehide', flushSave);
+  watchOtherTabs((id, _rev, base) => {
+    const { project } = useStore.getState();
+    // unsaved changes here: they are kept as a copy on the next save
+    if (id !== project.id || !isStored(project)) return;
+    // both tabs saved at the same moment and this tab's save was written over: keep it as a copy
+    if (lostOwnSave(id, base)) return keepAsCopy();
+    if (!changedElsewhere(id)) return;
+    const fresh = loadProject(id);
+    if (!fresh) return;
+    const s = useStore.getState();
+    const b = Math.min(s.buildingIndex, fresh.buildings.length - 1);
+    const levels = fresh.buildings[b].levels.length;
+    useStore.setState({
+      project: fresh,
+      past: [],
+      future: [],
+      selection: null,
+      buildingIndex: b,
+      levelIndex: Math.min(s.levelIndex, levels - 1),
+    });
+  });
 }

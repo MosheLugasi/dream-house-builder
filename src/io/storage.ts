@@ -2,18 +2,35 @@ import type { FurnitureItem, Project } from '../model/types';
 
 /**
  * Local persistence (localStorage) + backup files.
- * Layout: `dhb.index` = ProjectMeta[], `dhb.project.<id>` = Project JSON, `dhb.current` = id.
+ * Layout: `dhb.index` = ProjectMeta[], `dhb.project.<id>` = Project JSON (+ `rev` / `base` revision tags),
+ * `dhb.current` = last saved id (per tab: sessionStorage `dhb.current`).
  * A real database can later replace this module without touching the rest of the app.
  */
 export interface ProjectMeta {
   id: string;
   name: string;
   updatedAt: number;
+  /** changes with every save (who saved + when): lets a tab notice that another tab saved the same project */
+  rev?: string;
 }
+
+/**
+ * Several tabs (or windows) of the same browser share one localStorage. Each tab remembers which
+ * revision of a project it last loaded or saved; a save over a revision written meanwhile by another
+ * tab is refused (`conflict`) so that nothing is silently overwritten – the caller keeps the work as
+ * a copy. Different computers / browsers never share anything (no server).
+ */
+export type SaveResult = 'saved' | 'conflict' | 'failed';
 
 const INDEX_KEY = 'dhb.index';
 const CURRENT_KEY = 'dhb.current';
 const projectKey = (id: string) => `dhb.project.${id}`;
+const TAB = Math.random().toString(36).slice(2, 10);
+let revCounter = 0;
+/** project id → the revision this tab last loaded or wrote */
+const knownRev = new Map<string, string | undefined>();
+/** project objects whose content is exactly what storage holds (no need to save them again) */
+const stored = new WeakSet<object>();
 
 function storage(): Storage | null {
   try {
@@ -22,31 +39,129 @@ function storage(): Storage | null {
     return null;
   }
 }
+/** per-tab storage: which project this tab has open survives a reload of the tab */
+function tabStorage(): Storage | null {
+  try {
+    return typeof sessionStorage !== 'undefined' ? sessionStorage : null;
+  } catch {
+    return null;
+  }
+}
 
-export function listProjects(): ProjectMeta[] {
-  const s = storage();
-  if (!s) return [];
+function readIndex(s: Storage): ProjectMeta[] {
   try {
     const list = JSON.parse(s.getItem(INDEX_KEY) ?? '[]') as ProjectMeta[];
-    return list.sort((a, b) => b.updatedAt - a.updatedAt);
+    return Array.isArray(list) ? list.filter((m) => m && typeof m.id === 'string') : [];
   } catch {
     return [];
   }
 }
 
-export function saveProject(project: Project): boolean {
+/**
+ * The stored project JSON ends with `"rev":"…","base":"…"}`: the revision written and the one the
+ * writer had seen. Both live in the same value as the data, so they can never disagree with it.
+ * (Inside names and other strings quotes are escaped, so the unescaped `"rev":"` is only ever the key.)
+ */
+function revOf(raw: string | null): { rev?: string; base?: string } {
+  if (!raw) return {};
+  const i = raw.lastIndexOf('"rev":"');
+  if (i < 0) return {};
+  const rev = raw.slice(i + 7, raw.indexOf('"', i + 7));
+  const j = raw.indexOf('"base":"', i);
+  const base = j < 0 ? undefined : raw.slice(j + 8, raw.indexOf('"', j + 8));
+  return { rev, base };
+}
+
+export function listProjects(): ProjectMeta[] {
   const s = storage();
-  if (!s) return false;
+  if (!s) return [];
+  // the index is written after the data: when two tabs saved at once it may describe the other
+  // tab's version. The data is the truth – repair the entries that disagree with it.
+  let repaired = false;
+  const list: ProjectMeta[] = [];
+  for (const m of readIndex(s)) {
+    const raw = s.getItem(projectKey(m.id));
+    if (!raw) {
+      repaired = true;
+      continue;
+    }
+    const rev = revOf(raw).rev;
+    if (rev !== undefined && rev !== m.rev) {
+      try {
+        const p = JSON.parse(raw) as Project;
+        list.push({ id: m.id, name: p.name, updatedAt: p.updatedAt, rev });
+        repaired = true;
+        continue;
+      } catch {
+        /* keep the entry as it is */
+      }
+    }
+    list.push(m);
+  }
+  if (repaired) {
+    try {
+      s.setItem(INDEX_KEY, JSON.stringify(list));
+    } catch {
+      /* listing still works */
+    }
+  }
+  return list.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/** The revision of a project as storage has it now (undefined: never saved, or saved by an old version). */
+export function storedRev(id: string): string | undefined {
+  return revOf(storage()?.getItem(projectKey(id)) ?? null).rev;
+}
+
+/** True when this exact project object was loaded from or written to storage by this tab. */
+export function isStored(project: Project): boolean {
+  return stored.has(project);
+}
+
+/** True when another tab saved this project after this tab last loaded / saved it. */
+export function changedElsewhere(id: string): boolean {
+  if (!knownRev.has(id)) return false;
+  const now = storedRev(id);
+  return now !== undefined && now !== knownRev.get(id);
+}
+
+/**
+ * Another tab wrote revision `base`→`rev` of a project: was this tab's own last save of it written
+ * over without being seen (two tabs saved at the same moment)?
+ */
+export function lostOwnSave(id: string, base: string | undefined): boolean {
+  const mine = knownRev.get(id);
+  return !!mine && mine.startsWith(`${TAB}.`) && base !== mine && storedRev(id) !== mine;
+}
+
+function remember(project: Project, rev: string | undefined): void {
+  knownRev.set(project.id, rev);
+  stored.add(project);
+  tabStorage()?.setItem(CURRENT_KEY, project.id);
+}
+
+/**
+ * Save a project. Refuses (`conflict`) when another tab saved the same project since this tab last
+ * loaded or saved it, unless `force` is set.
+ */
+export function saveProject(project: Project, opts: { force?: boolean } = {}): SaveResult {
+  const s = storage();
+  if (!s) return 'failed';
   try {
-    s.setItem(projectKey(project.id), JSON.stringify(project));
-    const index = listProjects().filter((m) => m.id !== project.id);
-    index.push({ id: project.id, name: project.name, updatedAt: project.updatedAt });
+    if (!opts.force && changedElsewhere(project.id)) return 'conflict';
+    const rev = `${TAB}.${++revCounter}.${Date.now().toString(36)}`;
+    const base = knownRev.get(project.id) ?? '';
+    // one value holds the data and its revision; the index only lists the projects
+    s.setItem(projectKey(project.id), JSON.stringify({ ...project, rev, base }));
+    const index = readIndex(s).filter((m) => m.id !== project.id);
+    index.push({ id: project.id, name: project.name, updatedAt: project.updatedAt, rev });
     s.setItem(INDEX_KEY, JSON.stringify(index));
     s.setItem(CURRENT_KEY, project.id);
-    return true;
+    remember(project, rev);
+    return 'saved';
   } catch (err) {
     console.warn('שמירה מקומית נכשלה', err);
-    return false;
+    return 'failed';
   }
 }
 
@@ -55,15 +170,24 @@ export function loadProject(id: string): Project | null {
   if (!s) return null;
   try {
     const raw = s.getItem(projectKey(id));
-    return raw ? parseProject(raw) : null;
+    if (!raw) return null;
+    const p = parseProject(raw) as Project & { rev?: string; base?: string };
+    delete p.rev;
+    delete p.base;
+    remember(p, revOf(raw).rev);
+    return p;
   } catch {
     return null;
   }
 }
 
+/** The project this tab had open (after a reload), else the one saved last in any tab. */
 export function loadCurrentProject(): Project | null {
   const s = storage();
   if (!s) return null;
+  const own = tabStorage()?.getItem(CURRENT_KEY);
+  const mine = own ? loadProject(own) : null;
+  if (mine) return mine;
   const id = s.getItem(CURRENT_KEY);
   return id ? loadProject(id) : null;
 }
@@ -72,8 +196,25 @@ export function deleteProject(id: string): void {
   const s = storage();
   if (!s) return;
   s.removeItem(projectKey(id));
-  s.setItem(INDEX_KEY, JSON.stringify(listProjects().filter((m) => m.id !== id)));
+  s.setItem(INDEX_KEY, JSON.stringify(readIndex(s).filter((m) => m.id !== id)));
   if (s.getItem(CURRENT_KEY) === id) s.removeItem(CURRENT_KEY);
+  knownRev.delete(id);
+}
+
+/**
+ * Call `onChange` whenever another tab saves a project (the browser only reports writes made by
+ * other tabs), with the revision written and the one that tab had seen. Returns an unsubscribe function.
+ */
+export function watchOtherTabs(onChange: (id: string, rev: string | undefined, base: string | undefined) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const prefix = projectKey('');
+  const handler = (e: StorageEvent) => {
+    if (!e.key?.startsWith(prefix) || !e.newValue || e.storageArea !== storage()) return;
+    const { rev, base } = revOf(e.newValue);
+    onChange(e.key.slice(prefix.length), rev, base);
+  };
+  window.addEventListener('storage', handler);
+  return () => window.removeEventListener('storage', handler);
 }
 
 /** Validates and normalizes project JSON (from storage or a backup file). Throws on invalid input. */
