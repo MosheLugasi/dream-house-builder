@@ -94,7 +94,8 @@ export const useMiniGame = create<MiniGameState>((set, get) => ({
     }, ms);
   },
   record: (id, score, medal, lowerIsBetter, completed) => {
-    const records = { ...get().records };
+    // start from what storage holds now: another tab may have played meanwhile
+    const records = { ...get().records, ...loadRecords() };
     const r: MiniGameRecord = { ...(records[id] ?? { best: null, medal: 0, plays: 0 }) };
     r.plays++;
     let isRecord = false;
@@ -128,4 +129,11 @@ export function formatScore(score: number, unit: 'points' | 'seconds'): string {
 export function medalFor(score: number, m: { bronze: number; silver: number; gold: number; lowerIsBetter?: boolean }): number {
   const better = (a: number, b: number) => (m.lowerIsBetter ? a <= b : a >= b);
   return better(score, m.gold) ? 3 : better(score, m.silver) ? 2 : better(score, m.bronze) ? 1 : 0;
+}
+
+// records set in another tab show up here too
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === KEY && e.newValue) useMiniGame.setState({ records: { ...useMiniGame.getState().records, ...loadRecords() } });
+  });
 }

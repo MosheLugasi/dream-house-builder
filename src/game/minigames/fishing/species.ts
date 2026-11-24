@@ -228,7 +228,14 @@ export function loadAlbum(): Album {
 
 export function saveAlbum(a: Album): void {
   try {
-    if (typeof localStorage !== 'undefined') localStorage.setItem(KEY, JSON.stringify(a));
+    if (typeof localStorage === 'undefined') return;
+    // another tab may have fished meanwhile: keep the larger count and the heavier catch of each species
+    const theirs = loadAlbum();
+    for (const [id, e] of Object.entries(theirs.species)) {
+      const mine = a.species[id];
+      a.species[id] = mine ? { n: Math.max(mine.n, e.n), best: Math.max(mine.best, e.best) } : e;
+    }
+    localStorage.setItem(KEY, JSON.stringify(a));
   } catch {
     /* storage unavailable */
   }
