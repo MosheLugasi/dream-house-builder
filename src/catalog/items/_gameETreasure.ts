@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { D, INK_SOFT, Kit, LINE_THIN, M, darken, lighten, rng, sym, tint } from '../kit';
+import { D, INK_SOFT, Kit, LINE_THIN, M, darken, extrudeZ, lighten, rng, sym, tint } from '../kit';
 import type { FurnitureDef } from '../types';
 import { slot } from './_parts';
 
@@ -59,16 +59,14 @@ export function buildChest(c: { wood: string; bands: string }, opts: { gold?: bo
   const R = (d - 0.04 * s) / 2;
   const lidGeo = new THREE.CylinderGeometry(R, R, lw, 18, 1, false, 0, Math.PI);
   lidGeo.rotateZ(Math.PI / 2);
-  lidGeo.rotateX(-Math.PI / 2);
   const lm = lid.geo(lidGeo, wood, 0, 0, R);
   lm.scale.set(1, 0.55, 1);
   // its bands follow the arch
-  for (const x of [-w / 2 + 0.12 * s, w / 2 - 0.12 * s, 0]) {
+  for (const x of [-w / 2 + 0.12 * s, w / 2 - 0.12 * s]) {
     const t = new THREE.TorusGeometry(R + 0.004, 0.012 * s, 4, 14, Math.PI);
     t.rotateY(Math.PI / 2);
     const m = lid.geo(t, band, x, 0, R);
     m.scale.set(1, 0.55, 1);
-    if (x === 0) m.visible = false;
   }
   lid.box(0.1 * s, 0.07 * s, 0.02 * s, band, 0, -0.02 * s, 2 * R - 0.004);
   const lg = lid.g;
@@ -81,7 +79,7 @@ const chest: FurnitureDef = {
   category: 'outdoor',
   group: GROUP,
   tags: ['תיבה', 'אוצר', 'פיראטים', 'מטבעות', 'זהב', 'ארגז'],
-  size: CHEST,
+  size: { w: CHEST.w, d: 0.74, h: 0.98 },
   colors: [slot('wood', 'עץ', '#8a5a34'), slot('bands', 'חישוקים', '#3b3a38')],
   build: ({ colors: c }) => {
     const { group, lid } = buildChest({ wood: c.wood, bands: c.bands }, { coins: true });
@@ -89,12 +87,9 @@ const chest: FurnitureDef = {
     // a few coins spilled on the ground in front
     const gold = M.metal('#e8b63c', 0.25, 1);
     const k = new Kit();
-    k.sub(new Kit());
     const r = rng(4);
     for (let i = 0; i < 6; i++) k.disc(0.03, 0.008, gold, -0.25 + r() * 0.5, 0, 0.24 + r() * 0.04, 10);
     group.add(k.g);
-    // keep the open lid inside the footprint: tilt it a little less and pull the chest forward
-    group.position.z = 0.0;
     return group;
   },
   draw2d: (ctx, c) =>
@@ -107,7 +102,7 @@ const chest: FurnitureDef = {
 
 /* ------------------------------------------------------------------ explorers' tent */
 
-const TENT = { w: 2.4, d: 2.6, h: 2.1 };
+const TENT = { w: 2.4, d: 3.1, h: 2.1 };
 const tent: FurnitureDef = {
   id: 'treasure-tent',
   name: 'אוהל חוקרים',
@@ -124,38 +119,36 @@ const tent: FurnitureDef = {
     const half = 1.05;
     const L = 2.2;
     // two sloping canvas sides (ridge along Z)
-    for (const s of [-1, 1]) k.beam([0, H, 0], [s * half, 0.02, 0], 0.03, L, canvas);
+    for (const s of [-1, 1]) k.beam([0, H, 0], [s * half, 0.035, 0], 0.03, L, canvas);
     // back wall triangle
     const tri = new THREE.Shape();
     tri.moveTo(-half, 0);
     tri.lineTo(half, 0);
     tri.lineTo(0, H);
     tri.closePath();
-    k.geo(new THREE.ShapeGeometry(tri), canvas, 0, 0.02, -L / 2 + 0.02).material = canvas;
+    k.geo(extrudeZ(tri, 0.02), canvas, 0, 0.02, -L / 2 + 0.02);
     // open front flaps folded back, dark inside
     const front = new THREE.Shape();
     front.moveTo(-0.55, 0);
     front.lineTo(0.55, 0);
     front.lineTo(0, H - 0.25);
     front.closePath();
-    k.geo(new THREE.ShapeGeometry(front), inner, 0, 0.02, L / 2 - 0.25);
+    k.geo(extrudeZ(front, 0.02), inner, 0, 0.02, L / 2 - 0.25);
     for (const s of [-1, 1]) {
       const flap = new THREE.Shape();
       flap.moveTo(0, 0);
       flap.lineTo(s * 0.5, 0);
       flap.lineTo(0, H * 0.95);
       flap.closePath();
-      const g = new THREE.ShapeGeometry(flap);
-      const m = k.geo(g, canvas, s * 0.5, 0.02, L / 2 + 0.02);
+      const m = k.geo(extrudeZ(flap, 0.015), canvas, s * 0.5, 0.02, L / 2 + 0.02);
       m.rotation.y = s * 0.5;
-      (m.material as THREE.Material).side = THREE.DoubleSide;
     }
     // poles, ridge rope and pegs
     const pole = M.wood('#6b4a30');
     k.rod([0, 0, L / 2 + 0.1], [0, H + 0.05, L / 2 + 0.06], 0.025, pole, 0.025, 8);
     k.rod([0, 0, -L / 2 - 0.05], [0, H + 0.05, -L / 2 - 0.02], 0.025, pole, 0.025, 8);
     k.rod([0, H + 0.04, -L / 2 - 0.02], [0, H + 0.04, L / 2 + 0.06], 0.012, M.wicker('#c9b083'), 0.012, 5);
-    for (const s of [-1, 1]) for (const z of [-0.9, 0.9]) k.rod([s * 1.05, 0.03, z], [s * 1.16, 0.0, z], 0.015, pole, 0.012, 5);
+    for (const s of [-1, 1]) for (const z of [-0.9, 0.9]) k.rod([s * 1.05, 0.04, z], [s * 1.16, 0.016, z], 0.015, pole, 0.012, 5);
     // flag on top of the front pole
     k.rod([0, H, L / 2 + 0.06], [0, 2.08, L / 2 + 0.06], 0.012, pole, 0.012, 6);
     const f = new THREE.Shape();
@@ -163,7 +156,7 @@ const tent: FurnitureDef = {
     f.lineTo(0.36, -0.1);
     f.lineTo(0, -0.22);
     f.closePath();
-    const fm = k.geo(new THREE.ShapeGeometry(f), M.cloth(c.flag), 0, 2.06, L / 2 + 0.06);
+    const fm = k.geo(extrudeZ(f, 0.008), M.cloth(c.flag), 0, 2.06, L / 2 + 0.06);
     fm.rotation.y = -Math.PI / 2;
     // a lantern and a rolled sleeping bag by the entrance
     k.cyl(0.07, 0.18, M.glow('#ffcf7a', 1.2), 0.75, 0, L / 2 + 0.05, 0.07, 10);
@@ -274,7 +267,7 @@ export function treasureMapMaterial(): THREE.Material {
   return mapMat;
 }
 
-const MB = { w: 1.5, d: 0.7, h: 1.95 };
+const MB = { w: 1.5, d: 0.74, h: 1.95 };
 const mapBoard: FurnitureDef = {
   id: 'treasure-map-board',
   name: 'לוח מפת אוצר',

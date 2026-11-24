@@ -144,9 +144,19 @@ export function surfaceTop(list: readonly WalkSurface[] | undefined, x: number, 
  * Does a surface block someone whose feet are at `feet` from being at (x, y)? Its top must be more
  * than `step` above the feet (hurdles: above the feet at all) and its base below the head.
  */
-export function surfaceBlocks(list: readonly WalkSurface[] | undefined, x: number, y: number, feet: number, step: number, body = 1.5): WalkSurface | null {
+export function surfaceBlocks(
+  list: readonly WalkSurface[] | undefined,
+  x: number,
+  y: number,
+  feet: number,
+  step: number,
+  body = 1.5,
+  /** the surface being ridden: it is followed, never a wall */
+  except?: WalkSurface | null,
+): WalkSurface | null {
   if (!list) return null;
   for (const s of list) {
+    if (s === except) continue;
     const h = surfaceHeightAt(s, x, y);
     if (h === null) continue;
     if (s.y0 > feet + body) continue;

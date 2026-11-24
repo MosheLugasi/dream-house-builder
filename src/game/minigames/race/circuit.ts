@@ -222,13 +222,43 @@ export interface Circuit {
 }
 
 /** Corner radius of the racing line in a 10 m street grid. */
-const CORNER_R = 4.6;
+const CORNER_R = 6;
 
 /**
  * Smooth centre line through a cell loop: straight between corners, a circular arc in every corner.
  * `cellSize` is the road grid (10 m). The returned samples start at the middle of the first cell.
  */
 export function centreLine(cells: ReadonlyArray<Cell>, cellSize = 10, ds = 1): { xs: number[]; ys: number[]; k: number[] } {
+  // trace finely, then resample evenly so the loop closes with the same spacing everywhere
+  const fine = traceLine(cells, cellSize, ds / 10);
+  const m = fine.xs.length;
+  const cum = new Float64Array(m + 1);
+  for (let i = 1; i <= m; i++) {
+    const a = i - 1;
+    const b = i % m;
+    cum[i] = cum[i - 1] + Math.hypot(fine.xs[b] - fine.xs[a], fine.ys[b] - fine.ys[a]);
+  }
+  const L = cum[m];
+  const n = Math.max(8, Math.round(L / ds));
+  const step = L / n;
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const ks: number[] = [];
+  let j = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i * step;
+    while (j < m - 1 && cum[j + 1] < t) j++;
+    const seg = cum[j + 1] - cum[j] || 1;
+    const f = (t - cum[j]) / seg;
+    const b = (j + 1) % m;
+    xs.push(fine.xs[j] + (fine.xs[b] - fine.xs[j]) * f);
+    ys.push(fine.ys[j] + (fine.ys[b] - fine.ys[j]) * f);
+    ks.push(Math.max(fine.k[j], fine.k[b]));
+  }
+  return { xs, ys, k: ks };
+}
+
+function traceLine(cells: ReadonlyArray<Cell>, cellSize: number, ds: number): { xs: number[]; ys: number[]; k: number[] } {
   const n = cells.length;
   const c = (p: Cell) => ({ x: (p[0] + 0.5) * cellSize, y: (p[1] + 0.5) * cellSize });
   // corner vertices (cells where the direction changes), starting with the first cell as a plain point
@@ -372,8 +402,10 @@ export function buildCircuit(net: RoadNet, loop: ReadonlyArray<Cell>, opts: Gate
     tx[i] = dx / l;
     ty[i] = dy / l;
   }
-  const length = n * ds;
-  const gateAt = (i: number, placed?: string): Gate => ({ s: i * ds, x: xs[i], y: ys[i], dx: tx[i], dy: ty[i], half: HALF, placed });
+  let length = 0;
+  for (let i = 0; i < n; i++) length += Math.hypot(xs[(i + 1) % n] - xs[i], ys[(i + 1) % n] - ys[i]);
+  const step = length / n;
+  const gateAt = (i: number, placed?: string): Gate => ({ s: i * step, x: xs[i], y: ys[i], dx: tx[i], dy: ty[i], half: HALF, placed });
   const gates: Gate[] = [gateAt(0)];
 
   const cellOf = (x: number, y: number): Cell => [Math.floor(x / C), Math.floor(y / C)];
@@ -394,7 +426,7 @@ export function buildCircuit(net: RoadNet, loop: ReadonlyArray<Cell>, opts: Gate
         bi = i;
       }
     }
-    if (bi >= 0 && bd < C * 0.6 && bi * ds > 25 && length - bi * ds > 25) {
+    if (bi >= 0 && bd < C * 0.6 && bi * step > 25 && length - bi * step > 25) {
       const g = gateAt(bi, a.id);
       g.x = a.x;
       g.y = a.y;
@@ -408,14 +440,14 @@ export function buildCircuit(net: RoadNet, loop: ReadonlyArray<Cell>, opts: Gate
     // automatic checkpoints: evenly spread, on plain straights, clear of lamp posts
     const count = Math.max(3, Math.min(7, Math.round(length / 120)));
     for (let g = 1; g <= count; g++) {
-      const want = Math.round((length * g) / (count + 1));
+      const want = Math.round((length * g) / (count + 1) / step);
       let pick = -1;
-      for (let off = 0; off < length / (count + 1) / 2; off++) {
+      for (let off = 0; off < length / (count + 1) / 2 / step; off++) {
         for (const sgn of [1, -1]) {
           const i = (want + sgn * off + n) % n;
-          if (i * ds < 30 || length - i * ds < 30) continue;
+          if (i * step < 30 || length - i * step < 30) continue;
           if (!straightAt(i) || !clear(i)) continue;
-          if (gates.some((q) => Math.abs(q.s - i * ds) < 40)) continue;
+          if (gates.some((q) => Math.abs(q.s - i * step) < 40)) continue;
           pick = i;
           break;
         }
@@ -425,7 +457,7 @@ export function buildCircuit(net: RoadNet, loop: ReadonlyArray<Cell>, opts: Gate
     }
     gates.sort((a, b) => a.s - b.s);
   }
-  return { cells: loop.map((c) => [c[0], c[1]] as Cell), xs, ys, tx, ty, k, ds, length, gates };
+  return { cells: loop.map((c) => [c[0], c[1]] as Cell), xs, ys, tx, ty, k, ds: step, length, gates };
 }
 
 export interface DriveSpec {
@@ -526,7 +558,7 @@ export function standings(racers: ReadonlyArray<{ progress: number; finishedAt: 
 
 /** Rubber band: AI speed factor from how far it is ahead of the player (m). */
 export function rubberBand(aheadOfPlayer: number): number {
-  return Math.max(0.84, Math.min(1.06, 1 - aheadOfPlayer / 260));
+  return Math.max(0.8, Math.min(1.08, 1 - aheadOfPlayer / 200));
 }
 
 /** Normalised race score: real seconds scaled so that an ideal race of any circuit/vehicle = REF. */
@@ -537,6 +569,6 @@ export function normalisedTime(real: number, ideal: number): number {
 
 /** Circuit length goals (cells of 10 m) per vehicle kind. */
 export function loopTarget(kind: 'car' | 'bicycle' | 'scooter'): LoopOptions {
-  if (kind === 'car') return { target: 80, min: 40, max: 125 };
-  return { target: 56, min: 30, max: 90 };
+  if (kind === 'car') return { target: 64, min: 40, max: 100 };
+  return { target: 46, min: 28, max: 72 };
 }

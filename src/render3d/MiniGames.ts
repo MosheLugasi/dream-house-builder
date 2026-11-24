@@ -211,16 +211,21 @@ export class MiniGames {
   /** Keys while a round runs (Esc leaves it). Returns true when the key was used. */
   key(code: string, down: boolean): boolean {
     if (!this.session) return false;
+    // the game sees every key first (Esc may just mean "get off this ride"); otherwise Esc leaves the round
+    let used = false;
+    try {
+      used = this.session.key?.(code, down) ?? false;
+    } catch (err) {
+      console.error('mini-game key failed', err);
+    }
+    if (used) return true;
     if (code === 'Escape' && down) {
+      // first Esc gets off a ride / ends an activity, a second one leaves the game
+      if (this.host.walk.occupation) return false;
       this.stop();
       return true;
     }
-    try {
-      return this.session.key?.(code, down) ?? false;
-    } catch (err) {
-      console.error('mini-game key failed', err);
-      return false;
-    }
+    return false;
   }
 
   update(dt: number): void {

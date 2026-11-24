@@ -209,7 +209,7 @@ const farmWell: FurnitureDef = {
 
 /* ------------------------------------------------------------------ scarecrow */
 
-const SC = { w: 1.0, d: 0.4, h: 1.82 };
+const SC = { w: 1.0, d: 0.5, h: 1.82 };
 const scarecrow: FurnitureDef = {
   id: 'farm-scarecrow',
   name: 'דחליל',
@@ -291,7 +291,13 @@ export function paintedBoard(text: string, bg: string, fg: string, w = 512, h = 
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.direction = 'rtl';
-    g.font = `700 ${Math.round(h * 0.48)}px system-ui, Arial, sans-serif`;
+    let px = Math.round(h * 0.48);
+    g.font = `700 ${px}px system-ui, Arial, sans-serif`;
+    const tw = g.measureText(text).width;
+    if (tw > w * 0.86) {
+      px = Math.floor((px * w * 0.86) / tw);
+      g.font = `700 ${px}px system-ui, Arial, sans-serif`;
+    }
     g.fillText(text, w / 2, h / 2 + 4);
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -372,7 +378,7 @@ const marketStand: FurnitureDef = {
     // posts and a striped awning sloping towards the front
     for (const sx of [-1, 1]) {
       k.box(0.07, 2.25, 0.07, dark, sx * (W / 2 - 0.035), 0, -0.42);
-      k.box(0.07, 2.0, 0.07, dark, sx * (W / 2 - 0.035), 0.9, 0.42);
+      k.box(0.07, 1.12, 0.07, dark, sx * (W / 2 - 0.035), 0.9, 0.42);
     }
     const stripes = 10;
     const sw = MS.w / stripes;
@@ -501,9 +507,9 @@ const barn: FurnitureDef = {
       }
     }
     // a weather vane rooster on the ridge
-    k.rod([0, 5.1, 0], [0, 5.35, 0], 0.012, M.blackMetal(), 0.012, 6);
-    k.box(0.28, 0.02, 0.02, M.blackMetal(), 0, 5.28, 0);
-    k.box(0.18, 0.12, 0.012, M.blackMetal(), 0.02, 5.3, 0);
+    k.rod([0, 5.1, 0], [0, 5.34, 0], 0.012, M.blackMetal(), 0.012, 6);
+    k.box(0.28, 0.02, 0.02, M.blackMetal(), 0, 5.22, 0);
+    k.box(0.18, 0.1, 0.012, M.blackMetal(), 0.02, 5.25, 0);
     return k.g;
   },
   draw2d: (ctx, c) =>
@@ -621,7 +627,7 @@ const coop: FurnitureDef = {
 
 /* ------------------------------------------------------------------ rail fence (parametric) */
 
-const FF = { w: 4, d: 0.14, h: 1.05 };
+const FF = { w: 4, d: 0.17, h: 1.05 };
 const farmFence: FurnitureDef = {
   id: 'farm-fence',
   name: 'גדר חווה',
@@ -662,7 +668,7 @@ const farmFence: FurnitureDef = {
 
 /* ------------------------------------------------------------------ hay bales and crates */
 
-const HAY = { w: 1.1, d: 0.6, h: 0.5 };
+const HAY = { w: 1.14, d: 0.62, h: 0.5 };
 const hayBale: FurnitureDef = {
   id: 'farm-hay-bale',
   name: 'חבילת חציר',
@@ -694,7 +700,7 @@ const hayBale: FurnitureDef = {
     }),
 };
 
-const CR = { w: 1.0, d: 0.6, h: 0.62 };
+const CR = { w: 1.0, d: 0.66, h: 0.45 };
 const crates: FurnitureDef = {
   id: 'farm-crates',
   name: 'ארגזי ירקות',

@@ -246,7 +246,7 @@ const floodlight: FurnitureDef = {
 /* ------------------------------------------------------------------ scoreboard */
 
 /** The face of the scoreboard (local): the penalty game paints the live score over it. */
-export const SCOREBOARD = { w: 5.2, d: 0.6, h: 5.6, faceY: 4.3, faceW: 4.7, faceH: 2.1, faceZ: 0.16 };
+export const SCOREBOARD = { w: 5.2, d: 0.76, h: 5.6, faceY: 4.3, faceW: 4.7, faceH: 2.1, faceZ: 0.16 };
 
 function drawBoard(g: C2D, w: number, h: number): void {
   g.fillStyle = '#0d1013';
@@ -291,7 +291,7 @@ const scoreboard: FurnitureDef = {
     const g = new THREE.PlaneGeometry(faceW, faceH);
     k.geo(g, face, 0, faceY, faceZ);
     // little roof
-    k.box(w + 0.1, 0.06, 0.6, frame, 0, faceY + faceH / 2 + 0.2, -0.0);
+    k.box(w, 0.06, 0.6, frame, 0, faceY + faceH / 2 + 0.2, -0.0);
     return k.g;
   },
   draw2d: (ctx, c) =>
