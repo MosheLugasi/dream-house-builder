@@ -296,6 +296,8 @@ export class WalkController {
   onChoose: ((index: number) => void) | null = null;
   /** other shortcut keys (emotes, photo, time of day…) */
   onShortcut: (code: string) => boolean = () => false;
+  /** a running mini-game sees every key first (down and up); true = the key is used up */
+  onGameKey: (code: string, down: boolean) => boolean = () => false;
   private lastHint = '';
 
   constructor(
@@ -668,6 +670,10 @@ export class WalkController {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     sound.unlock();
     audio.unlock();
+    if (!e.repeat && this.onGameKey(e.code, true)) {
+      e.preventDefault();
+      return;
+    }
     if (this.occupation?.key && this.occupation.key(e.code, !e.repeat || e.code.startsWith('Arrow'))) {
       e.preventDefault();
       return;
@@ -705,6 +711,10 @@ export class WalkController {
     this.keys.add(e.code);
   };
   private onKeyUp = (e: KeyboardEvent): void => {
+    if (this.onGameKey(e.code, false)) {
+      this.keys.delete(e.code);
+      return;
+    }
     if (this.occupation?.key) this.occupation.key(e.code, false);
     this.keys.delete(e.code);
   };

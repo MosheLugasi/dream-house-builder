@@ -19,6 +19,12 @@ import { STORAGE } from './items/storage';
 import { LIGHTS } from './items/lights';
 import { MODERN_LIGHTS } from './items/lightsModern';
 import { KITCHEN_SETS } from './items/kitchenSets';
+import { GAME_SIGNS } from './items/gameSigns';
+import { GAME_ITEMS_A } from './items/gameItemsA';
+import { GAME_ITEMS_B } from './items/gameItemsB';
+import { GAME_ITEMS_C } from './items/gameItemsC';
+import { GAME_ITEMS_D } from './items/gameItemsD';
+import { GAME_ITEMS_E } from './items/gameItemsE';
 import { TEXTILES } from './items/textiles';
 import { PLANTS } from './items/plants';
 import { WALL_DECOR } from './items/walldecor';
@@ -213,6 +219,12 @@ const RAW: FurnitureDef[] = [
   ...STREET,
   ...PUBLIC,
   ...VEHICLES,
+  ...GAME_SIGNS,
+  ...GAME_ITEMS_A,
+  ...GAME_ITEMS_B,
+  ...GAME_ITEMS_C,
+  ...GAME_ITEMS_D,
+  ...GAME_ITEMS_E,
 ];
 
 if (import.meta.env?.DEV) {

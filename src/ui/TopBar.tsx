@@ -3,6 +3,7 @@ import { exportProjectFile, importProjectFile } from '../io/storage';
 import { useStore, type Mode } from '../store/store';
 import { CHALLENGES, useProgress } from '../game/progress';
 import { hasAvatarCreator } from './GameHud';
+import { MiniGamesButton } from './MiniGameHud';
 import { Icon } from './icons';
 
 const MODES: { mode: Mode; label: string; icon: string }[] = [
@@ -71,6 +72,7 @@ export function TopBar({
           <Icon name="undo" />
         </button>
         <span className="sep" />
+        <MiniGamesButton className="text-btn" />
         <button className="text-btn stickers-btn" onClick={onChallenges} title="אתגרים ומדבקות">
           ⭐ {stickers}/{CHALLENGES.length}
         </button>

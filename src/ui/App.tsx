@@ -10,6 +10,7 @@ import { Site2D } from './Site2D';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { View3D } from './View3D';
+import { MiniGameHud } from './MiniGameHud';
 
 const TOOL_HINTS: Record<Tool['type'], string> = {
   select: 'לחצו על קיר, רהיט, דלת או חדר כדי לבחור · גררו כדי להזיז · גלגלת העכבר – זום',
@@ -91,6 +92,7 @@ export function App() {
       {dialog === 'challenges' && <ChallengesDialog onClose={() => setDialog(null)} />}
       {dialog === 'avatar' && <AvatarDialog onClose={() => setDialog(null)} />}
       <Toasts />
+      <MiniGameHud />
     </div>
   );
 }

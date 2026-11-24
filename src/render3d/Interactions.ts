@@ -233,6 +233,8 @@ export class Interactions {
   private time = 0;
   /** called when the character sleeps through the night */
   onSleep: () => void = () => {};
+  /** the player wants to play a neighborhood mini-game (start sign) */
+  onMiniGame: (id: string) => void = () => {};
   /** who decides whether a lamp is lit (the engine's light manager: night-time or a flipped switch) */
   lamps: { isOn(id: string): boolean; toggle(id: string): boolean } | null = null;
   /** a ball crossed a goal line */
@@ -764,6 +766,11 @@ export class Interactions {
           break;
         case 'clock':
           break;
+        case 'minigame': {
+          const a = inst.act.get('minigame')!;
+          if (d < 2.2 && a.variant) mk('minigame', a.label ?? `לשחק · ${name}`, '🎮', () => this.onMiniGame(a.variant!));
+          break;
+        }
       }
     }
     return out;
