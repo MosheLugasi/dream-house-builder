@@ -57,8 +57,8 @@ export class Atmosphere {
     glow: { value: 1 },
   };
   private envTarget: THREE.WebGLRenderTarget | null = null;
-  /** the gradient dome rendered into a cube, filtered into `envTarget` (both reused: allocating a new
-   * pre-filtered target every second with the clock running stalled the GPU) */
+  /** the gradient dome rendered into a cube, filtered into `envTarget` (both reused: with the clock
+   * running, a new pre-filtered target was allocated – and the old one freed – every second or so) */
   private domeCube = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
   private domeCamera = new THREE.CubeCamera(0.1, 200, this.domeCube);
   private envHours = -99;

@@ -299,7 +299,10 @@ export class Engine {
         (s.view !== p.view && Object.keys(s.view).some((k) => k !== 'timeOfDay' && k !== 'autoTime' && s.view[k as keyof ViewOptions] !== p.view[k as keyof ViewOptions]))
       )
         this.dirty = true;
+      // (the time slider: full frame rate while it moves)
+      else if (s.view.timeOfDay !== p.view.timeOfDay) this.wake();
     });
+    this.autoQuality = useStore.getState().view.autoQuality;
     this.applyQuality(useStore.getState().view.quality);
   }
 
