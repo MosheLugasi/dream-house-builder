@@ -224,8 +224,8 @@ const grandstand: FurnitureDef = {
       k.box(w, 0.03, 0.06, M.paint('#f2c230'), 0, y, z - 0.03); // yellow step edge
       for (const x of SEAT_XS) {
         const sz = z - 0.6;
-        k.rbox(0.46, 0.08, 0.42, 0.03, seat, x, y + 0.34, sz);
-        k.rbox(0.46, 0.42, 0.07, 0.03, seat, x, y + 0.38, sz - 0.22);
+        k.box(0.46, 0.07, 0.42, seat, x, y + 0.35, sz);
+        k.box(0.46, 0.4, 0.06, seat, x, y + 0.4, sz - 0.22).rotation.x = -0.12;
         k.box(0.08, 0.34, 0.3, frame, x, y, sz);
       }
     }
@@ -255,7 +255,7 @@ const tyreStack: FurnitureDef = {
   category: 'street',
   group: 'יום מירוץ',
   tags: ['מירוץ', 'צמיגים', 'מחסום', 'פיטס'],
-  size: { w: 0.78, d: 0.78, h: 1.0 },
+  size: { w: 0.78, d: 0.78, h: 0.85 },
   colors: [slot('band', 'פס צבע', '#ffffff')],
   build: ({ colors: c }) => {
     const k = new Kit();
@@ -287,7 +287,7 @@ const checkeredFlag: FurnitureDef = {
   category: 'street',
   group: 'יום מירוץ',
   tags: ['מירוץ', 'דגל', 'משובץ', 'סיום'],
-  size: { w: 1.4, d: 0.3, h: 4.2 },
+  size: { w: 1.4, d: 0.34, h: 4.2 },
   colors: [slot('pole', 'תורן', '#d9dcdf')],
   build: ({ colors: c }) => {
     const k = new Kit();
@@ -444,11 +444,11 @@ function podiumFace(n: number): THREE.Material {
       g.font = `900 96px ${EMOJI_FONT}`;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillStyle = '#ffffff';
+      g.fillStyle = '#2b2d31';
       g.fillText(String(n), w / 2, h / 2 + 6);
     },
     ['#e9b923', '#c0c4c8', '#c8803c'][n - 1],
-    0.2,
+    0.02,
   );
 }
 

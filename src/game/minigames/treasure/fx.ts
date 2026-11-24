@@ -142,7 +142,7 @@ export class Fireworks {
     this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
     this.geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
     this.geo.setDrawRange(0, 0);
-    this.mat = new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true, map: sparkTexture(), alphaTest: 0.02 });
+    this.mat = new THREE.PointsMaterial({ size: 0.7, vertexColors: true, transparent: true, depthWrite: false, sizeAttenuation: true, map: sparkTexture(), alphaTest: 0.02 });
     this.points = new THREE.Points(this.geo, this.mat);
     this.points.frustumCulled = false;
     this.points.renderOrder = 12;
@@ -232,7 +232,7 @@ export class ScreenCard {
     this.el = document.createElement('div');
     Object.assign(this.el.style, {
       position: 'fixed',
-      top: '62px',
+      top: '108px',
       left: '50%',
       transform: 'translateX(-50%)',
       maxWidth: 'min(560px, 78vw)',

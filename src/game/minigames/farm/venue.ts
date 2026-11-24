@@ -84,12 +84,25 @@ export function buildFarmVenue(v: VenueBuilder): void {
   fence(49.3, 33.5, 12, Math.PI / 2);
   fence(49.3, 44.3, 9.4, Math.PI / 2);
 
+  // a duck pond in the south-west corner, with a bench under a tree
+  v.area(2.6, 38.6, 11.4, 46.2, 'water');
+  v.area(2.0, 38.0, 12.0, 38.6, 'sand');
+  v.prop('garden-bench', 7, 36.9, FACE.S);
+  for (const [x, y] of [
+    [12.8, 41],
+    [12.6, 44.6],
+  ] as const) v.prop('bush', x, y);
+  // the market's corner: a bench for waiting customers, crates of the day's harvest
+  v.prop('garden-bench', 23.4, 47.6, FACE.S);
+  v.prop('farm-crates', 33.6, 44, -0.3);
+  // a hedge between the field and the orchard
+  for (const y of [21, 23.2, 25.4, 27.6, 29.8]) v.prop('hedge', 34.4, y, Math.PI / 2);
+
   // greenery around the edges
   for (const [x, y] of [
     [2.5, 2.5],
     [3, 26],
-    [3.2, 38],
-    [8, 45.5],
+    [3.2, 33],
     [46.5, 40],
     [33.5, 3],
   ] as const) v.prop('tree', x, y, x);

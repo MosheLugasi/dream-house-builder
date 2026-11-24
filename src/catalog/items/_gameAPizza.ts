@@ -198,13 +198,10 @@ const pizzaSign: FurnitureDef = {
     const rim = k.cyl(0.8, 0.22, M.paint('#1f7a3a', 0.4), 0, 0, 0, 0.8, 40);
     rim.rotation.x = Math.PI / 2;
     rim.position.y = 3.6;
-    for (const z of [0.115, -0.115]) {
-      const f = k.cyl(0.76, 0.01, signFace(), 0, 0, z, 0.76, 40);
-      f.rotation.x = Math.PI / 2;
-      if (z < 0) f.rotation.z = Math.PI;
-      f.position.y = 3.6;
-      // the canvas is mapped on the cap; turn it upright
-      f.rotation.y = z > 0 ? 0 : Math.PI;
+    const disc = new THREE.CircleGeometry(0.76, 40);
+    for (const z of [0.116, -0.116]) {
+      const f = k.geo(disc, signFace(), 0, 3.6, z);
+      if (z < 0) f.rotation.y = Math.PI;
     }
     return k.g;
   },

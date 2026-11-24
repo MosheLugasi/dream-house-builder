@@ -124,7 +124,7 @@ class DanceShow implements MiniGameSession {
     this.cam = new CameraRig(ctx.camera);
     // the note highway, attached to the camera
     ctx.root.add(this.hw);
-    const mk = (color: string, opacity: number) => this.bin.add(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
+    const mk = (color: string, opacity: number) => this.bin.add(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false, fog: false, side: THREE.DoubleSide }));
     const bg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.62), mk('#0d0820', 0.62));
     bg.position.set(0, 0.17, -0.001);
     bg.renderOrder = 40;
@@ -154,7 +154,7 @@ class DanceShow implements MiniGameSession {
       this.hw.add(b);
       this.bursts.push({ m: b, t: 9 });
     }
-    const noteMat = this.bin.add(new THREE.MeshBasicMaterial({ color: '#ffffff', depthTest: false, depthWrite: false, toneMapped: false, transparent: true }));
+    const noteMat = this.bin.add(new THREE.MeshBasicMaterial({ color: '#ffffff', depthTest: false, depthWrite: false, toneMapped: false, fog: false, transparent: true }));
     this.noteMesh = new THREE.InstancedMesh(new THREE.ShapeGeometry(arrowShape()), noteMat, MAX_NOTES);
     this.noteMesh.renderOrder = 43;
     this.noteMesh.frustumCulled = false;
@@ -711,7 +711,7 @@ export const GAME: MiniGameDef = {
     'בדיוק בזמן = מושלם (100), קצת לפני או אחרי = טוב (50)',
     'כל 10 ברצף מעלים את המכפיל (עד ×4) – והקהל משתגע!',
   ],
-  medals: { bronze: 5000, silver: 16000, gold: 32000, unit: 'points' },
+  medals: { bronze: 4000, silver: 15000, gold: 30000, unit: 'points' },
   venue: { plot: 'e-south', build: buildStage },
   start: (ctx) => new DanceShow(ctx),
 };

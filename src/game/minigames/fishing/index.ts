@@ -689,6 +689,12 @@ class FishingRound implements MiniGameSession {
     const mb = this.bin.add(new THREE.MeshStandardMaterial({ color: back, roughness: 0.35, metalness: 0.2 }));
     const mw = this.bin.add(new THREE.MeshStandardMaterial({ color: belly, roughness: 0.4, metalness: 0.15 }));
     const mf = this.bin.add(new THREE.MeshStandardMaterial({ color: fin, roughness: 0.5, side: THREE.DoubleSide }));
+    // in the dark the catch glows a little (as if lit by the camera flash) so the photo still shows it
+    const glow = this.ctx.night() * 0.45;
+    if (glow > 0.02) for (const m of [mb, mw, mf]) {
+      m.emissive.copy(m.color);
+      m.emissiveIntensity = glow;
+    }
     if (c.species.id === 'boot') {
       const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.12), mb);
       leg.position.set(0, 0.11, 0);

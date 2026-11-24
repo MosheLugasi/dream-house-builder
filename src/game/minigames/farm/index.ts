@@ -999,7 +999,7 @@ export const GAME: MiniGameDef = {
     'לקוחות מגיעים לדוכן עם הזמנות – מלאו אותן מהסל (E ליד הדוכן). מהר = טיפ!',
     'יש גם לימונים על העצים וביצים בלול 🍋🥚',
   ],
-  medals: { bronze: 150, silver: 550, gold: 950, unit: 'points' },
+  medals: { bronze: 150, silver: 450, gold: 800, unit: 'points' },
   venue: { plot: 'west', build: buildFarmVenue },
   start,
 };

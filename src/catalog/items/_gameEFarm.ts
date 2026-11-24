@@ -681,7 +681,7 @@ const hayBale: FurnitureDef = {
   build: ({ colors: c }) => {
     const k = new Kit();
     const hay = M.linen(c.hay);
-    k.geo(organicGeo(roundedBoxGeo(HAY.w, HAY.h - 0.01, HAY.d, 0.06, 2), 0.012, 9, 3), hay, 0, HAY.h / 2, 0);
+    k.geo(organicGeo(roundedBoxGeo(HAY.w - 0.05, HAY.h - 0.01, HAY.d - 0.03, 0.06, 2), 0.012, 9, 3), hay, 0, HAY.h / 2, 0);
     for (const x of [-0.28, 0.28]) {
       k.box(0.025, 0.012, HAY.d + 0.004, M.matte('#8a6a3a'), x, HAY.h - 0.016, 0);
       for (const z of [-1, 1]) k.box(0.025, HAY.h - 0.02, 0.006, M.matte('#8a6a3a'), x, 0.004, z * (HAY.d / 2 + 0.001));

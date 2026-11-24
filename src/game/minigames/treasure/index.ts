@@ -464,6 +464,7 @@ function start(ctx: MiniGameContext): MiniGameSession {
       return false;
     },
     dispose() {
+      phase = 'done';
       if (walk.occupation) walk.release();
       walk.character.setActivity('none');
       for (const f of disposers) f();

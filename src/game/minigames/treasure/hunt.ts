@@ -204,7 +204,7 @@ export class SiteMap {
 
   /** a good place for a chest: free ground with some elbow room, not on the driving lanes */
   free(p: Vec2): boolean {
-    return !this.blocked(p, 0.55) && !this.onAsphalt(p);
+    return !this.blocked(p, 0.85) && !this.onAsphalt(p);
   }
 
   /** Flood-fill the walkable ground (1 m cells, the character's radius as padding) from `start`. */
