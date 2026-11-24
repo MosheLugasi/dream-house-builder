@@ -1772,3 +1772,7 @@ kbd {
   margin: 0;
   font-weight: 700;
 }
+.brand-name,
+.mode-tabs button {
+  white-space: nowrap;
+}

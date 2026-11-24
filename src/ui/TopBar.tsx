@@ -72,7 +72,7 @@ export function TopBar({
           <Icon name="undo" />
         </button>
         <span className="sep" />
-        <MiniGamesButton className="text-btn" />
+        <MiniGamesButton className="text-btn" compact />
         <button className="text-btn stickers-btn" onClick={onChallenges} title="אתגרים ומדבקות">
           ⭐ {stickers}/{CHALLENGES.length}
         </button>

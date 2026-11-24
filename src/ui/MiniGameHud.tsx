@@ -232,10 +232,10 @@ export function MiniGameHud() {
 }
 
 /** The 🎮 button (walk HUD and top bar). */
-export function MiniGamesButton({ className = 'chip' }: { className?: string }) {
+export function MiniGamesButton({ className = 'chip', compact = false }: { className?: string; compact?: boolean }) {
   return (
     <button className={className} onClick={() => useMiniGame.getState().set({ menuOpen: true })} title="משחקי השכונה">
-      🎮 משחקים
+      🎮{compact ? '' : ' משחקים'}
     </button>
   );
 }
