@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Realism, snapToShadowTexels } from './render/Realism';
-import { ShaderWarmup } from './render/ShaderWarmup';
+import { needsUpload, ShaderWarmup } from './render/ShaderWarmup';
 import { FrameGovernor, QUALITY_STEPS } from './render/AdaptiveQuality';
 import type { Quality } from '../store/quality';
 import { getFurniture, itemSize, type ItemAnchors } from '../catalog';
 import { placedBoxes, placedLight, placedSeats } from '../catalog/placed';
 import { setWindowGlow } from '../catalog/openings';
-import { finishes } from '../materials/finishes';
+import { finishes, onFinishTexturesUpdated } from '../materials/finishes';
 import { setMaxAnisotropy } from '../materials/textureGen';
 import { snapTo } from '../model/geom';
 import { getGraph, roomAt, styleOfRoom } from '../model/graph';
@@ -102,6 +102,7 @@ export class Engine {
   /** lamp posts knocked over: their lights are out until walk mode ends */
   private brokenLamps = new Set<string>();
   private unsubLook: () => void = () => {};
+  private unsubFinishes: () => void = () => {};
   private ground: THREE.Mesh;
   private groundFinish = '';
   private buildings = new Map<string, BuildingView>();
@@ -166,6 +167,12 @@ export class Engine {
     renderer.domElement.style.touchAction = 'none';
     setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
     this.warm = new ShaderWarmup(renderer);
+    // a finish got its full-resolution or photographic textures (in an idle slot / when the pictures
+    // arrived): upload them now rather than in the middle of the next frame
+    this.unsubFinishes = onFinishTexturesUpdated((id) => {
+      const m = finishes.material(id);
+      for (const t of [m.map, m.normalMap, m.roughnessMap]) if (t && needsUpload(renderer, t)) renderer.initTexture(t);
+    });
 
     // sky, sun / moon, ambient light
     this.atmosphere = new Atmosphere(renderer, this.scene);
@@ -297,6 +304,7 @@ export class Engine {
 
   dispose(): void {
     this.warm.clear();
+    this.unsubFinishes();
     this.games.dispose();
     this.stop();
     this.unsub();

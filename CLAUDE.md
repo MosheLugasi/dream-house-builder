@@ -37,6 +37,10 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
 - Two procedural sound engines: `sound` (`src/audio/sound.ts`: item effects, instruments, music) and `audio`
   (`src/audio/index.ts`, contract `src/audio/types.ts`: footsteps, ambience, vehicles, game sfx). Both stay silent until the first user gesture; mute both together.
 - Lamps do not own `PointLight`s: `LightManager` assigns a pool of 8 lights to the nearest lit sources.
+- Shaders are compiled ahead of the frame by `render3d/render/ShaderWarmup.ts` (new objects wait on layer 31 until ready: never
+  use layer 31 elsewhere). Keep the light count / types constant at runtime (every change recompiles every program); a light
+  that joins the scene by itself needs a `warm.variants` entry (see `WindowLights.flipVisibility`).
+- Quality: "auto" (default) steps down via `render3d/render/AdaptiveQuality.ts`; the idle editor draws every other frame.
 - Neighborhood mini-games: `src/game/minigames/` (contract `types.ts`, one folder per game, venues installed into plots by
   `plots.ts#installVenue`, runtime `render3d/MiniGames.ts`). Game modules are imported by `sampleProject()`: never import
   `store/store.ts` from them at module level (circular import) – use the `MiniGameContext`.

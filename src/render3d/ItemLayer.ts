@@ -3,6 +3,7 @@ import { DESIGN_CEILING, getFurniture, resolveColors } from '../catalog';
 import { placedObjectScale, placedSize } from '../catalog/placed';
 import type { FurnitureItem } from '../model/types';
 import { itemBatches } from './StaticBatches';
+import { freshKey, takePrebuilt } from './prebuild';
 
 /** Notified when placed items appear, move or disappear (interactive behaviours hook in here). */
 export interface ItemEvents {
@@ -44,7 +45,8 @@ export function makeItemHolder(item: Pick<FurnitureItem, 'catalogId' | 'colors' 
   const size = placedSize(def, item);
   let obj: THREE.Object3D;
   try {
-    obj = def.build({ colors: resolveColors(def, item.colors), rise: ctx.rise, size });
+    const colors = resolveColors(def, item.colors);
+    obj = (def.noBake && !def.stair ? takePrebuilt(freshKey(def, colors, size)) : undefined) ?? def.build({ colors, rise: ctx.rise, size });
   } catch (err) {
     console.warn('failed to build', item.catalogId, err);
     obj = new THREE.Mesh(new THREE.BoxGeometry(def.size.w, def.size.h, def.size.d), new THREE.MeshStandardMaterial({ color: '#bbb' }));

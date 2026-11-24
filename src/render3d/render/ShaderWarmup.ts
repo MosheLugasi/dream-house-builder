@@ -43,6 +43,8 @@ const renderable = (o: THREE.Object3D): boolean =>
 export class ShaderWarmup {
   private jobs: Job[] = [];
   private pending: Program[] = [];
+  /** textures of queued objects that still have to be uploaded */
+  private textures = new Set<THREE.Texture>();
   /** objects waiting on the hidden layer → their own layer mask */
   private waiting = new Map<THREE.Object3D, number>();
   /** objects handled, with the material they were compiled for */
@@ -69,7 +71,7 @@ export class ShaderWarmup {
 
   /** Something is still being prepared. */
   get busy(): boolean {
-    return this.jobs.length > 0 || this.pending.length > 0;
+    return this.jobs.length > 0 || this.pending.length > 0 || this.textures.size > 0;
   }
 
   /** The frame should keep the previous image (a big change is being prepared). */
@@ -137,6 +139,7 @@ export class ShaderWarmup {
       }
       r.setRenderTarget(prev);
       undo?.();
+      if (!job.variant) this.collectTextures(this.list);
       this.list = [];
       for (const p of programs(r)) if (p.id > before) this.pending.push(p);
     }
@@ -155,8 +158,34 @@ export class ShaderWarmup {
       this.stats.compiled++;
       this.pending.splice(i--, 1);
     }
-    // 3. everything ready: show what was waiting
+    // 3. upload their textures (the first frame that draws a new texture uploads it – and builds its
+    // mipmaps – in the middle of the frame: a whole neighborhood's worth at once when the 3D view opens)
+    let uploaded = 0;
+    for (const t of this.textures) {
+      if (uploaded > 0 && performance.now() - t0 >= budgetMs) break;
+      this.textures.delete(t);
+      if (!needsUpload(r, t)) continue;
+      try {
+        r.initTexture(t);
+      } catch {
+        /* drawn (and reported) by the frame instead */
+      }
+      uploaded++;
+    }
+    // 4. everything ready: show what was waiting
     if (!this.busy) this.release();
+  }
+
+  private collectTextures(objects: THREE.Object3D[]): void {
+    for (const o of objects) {
+      const mats = (o as THREE.Mesh).material;
+      for (const m of Array.isArray(mats) ? mats : [mats]) {
+        for (const key of TEXTURE_SLOTS) {
+          const t = (m as unknown as Record<string, THREE.Texture | null | undefined>)[key];
+          if (t?.isTexture && needsUpload(this.renderer, t)) this.textures.add(t);
+        }
+      }
+    }
   }
 
   private release(): void {
@@ -168,9 +197,20 @@ export class ShaderWarmup {
   clear(): void {
     this.jobs = [];
     this.pending = [];
+    this.textures.clear();
     this.holdUntil = 0;
     this.release();
   }
+}
+
+const TEXTURE_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap', 'alphaMap', 'bumpMap', 'lightMap', 'specularMap'];
+
+/** a texture whose current version has not reached the GPU yet (and can: its image is there) */
+export function needsUpload(r: THREE.WebGLRenderer, t: THREE.Texture): boolean {
+  if (t.version === 0 || (t as THREE.CubeTexture).isCubeTexture || (t as THREE.Data3DTexture).isData3DTexture) return false;
+  const img = t.image as { width?: number; complete?: boolean } | null;
+  if (!img || (img.complete === false && !(t as THREE.DataTexture).isDataTexture)) return false;
+  return (r.properties.get(t) as { __version?: number }).__version !== t.version;
 }
 
 function programs(r: THREE.WebGLRenderer): Program[] {

@@ -31,7 +31,11 @@ export const QUALITY_STEPS: readonly QualityStep[] = [
 ];
 
 export interface GovernorOptions {
-  /** a frame slower than this (ms) counts as slow: 28 ms ≈ 36 frames per second */
+  /**
+   * a window whose median frame is slower than this (ms) is slow: 36 ms ≈ 28 frames per second. (Not
+   * 30: a browser saving energy on battery caps the page at exactly 30 frames per second however fast
+   * it draws.)
+   */
   slowMs: number;
   /** length of one measuring window (ms) */
   windowMs: number;
@@ -41,7 +45,7 @@ export interface GovernorOptions {
   settleMs: number;
 }
 
-const DEFAULTS: GovernorOptions = { slowMs: 28, windowMs: 2500, minFrames: 12, settleMs: 1500 };
+const DEFAULTS: GovernorOptions = { slowMs: 36, windowMs: 2500, minFrames: 12, settleMs: 1500 };
 
 /**
  * Automatic quality: watches the real time between frames and steps the quality down while the frame

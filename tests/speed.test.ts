@@ -18,6 +18,12 @@ describe('automatic quality', () => {
     expect(loadQualityChoice()).toBe('auto');
   });
 
+  it('keeps the quality at a capped 30 frames per second (energy saver)', () => {
+    const g = new FrameGovernor();
+    run(g, 0, 33.4, 30);
+    expect(g.level).toBe(0);
+  });
+
   it('keeps the quality while the frame rate is fine, even with single hitches', () => {
     const g = new FrameGovernor();
     let t = 0;

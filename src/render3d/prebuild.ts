@@ -1,10 +1,31 @@
 import { getFurniture, resolveColors } from '../catalog';
 import { placedSize } from '../catalog/placed';
 import { finishes } from '../materials/finishes';
+import type { Object3D } from 'three';
+import type { FurnitureDef, ItemSize } from '../catalog/types';
 import type { FurnitureItem, Project } from '../model/types';
 
 /** a unit of work */
 type Job = () => void;
+
+/**
+ * Items that are built fresh for every placement (`noBake`: pets, people, vehicles, rides – they animate
+ * their own parts) cannot share a template; one object per placement is built ahead instead and handed
+ * to the 3D view when it places the item.
+ */
+const fresh = new Map<string, Object3D[]>();
+
+export function freshKey(def: FurnitureDef, colors: Record<string, string>, size: ItemSize): string {
+  return `${def.id}|${JSON.stringify(colors)}|${def.parametric ? `${size.w},${size.d},${size.h}` : ''}`;
+}
+
+/** An object built ahead for this item (or undefined: build it now). */
+export function takePrebuilt(key: string): Object3D | undefined {
+  const list = fresh.get(key);
+  const obj = list?.pop();
+  if (list && !list.length) fresh.delete(key);
+  return obj;
+}
 
 /**
  * Builds what the 3D view will need while the player is still in the 2D editor, in idle slots: the baked
@@ -32,10 +53,26 @@ export class Prebuilder {
     };
     const item = (f: FurnitureItem) => {
       const def = getFurniture(f.catalogId);
-      // (noBake items are built fresh every time: nothing to cache)
-      if (!def || def.noBake) return;
+      if (!def) return;
       const size = placedSize(def, f);
       const colors = resolveColors(def, f.colors);
+      if (def.noBake) {
+        // one per placement (stairs depend on the storey height: built in place)
+        if (def.stair || this.seen.has(`n:${f.id}`)) return;
+        this.seen.add(`n:${f.id}`);
+        const k = freshKey(def, colors, size);
+        this.queue.push(() => {
+          try {
+            const obj = def.build({ colors, rise: 3, size });
+            const list = fresh.get(k) ?? [];
+            list.push(obj);
+            fresh.set(k, list);
+          } catch {
+            /* reported when the 3D view builds it */
+          }
+        });
+        return;
+      }
       const key = `i:${f.catalogId}|${JSON.stringify(colors)}|${def.parametric ? `${size.w},${size.d},${size.h}` : ''}`;
       if (this.seen.has(key)) return;
       this.seen.add(key);
