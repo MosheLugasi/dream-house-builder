@@ -562,7 +562,7 @@ export function rubberBand(aheadOfPlayer: number): number {
 }
 
 /** Normalised race score: real seconds scaled so that an ideal race of any circuit/vehicle = REF. */
-export const RACE_REF_TIME = 150;
+export const RACE_REF_TIME = 140;
 export function normalisedTime(real: number, ideal: number): number {
   return Math.round((real * (RACE_REF_TIME / Math.max(1, ideal))) * 10) / 10;
 }
