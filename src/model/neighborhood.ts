@@ -3,6 +3,8 @@ import { emptyProject } from './defaults';
 import { sampleHouse } from './sample';
 import { buildTemplate, FACE } from './templates';
 import { newId, type Building, type Project } from './types';
+import { MINI_GAMES } from '../game/minigames/registry';
+import { ensureDistrictRoads, installVenue } from '../game/minigames/plots';
 
 /**
  * The starter project: a small furnished neighborhood so that a first-time player immediately has
@@ -165,6 +167,10 @@ export function sampleProject(): Project {
   prop('kids-bike', -45.6, -3.0, FACE.E);
   prop('kick-scooter', -28.6, -24.2, FACE.E);
   prop('bicycle', 26.6, -2.6, FACE.S, { frame: '#2f6f73' });
+
+  // ---- the games district: streets and a venue for every neighborhood mini-game ----
+  ensureDistrictRoads(p);
+  for (const g of MINI_GAMES) if (g.venue) installVenue(p, g.id, g.venue.plot, g.venue.build);
 
   return p;
 }

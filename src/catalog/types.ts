@@ -128,7 +128,9 @@ export type ActionKind =
   /** wall / table clocks: parts 'hour', 'minute' (and 'second'), pivot at the dial centre, turning around local Z */
   | 'clock'
   /** pool / ping-pong / foosball / board games: the character plays a round */
-  | 'play';
+  | 'play'
+  /** start sign of a neighborhood mini-game: `variant` = the game id (src/game/minigames/meta.ts) */
+  | 'minigame';
 
 export interface ActionSpec {
   kind: ActionKind;

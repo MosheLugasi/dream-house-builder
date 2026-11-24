@@ -34,6 +34,9 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
 - Two procedural sound engines: `sound` (`src/audio/sound.ts`: item effects, instruments, music) and `audio`
   (`src/audio/index.ts`, contract `src/audio/types.ts`: footsteps, ambience, vehicles, game sfx). Both stay silent until the first user gesture; mute both together.
 - Lamps do not own `PointLight`s: `LightManager` assigns a pool of 8 lights to the nearest lit sources.
+- Neighborhood mini-games: `src/game/minigames/` (contract `types.ts`, one folder per game, venues installed into plots by
+  `plots.ts#installVenue`, runtime `render3d/MiniGames.ts`). Game modules are imported by `sampleProject()`: never import
+  `store/store.ts` from them at module level (circular import) – use the `MiniGameContext`.
 - Several sessions may push to `main`: `git fetch` and merge before pushing, never force-push.
 - Agents working in parallel share one scratchpad directory: use a private subfolder and never `pkill` by a generic name.
 

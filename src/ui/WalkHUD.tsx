@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DAY_MOMENTS, momentOf, type Engine } from '../render3d/Engine';
 import { audio } from '../audio';
 import { WalkExtras } from './GameHud';
+import { MiniGamesButton } from './MiniGameHud';
 import { useStore } from '../store/store';
 import { useWalk } from '../store/walk';
 import { sound } from '../audio/sound';
@@ -144,6 +145,7 @@ export function WalkHUD({ engine, onAvatar }: { engine: Engine | null; onAvatar?
     <>
       <div className="view-controls">
         <WalkExtras />
+        <MiniGamesButton />
         <TimeOfDayChips />
         <label className={`chip toggle ${view.firstPerson ? 'on' : ''}`}>
           <input type="checkbox" checked={view.firstPerson} onChange={(e) => setView({ firstPerson: e.target.checked })} />

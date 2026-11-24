@@ -43,6 +43,10 @@ src/
                          RectAreaLight), IndoorAmbient.ts (פחות "שמיים" בתוך חדרים: מסכת חדרים + תיקון שיידר משותף,
                          materials/shaderPatches.ts), Grass.ts (דשא תלת־ממדי סביב המצלמה); צללי מנורות בלילה ב־LightManager
   game/         התקדמות השחקן: מראה הדמות, מונים, "אלבום המדבקות", כוכבים (localStorage, לא חלק מקובץ הפרויקט)
+  game/minigames/ משחקי השכונה: types.ts = החוזה בין המשחקים לסביבת ההרצה, meta.ts (שמות/צבעים), plots.ts (רובע המשחקים: מגרשים,
+                רחובות והתקנת מתקן), store.ts (תצוגה, שיאים ומדליות), registry.ts; תיקייה לכל משחק (race, delivery, skatepark, parkour,
+                amusement, football, fishing, dance, treasure, farm). render3d/MiniGames.ts מריץ סיבוב (חץ ניווט, כרטיס תוצאה, ניקוי),
+                ui/MiniGameHud.tsx מציג תפריט, כרטיס "איך משחקים", תצוגת משחק ותוצאה. render3d/walkSurfaces.ts = משטחים שאפשר לעמוד/לרכוב עליהם (רמפות).
   audio/        שני מנועי WebAudio פרוצדורליים: sound.ts – אפקטים של פריטים, כלי נגינה ותחנות מוזיקה;
                 `audio` (index.ts, חוזה ב־types.ts) – צעדים לפי משטח, סביבה (יום/לילה/פנים), מנועי רכב ואפקטי משחק
   catalog/      קטלוג פריטים (types.ts = החוזה): רהיטים, רחוב, גן שעשועים, מבני ציבור, מדרגות, כלי רכב; דלתות וחלונות; מדריך הוספת פריטים: docs/catalog-authoring.md

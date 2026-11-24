@@ -34,7 +34,9 @@ export type GameEvent =
   | 'ball-kicked'
   | 'photo-taken'
   | 'night-walk'
-  | 'avatar-changed';
+  | 'avatar-changed'
+  | 'minigame-played'
+  | 'minigame-gold';
 
 export interface Challenge {
   id: string;
@@ -72,6 +74,8 @@ export const CHALLENGES: Challenge[] = [
   { id: 'good-night', icon: '🌙', title: 'לילה טוב', hint: 'שכבו במיטה ולכו לישון', group: 'play', event: 'slept', goal: 1 },
   { id: 'lights', icon: '💡', title: 'ויהי אור', hint: 'הדליקו או כבו 5 מנורות', group: 'play', event: 'light-switched', goal: 5 },
   { id: 'night-owl', icon: '🦉', title: 'טיול לילי', hint: 'טיילו בשכונה בלילה', group: 'play', event: 'night-walk', goal: 60 },
+  { id: 'gamer', icon: '🎮', title: 'שחקנית השכונה', hint: 'שחקו 5 סיבובים במשחקי השכונה', group: 'play', event: 'minigame-played', goal: 5 },
+  { id: 'gold-medal', icon: '🥇', title: 'מדליית זהב', hint: 'זכו במדליית זהב באחד ממשחקי השכונה', group: 'play', event: 'minigame-gold', goal: 1 },
   { id: 'photographer', icon: '📸', title: 'צלמת', hint: 'צלמו תמונה של מה שבניתם', group: 'play', event: 'photo-taken', goal: 1 },
 ];
 

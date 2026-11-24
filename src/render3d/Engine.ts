@@ -34,6 +34,10 @@ import { updateEffects } from './effects';
 import { ItemLayer, makeItemHolder, type ItemEntry } from './ItemLayer';
 import { Particles, Stars } from './Life';
 import { Traffic } from './Traffic';
+import { MiniGames } from './MiniGames';
+import { useMiniGame } from '../game/minigames/store';
+import type { MiniGameId } from '../game/minigames/meta';
+import { installMiniGameVenue, needsVenue } from '../game/minigames/install';
 import { randomLook } from './characterTypes';
 import { LightManager, type LampSource } from './LightManager';
 import { emptyWorld, seatsOf, WalkController, type WalkWorld } from './WalkController';
@@ -87,6 +91,7 @@ export class Engine {
   private clockTimer = 0;
   private lampKey: unknown[] = [];
   readonly interactions: Interactions;
+  readonly games: MiniGames;
   private photoPending = false;
   private particles = new Particles();
   private stars = new Stars(this.particles);
@@ -171,7 +176,8 @@ export class Engine {
     this.controls.target.set(6, 0.5, 4.5);
 
     this.walk = new WalkController(this.camera, renderer.domElement);
-    this.walk.onHint = (hint) => useStore.getState().setHint(hint);
+    // during a mini-game the game's own hint replaces the walk controls' one
+    this.walk.onHint = (hint) => useStore.getState().setHint(useMiniGame.getState().active ? '' : hint);
     this.walk.onToggleFirstPerson = () => {
       const st = useStore.getState();
       st.setView({ firstPerson: !st.view.firstPerson });
@@ -197,6 +203,19 @@ export class Engine {
       useProgress.getState().setFlash('⚽ גוווול!');
     };
     // sleeping skips to the other half of the day: to the morning at night, to the evening by day
+    // neighborhood mini-games
+    this.games = new MiniGames({
+      scene: this.scene,
+      camera: this.camera,
+      walk: this.walk,
+      props: this.props,
+      groundAt: (x, y) => groundHeight(this.roads, x, y),
+      night: () => this.atmosphere.night,
+      hour: () => this.time,
+      emit: (kind, at, count, spread) => this.interactions.particles.emit(kind, at, { count, spread }),
+    });
+    this.walk.onGameKey = (code, down) => this.games.key(code, down);
+    this.interactions.onMiniGame = (id) => this.games.offer(id as MiniGameId);
     this.interactions.onSleep = () => {
       const morning = this.atmosphere.night > 0.5;
       this.setTime(morning ? 7 : DAY_MOMENTS.night);
@@ -227,6 +246,7 @@ export class Engine {
   }
 
   dispose(): void {
+    this.games.dispose();
     this.stop();
     this.unsub();
     this.unsubLook();
@@ -301,6 +321,7 @@ export class Engine {
       const walk = this.walk;
       walk.night = this.atmosphere.night;
       walk.update(dt);
+      this.games.update(dt);
       this.stars.update(dt, walk);
       this.traffic.update(dt, walk, () => audio.play('horn', { volume: 0.45 }));
       this.updateHeadlight();
@@ -380,6 +401,32 @@ export class Engine {
 
   callPets(): void {
     this.interactions.callPets();
+  }
+
+  /**
+   * Play a neighborhood mini-game: build its venue if this project has none yet, walk there, and
+   * start the round once the world around it is ready.
+   */
+  playMiniGame(id: MiniGameId): void {
+    const st = useStore.getState();
+    if (needsVenue(id)) installMiniGameVenue(id);
+    if (st.mode !== 'walk') {
+      if (st.scope !== 'site') st.setMode('site');
+      st.setMode('walk');
+    }
+    // stand in front of the game's start sign (games without a venue place the player themselves)
+    const sign = useStore.getState().project.site.props.find((f) => f.catalogId === `game-sign-${id}`);
+    const go = () => {
+      if (sign) {
+        const fx = -Math.sin(sign.rotation);
+        const fy = Math.cos(sign.rotation);
+        const p = { x: sign.x + fx * 2.2, y: sign.y + fy * 2.2 };
+        this.walk.teleport(p, Math.atan2(fx, fy), groundHeight(this.roads, p.x, p.y));
+      }
+      this.games.start(id);
+    };
+    // let the walk world (and a freshly built venue) appear first
+    setTimeout(go, 250);
   }
 
   takePhoto(): void {
@@ -947,6 +994,7 @@ export class Engine {
       this.interactions.enterWalk(this.walk, this.walk.world);
       this.interactions.particles.setViewport(this.height * this.renderer.getPixelRatio(), this.camera.fov);
     } else {
+      this.games.stop();
       this.interactions.exitWalk();
       this.walk.disable();
       this.walk.character.root.visible = false;

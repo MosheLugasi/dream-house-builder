@@ -9,6 +9,9 @@ import type { Vec2 } from '../model/types';
 import type { OpeningAnim } from '../catalog/openings';
 import { Character, type Activity, type Pose, type Prop } from './Character';
 import { sound } from '../audio/sound';
+import { decorateWalkWorld, surfaceBlocks, surfaceSlopeAlong, surfaceTop, type WalkSurface } from './walkSurfaces';
+
+export type { WalkSurface } from './walkSurfaces';
 
 /** A solid stretch of wall (site coordinates) between two heights. */
 export interface WalkWall {
@@ -89,10 +92,52 @@ export interface WalkWorld {
   groundAt: (x: number, y: number) => number;
   /** what the floor is made of at a place (footstep sounds) */
   surfaceAt?: (x: number, y: number, feetY: number) => Surface;
+  /**
+   * Standable surfaces (ramps, platforms, rails, beams – see walkSurfaces.ts): the walker and the
+   * vehicles stand on / ride over them, jump onto them and fly off their lips. Filled by world decorators.
+   */
+  surfaces?: WalkSurface[];
+  /** ids of items whose collision box is replaced by their surfaces (the walker and the vehicles ignore those boxes) */
+  surfaceOwners?: Set<string>;
+}
+
+/** Leaving the ground / landing again (jumps, falls, vehicles flying off ramps). */
+export interface AirEvent {
+  phase: 'takeoff' | 'land';
+  /** true for the vehicle being driven, false for the walker */
+  vehicle: boolean;
+  /** seconds spent in the air (land) */
+  airTime: number;
+  /** vehicles: total yaw turned in the air, radians (positive = counter-clockwise seen from above) */
+  spin: number;
+  /** vehicles: heading vs travel direction at landing – 1 forwards, −1 backwards (fakie), ≈0 sideways */
+  align: number;
+  /** vertical speed at the moment of landing, m/s (positive = downwards) */
+  impact: number;
+  /** horizontal speed right after landing / at take-off, m/s */
+  speed: number;
+  /** the surface landed on / taken off from (null = ground or floor) */
+  surface: WalkSurface | null;
+  /** height of the feet (walker) or of the wheels (vehicle) */
+  y: number;
 }
 
 export const RADIUS = 0.22;
 const GRAVITY = 9.8;
+/** how high the walker steps up onto a surface without jumping, and how far it may land below a ledge it grabs */
+const STEP_UP = 0.36;
+const AIR_MANTLE = 0.3;
+/** a drop larger than this (stepping off a surface) is a fall, not a step down */
+const DROP = 0.3;
+/** how high a vehicle rolls onto a surface / may be below an edge it lands on */
+const VEHICLE_STEP = 0.3;
+const VEHICLE_AIR_GRACE = 0.25;
+/** launching from a slope steeper than this (rad) goes straight up (quarter pipes) */
+const VERT_LAUNCH = 0.95;
+/** air spin rate of two-wheelers and boards, rad/s */
+const AIR_SPIN = 10;
+/** vertical speed of a hop (ollie / bunny hop) */
+const HOP_SPEED = 3.1;
 const ACTION_KEYS = ['KeyE', 'KeyF', 'KeyG', 'KeyT'];
 
 /** Where the character is while it is "using" something (riding a swing, playing piano…). */
@@ -133,7 +178,7 @@ export interface Occupation {
  * Push a circle (feet at height y) out of walls and furniture boxes. Returns the summed push
  * (zero when nothing was hit) so moving bodies can bounce.
  */
-export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: number, ignoreBox?: string): Vec2 {
+export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: number, ignoreBox?: string, skip?: ReadonlySet<string>): Vec2 {
   const push = { x: 0, y: 0 };
   for (let iter = 0; iter < 4; iter++) {
     for (const w of world.walls) {
@@ -161,7 +206,7 @@ export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: nu
       push.y += ny * d;
     }
     for (const b of world.boxes) {
-      if (b.id !== undefined && b.id === ignoreBox) continue;
+      if (b.id !== undefined && (b.id === ignoreBox || skip?.has(b.id))) continue;
       if (y > b.y1 - 0.1 || y + 1.4 < b.y0) continue;
       const c = Math.cos(-b.rotation);
       const s = Math.sin(-b.rotation);
@@ -286,8 +331,28 @@ export class WalkController {
   private vehicle: WalkVehicle | null = null;
   private vSpeed = 0;
   private steer = 0;
+  // vehicle in the air (ramps, hops) and on surfaces
+  private vAir = false;
+  private vVy = 0;
+  private vAirVel: Vec2 = { x: 0, y: 0 };
+  private vSurface: WalkSurface | null = null;
+  private spinRate = 0;
+  private airSpinTotal = 0;
+  private airT = 0;
+  /** the surface the walker / vehicle stands on (null = ground, floor, stairs or in the air) */
+  surfaceUnder: WalkSurface | null = null;
+  /** take-offs and landings of the walker and of the vehicle being driven (mini-games listen) */
+  readonly airListeners = new Set<(e: AirEvent) => void>();
   firstPerson = false;
-  world: WalkWorld = emptyWorld();
+  private _world: WalkWorld = emptyWorld();
+  /** the walk world; assigning one runs the registered decorators (they add standable surfaces) */
+  get world(): WalkWorld {
+    return this._world;
+  }
+  set world(w: WalkWorld) {
+    this._world = w;
+    decorateWalkWorld(w);
+  }
   onHint: (hint: string) => void = () => {};
   onToggleFirstPerson: () => void = () => {};
   /** called when a vehicle is parked so that its new place can be saved */
@@ -296,6 +361,8 @@ export class WalkController {
   onChoose: ((index: number) => void) | null = null;
   /** other shortcut keys (emotes, photo, time of day…) */
   onShortcut: (code: string) => boolean = () => false;
+  /** a running mini-game sees every key first (down and up); true = the key is used up */
+  onGameKey: (code: string, down: boolean) => boolean = () => false;
   private lastHint = '';
 
   constructor(
@@ -346,8 +413,71 @@ export class WalkController {
     this.seat = null;
     this.floorCtx = null;
     this.character.setPose('stand');
+    this.jumpLift = 0;
+    this.vy = 0;
+    this.airT = 0;
     this.resolveCollisions(this.pos, RADIUS);
     this.y = this.floorHeight(this.pos, this.y);
+    const top = surfaceTop(this.world.surfaces, this.pos.x, this.pos.y, y + STEP_UP);
+    if (top && top.h > this.y) this.y = top.h;
+  }
+
+  /** height of the feet (includes a jump / fall in progress) */
+  get feetY(): number {
+    return this.y + this.jumpLift;
+  }
+
+  /** the walker (or the vehicle being driven) is in the air */
+  get airborne(): boolean {
+    return this.vehicle ? this.vAir : this.jumpLift > 0;
+  }
+
+  /** vehicles: yaw turned since leaving the ground, radians (positive = counter-clockwise from above) */
+  get airSpin(): number {
+    return this.airSpinTotal;
+  }
+
+  /** seconds since leaving the ground (0 when standing / rolling) */
+  get airTime(): number {
+    return this.vehicle ? (this.vAir ? this.airT : 0) : this.jumpLift > 0 ? this.airT : 0;
+  }
+
+  /** vertical speed of the walker's jump / fall or of the flying vehicle, m/s */
+  get verticalSpeed(): number {
+    return this.vehicle ? (this.vAir ? this.vVy : 0) : this.jumpLift > 0 ? this.vy : 0;
+  }
+
+  /** Set the signed speed of the vehicle being driven (mini-games: stop after a fall, boost…). */
+  setVehicleSpeed(v: number): void {
+    if (this.vehicle) this.vSpeed = v;
+  }
+
+  /** Get on a given vehicle (mini-games put the player on a board / bike). */
+  ride(v: WalkVehicle): void {
+    this.release();
+    this.dismount();
+    this.standUp();
+    this.timed = null;
+    this.mount(v);
+  }
+
+  private landWalker(): void {
+    const impact = -this.vy;
+    this.jumpLift = 0;
+    this.vy = 0;
+    audio.footstep(this.world.surfaceAt?.(this.pos.x, this.pos.y, this.y) ?? 'tile', 1);
+    this.emitAir({ phase: 'land', vehicle: false, airTime: this.airT, spin: 0, align: 1, impact, speed: this.speed, surface: this.surfaceUnder, y: this.y });
+    this.airT = 0;
+  }
+
+  private emitAir(e: AirEvent): void {
+    for (const fn of this.airListeners) {
+      try {
+        fn(e);
+      } catch (err) {
+        console.error('air listener failed', err);
+      }
+    }
   }
 
   get driving(): boolean {
@@ -499,15 +629,21 @@ export class WalkController {
   }
 
   jump(): void {
-    if (this.occupation || this.vehicle || this.jumpLift > 0.001) return;
+    if (this.vehicle) {
+      this.hop();
+      return;
+    }
+    if (this.occupation || this.jumpLift > 0.001) return;
     if (this.seat) {
       this.standUp();
       return;
     }
     this.vy = 3.4;
     this.jumpLift = 0.001;
+    this.airT = 0;
     this.character.setActivity('jump');
     sound.sfx('whoosh', 0.4);
+    this.emitAir({ phase: 'takeoff', vehicle: false, airTime: 0, spin: 0, align: 1, impact: 0, speed: this.speed, surface: this.surfaceUnder, y: this.y });
   }
 
   standUp(): void {
@@ -558,14 +694,24 @@ export class WalkController {
 
   // ---- vehicles ------------------------------------------------------------------------------
 
+  /** a vehicle object may publish `userData.stance = 'side'` (boards): the rider stands sideways, no handlebar */
+  private stanceOf(v: WalkVehicle): 'side' | null {
+    const body = v.holder.userData.body as THREE.Object3D | undefined;
+    return (body?.userData.stance ?? v.holder.userData.stance) === 'side' ? 'side' : null;
+  }
+
   private mount(v: WalkVehicle): void {
     this.vehicle = v;
     this.vSpeed = 0;
     this.steer = 0;
     this.seat = null;
+    this.vAir = false;
+    this.vVy = 0;
+    this.vSurface = null;
+    this.spinRate = 0;
     const spec = v.def.vehicle!;
     this.character.setPose(spec.rider.pose === 'stand' ? 'stand' : spec.rider.pose, spec.rider.y);
-    this.character.reach = spec.rider.pose === 'stand';
+    this.character.reach = spec.rider.pose === 'stand' && !this.stanceOf(v);
     this.distance = spec.cameraDistance ?? 6;
     this.camDist = this.distance;
     this.yaw = v.holder.rotation.y + Math.PI;
@@ -586,12 +732,45 @@ export class WalkController {
     const side = v.def.size.w / 2 + 0.45;
     this.pos = { x: v.holder.position.x + Math.cos(phi) * side, y: v.holder.position.z - Math.sin(phi) * side };
     this.facing = phi;
-    this.y = 0;
+    // standing on a surface (a ramp deck…) the rider steps off at that height; else on the ground as before
+    this.y = this.vSurface && !this.vAir ? v.holder.position.y : 0;
+    this.vAir = false;
+    this.vVy = 0;
+    this.vSurface = null;
     this.character.setPose('stand');
     this.character.reach = false;
     this.distance = 3.2;
     this.resolveCollisions(this.pos, RADIUS);
     this.onVehicleParked(v.id, v.holder.position.x, v.holder.position.z, -phi);
+  }
+
+  /** two-wheelers and boards hop (bunny hop / ollie) and spin in the air; cars do not */
+  private agile(v: WalkVehicle): boolean {
+    const k = v.def.vehicle!.kind;
+    return k === 'bicycle' || k === 'scooter' || !!this.stanceOf(v);
+  }
+
+  /** Space while riding a two-wheeler / board: a hop (ollie) */
+  private hop(): void {
+    const v = this.vehicle;
+    if (!v || this.vAir || !this.agile(v)) return;
+    const phi = v.holder.rotation.y;
+    const slope = this.vSurface ? surfaceSlopeAlong(this.vSurface, v.holder.position.x, v.holder.position.z, Math.sin(phi), Math.cos(phi)) : 0;
+    const horiz = this.vSpeed * Math.cos(Math.atan(slope));
+    this.takeOff(v, { x: Math.sin(phi) * horiz, y: Math.cos(phi) * horiz }, Math.max(0, this.vVy) + HOP_SPEED);
+    sound.sfx('whoosh', 0.35);
+  }
+
+  private takeOff(v: WalkVehicle, vel: Vec2, vy: number): void {
+    this.vAir = true;
+    this.vAirVel = { ...vel };
+    this.vVy = vy;
+    this.airT = 0;
+    this.airSpinTotal = 0;
+    this.spinRate = 0;
+    const from = this.vSurface;
+    this.vSurface = null;
+    this.emitAir({ phase: 'takeoff', vehicle: true, airTime: 0, spin: 0, align: 1, impact: 0, speed: Math.hypot(vel.x, vel.y), surface: from, y: v.holder.position.y });
   }
 
   private updateVehicle(dt: number): void {
@@ -602,43 +781,145 @@ export class WalkController {
     const turn = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
     const max = spec.maxSpeed;
     const speedBefore = this.vSpeed;
-    if (gas > 0) this.vSpeed += spec.acceleration * dt * (this.vSpeed < 0 ? 2.5 : 1);
-    else if (gas < 0) this.vSpeed -= (this.vSpeed > 0 ? spec.acceleration * 2.5 : spec.acceleration * 0.7) * dt;
-    else this.vSpeed -= Math.sign(this.vSpeed) * Math.min(Math.abs(this.vSpeed), (0.6 + Math.abs(this.vSpeed) * 0.25) * dt);
-    this.vSpeed = Math.max(-max * 0.3, Math.min(max, this.vSpeed));
-
-    // steering eases in and gets gentler at speed
-    const limit = spec.maxSteer * (1 - 0.55 * Math.min(1, Math.abs(this.vSpeed) / max));
-    this.steer += (turn * limit - this.steer) * Math.min(1, dt * 6);
     const holder = v.holder;
+    const surfs = this.world.surfaces?.length ? this.world.surfaces : undefined;
+    const body = holder.userData.body as THREE.Object3D | undefined;
+    const twoWheels = spec.kind === 'bicycle' || spec.kind === 'scooter';
+    const agile = this.agile(v);
     let phi = holder.rotation.y;
-    phi -= (this.vSpeed / spec.wheelbase) * Math.tan(this.steer) * dt;
-    const p = { x: holder.position.x + Math.sin(phi) * this.vSpeed * dt, y: holder.position.z + Math.cos(phi) * this.vSpeed * dt };
-    const before = { ...p };
-    this.resolveCollisions(p, spec.radius, v.id);
-    if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) this.vSpeed *= 0.6; // bumped into something
+    const y0 = holder.position.y;
+    let p: Vec2;
+    let hy: number;
+    let theta = 0;
+
+    if (!this.vAir) {
+      // slope under the wheels along the heading (standable surfaces; the ground itself is flat)
+      const slope = this.vSurface ? surfaceSlopeAlong(this.vSurface, holder.position.x, holder.position.z, Math.sin(phi), Math.cos(phi)) : 0;
+      theta = Math.atan(slope);
+      const coast = (body?.userData.coast as number | undefined) ?? 1;
+      if (gas > 0) {
+        if (this.vSpeed < max) this.vSpeed = Math.min(max, this.vSpeed + spec.acceleration * dt * (this.vSpeed < 0 ? 2.5 : 1));
+      } else if (gas < 0) {
+        if (this.vSpeed > 0) this.vSpeed -= spec.acceleration * 2.5 * dt;
+        else if (this.vSpeed > -max * 0.3) this.vSpeed = Math.max(-max * 0.3, this.vSpeed - spec.acceleration * 0.7 * dt);
+      } else this.vSpeed -= Math.sign(this.vSpeed) * Math.min(Math.abs(this.vSpeed), (0.6 + Math.abs(this.vSpeed) * 0.25) * coast * dt);
+      if (surfs) {
+        // gravity along a ramp; faster than the top speed (downhill) only with some drag
+        this.vSpeed -= GRAVITY * Math.sin(theta) * dt;
+        if (Math.abs(this.vSpeed) > max) this.vSpeed -= Math.sign(this.vSpeed) * Math.min(Math.abs(this.vSpeed) - max, 1.5 * dt);
+        this.vSpeed = Math.max(-max * 1.6, Math.min(max * 1.6, this.vSpeed));
+      } else this.vSpeed = Math.max(-max * 0.3, Math.min(max, this.vSpeed));
+
+      // steering eases in and gets gentler at speed
+      const limit = spec.maxSteer * (1 - 0.55 * Math.min(1, Math.abs(this.vSpeed) / max));
+      this.steer += (turn * limit - this.steer) * Math.min(1, dt * 6);
+      phi -= (this.vSpeed / spec.wheelbase) * Math.tan(this.steer) * dt;
+      const horiz = this.vSpeed * Math.cos(theta);
+      p = { x: holder.position.x + Math.sin(phi) * horiz * dt, y: holder.position.z + Math.cos(phi) * horiz * dt };
+      const before = { ...p };
+      this.resolveCollisions(p, spec.radius, v.id);
+      if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) this.vSpeed *= 0.6; // bumped into something
+      let ground = this.world.groundAt(p.x, p.y);
+      if (surfs) {
+        // too high to roll onto (the side of a box, a rail): solid
+        const dir = Math.sign(horiz) || 1;
+        const fx = p.x + Math.sin(phi) * dir * spec.radius * 0.8;
+        const fy = p.y + Math.cos(phi) * dir * spec.radius * 0.8;
+        if (surfaceBlocks(surfs, p.x, p.y, y0, VEHICLE_STEP, 1.2, this.vSurface) || surfaceBlocks(surfs, fx, fy, y0, VEHICLE_STEP, 1.2, this.vSurface)) {
+          p = { x: holder.position.x, y: holder.position.z };
+          this.vSpeed *= -0.25;
+          ground = this.world.groundAt(p.x, p.y);
+        }
+        let surf: WalkSurface | null = null;
+        const top = surfaceTop(surfs, p.x, p.y, y0 + VEHICLE_STEP);
+        if (top && top.h >= ground) {
+          ground = top.h;
+          surf = top.s;
+        }
+        // the ground falls away (below the plane we are rolling on) faster than gravity would pull us
+        // down: fly – ramp lips, the coping of a quarter pipe, edges of boxes. A concave ramp never launches.
+        const tangentVy = slope * horiz;
+        const predicted = y0 + tangentVy * dt - 0.5 * GRAVITY * dt * dt;
+        if (ground < predicted - 0.03 && (tangentVy > 0.6 || y0 - ground > DROP)) {
+          const motion = Math.sign(horiz) || 1;
+          const along = this.vSurface ? surfaceSlopeAlong(this.vSurface, holder.position.x, holder.position.z, Math.sin(phi) * motion, Math.cos(phi) * motion) : 0;
+          let vel: Vec2 = { x: Math.sin(phi) * horiz, y: Math.cos(phi) * horiz };
+          // off a near-vertical wall (quarter pipe): straight up, drifting back over the ramp
+          if (Math.atan(along) > VERT_LAUNCH) vel = { x: -Math.sin(phi) * motion * 0.45, y: -Math.cos(phi) * motion * 0.45 };
+          this.takeOff(v, vel, Math.max(0, tangentVy));
+          hy = y0;
+        } else {
+          hy = ground;
+          this.vSurface = surf;
+          this.vVy = surf ? surfaceSlopeAlong(surf, p.x, p.y, Math.sin(phi), Math.cos(phi)) * horiz : 0;
+        }
+      } else {
+        hy = ground;
+        this.vSurface = null;
+        this.vVy = 0;
+      }
+    } else {
+      // ---- in the air: ballistic, spins with A/D
+      this.airT += dt;
+      this.vVy -= GRAVITY * dt;
+      if (agile) {
+        const want = -turn * AIR_SPIN;
+        this.spinRate += (want - this.spinRate) * Math.min(1, dt * 12);
+        phi += this.spinRate * dt;
+        this.airSpinTotal += this.spinRate * dt;
+      }
+      p = { x: holder.position.x + this.vAirVel.x * dt, y: holder.position.z + this.vAirVel.y * dt };
+      const before = { ...p };
+      this.resolveCollisions(p, spec.radius, v.id);
+      if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) {
+        this.vAirVel.x *= 0.3;
+        this.vAirVel.y *= 0.3;
+      }
+      hy = y0 + this.vVy * dt;
+      if (surfs && surfaceBlocks(surfs, p.x, p.y, hy, VEHICLE_AIR_GRACE, 1.2)) {
+        // flew into the side of something
+        p = { x: holder.position.x, y: holder.position.z };
+        this.vAirVel.x = this.vAirVel.y = 0;
+      }
+      let ground = this.world.groundAt(p.x, p.y);
+      let surf: WalkSurface | null = null;
+      const top = surfaceTop(surfs, p.x, p.y, hy + VEHICLE_AIR_GRACE);
+      if (top && top.h >= ground) {
+        ground = top.h;
+        surf = top.s;
+      }
+      if (hy <= ground || this.airT > 8) {
+        phi = this.land(p, phi, ground, surf, agile);
+        hy = ground;
+        theta = Math.atan(surf ? surfaceSlopeAlong(surf, p.x, p.y, Math.sin(phi), Math.cos(phi)) : 0);
+      }
+    }
+
     this.velocity.x = (p.x - holder.position.x) / Math.max(dt, 1e-3);
     this.velocity.y = (p.y - holder.position.z) / Math.max(dt, 1e-3);
     this.rode += Math.hypot(p.x - holder.position.x, p.y - holder.position.z);
-    holder.position.set(p.x, this.world.groundAt(p.x, p.y), p.y);
+    holder.position.set(p.x, hy, p.y);
     holder.rotation.y = phi;
 
-    // two-wheelers lean into the turn; cars roll outwards and pitch a little
-    const twoWheels = spec.kind === 'bicycle' || spec.kind === 'scooter';
+    // two-wheelers lean into the turn; cars roll outwards and pitch a little; everything follows a ramp
     const accel = (this.vSpeed - speedBefore) / Math.max(dt, 1e-3);
-    const roll = twoWheels
+    let roll = twoWheels
       ? Math.max(-0.4, Math.min(0.4, this.steer * this.vSpeed * 0.085))
       : Math.max(-0.045, Math.min(0.045, -this.steer * this.vSpeed * 0.006));
-    const pitch = twoWheels ? 0 : Math.max(-0.03, Math.min(0.03, -accel * 0.004));
+    let pitch = twoWheels ? 0 : Math.max(-0.03, Math.min(0.03, -accel * 0.004));
+    if (this.vAir) {
+      roll = 0;
+      pitch = holder.rotation.x;
+    } else if (surfs) pitch -= theta;
     holder.rotation.z += (roll - holder.rotation.z) * Math.min(1, dt * 6);
-    holder.rotation.x += (pitch - holder.rotation.x) * Math.min(1, dt * 5);
+    holder.rotation.x += (pitch - holder.rotation.x) * Math.min(1, dt * (this.vSurface ? 14 : 5));
     if (this.rode > 5) {
       report(twoWheels ? 'cycled' : 'drove', this.rode);
       this.rode = 0;
     }
-    audio.setVehicle({ kind: spec.kind, speed: Math.abs(this.vSpeed), throttle: Math.max(0, gas * Math.sign(this.vSpeed || 1)) });
+    audio.setVehicle({ kind: spec.kind, speed: this.vAir ? 0 : Math.abs(this.vSpeed), throttle: Math.max(0, gas * Math.sign(this.vSpeed || 1)) });
 
-    for (const w of (holder.userData.body?.userData.wheels ?? holder.userData.wheels ?? []) as WheelPart[]) {
+    for (const w of (body?.userData.wheels ?? holder.userData.wheels ?? []) as WheelPart[]) {
       w.spin.rotation.x += (this.vSpeed * dt) / Math.max(0.05, w.radius);
       if (w.steer) w.steer.rotation.y = -this.steer;
     }
@@ -649,17 +930,57 @@ export class WalkController {
     const r = spec.rider;
     this.pos = { x: p.x + r.x * c + r.z * s, y: p.y - r.x * s + r.z * c };
     this.y = holder.position.y + (spec.rider.pose === 'stand' ? r.y : 0);
-    this.facing = phi;
+    this.facing = this.stanceOf(v) ? phi - Math.PI / 2 : phi;
     this.speed = Math.abs(this.vSpeed);
+    this.surfaceUnder = this.vAir ? null : this.vSurface;
 
-    // chase camera swings behind the vehicle
-    if (!this.dragging && Math.abs(this.vSpeed) > 0.4) {
+    // chase camera swings behind the vehicle (not while it spins in the air)
+    if (!this.dragging && !this.vAir && Math.abs(this.vSpeed) > 0.4) {
       let diff = phi + Math.PI - this.yaw;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
       this.yaw += diff * Math.min(1, dt * 2.2);
     }
   }
+
+  /**
+   * A flying vehicle touches down: keep the speed along the surface, report how it landed. Agile ones
+   * landing within ~45° of their travel direction (forwards or backwards) are straightened out.
+   * Returns the heading after the landing.
+   */
+  private land(p: Vec2, phi: number, ground: number, surf: WalkSurface | null, agile: boolean): number {
+    const vel = this.vAirVel;
+    const hs = Math.hypot(vel.x, vel.y);
+    const slopeAt = (h: number) => (surf ? surfaceSlopeAlong(surf, p.x, p.y, Math.sin(h), Math.cos(h)) : 0);
+    let slope = slopeAt(phi);
+    let align = 1;
+    if (hs > 0.8) align = (vel.x * Math.sin(phi) + vel.y * Math.cos(phi)) / hs;
+    else if (surf && Math.abs(slope) > 0.2) align = -Math.sign(slope); // vert landing: facing downhill = forwards
+    let heading = phi;
+    if (agile && Math.abs(align) >= 0.7 && hs > 0.8) {
+      const motion = Math.atan2(vel.x, vel.y);
+      let d = (align > 0 ? motion : motion + Math.PI) - phi;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      heading = phi + d;
+      slope = slopeAt(heading);
+    }
+    const th = Math.atan(slope);
+    // speed along the board after the impact: the velocity projected on the surface along the heading
+    let along = (vel.x * Math.sin(heading) + vel.y * Math.cos(heading)) * Math.cos(th) + this.vVy * Math.sin(th);
+    if (Math.abs(align) < 0.5) along *= 0.3; // sideways: the wheels scrub
+    const impact = -this.vVy;
+    const airTime = this.airT;
+    this.vAir = false;
+    this.vSurface = surf;
+    this.vSpeed = along;
+    this.vVy = surf ? slope * along * Math.cos(th) : 0;
+    this.spinRate = 0;
+    if (impact > 2) sound.sfx('clack', Math.min(1, impact / 6));
+    this.emitAir({ phase: 'land', vehicle: true, airTime, spin: this.airSpinTotal, align, impact, speed: Math.abs(along), surface: surf, y: ground });
+    return heading;
+  }
+
 
   // ---- input ---------------------------------------------------------------------------------
 
@@ -668,6 +989,10 @@ export class WalkController {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     sound.unlock();
     audio.unlock();
+    if (!e.repeat && this.onGameKey(e.code, true)) {
+      e.preventDefault();
+      return;
+    }
     if (this.occupation?.key && this.occupation.key(e.code, !e.repeat || e.code.startsWith('Arrow'))) {
       e.preventDefault();
       return;
@@ -705,6 +1030,10 @@ export class WalkController {
     this.keys.add(e.code);
   };
   private onKeyUp = (e: KeyboardEvent): void => {
+    if (this.onGameKey(e.code, false)) {
+      this.keys.delete(e.code);
+      return;
+    }
     if (this.occupation?.key) this.occupation.key(e.code, false);
     this.keys.delete(e.code);
   };
@@ -735,7 +1064,31 @@ export class WalkController {
   // ---- collisions & floors -------------------------------------------------------------------
 
   private resolveCollisions(pos: Vec2, radius: number, ignoreBox?: string): void {
-    collideCircle(this.world, pos, radius, this.vehicle ? 0 : this.y, ignoreBox);
+    collideCircle(this.world, pos, radius, this.vehicle ? 0 : this.y, ignoreBox, this.world.surfaceOwners);
+  }
+
+  /** Surfaces too high to step onto are solid: undo (or slide along) a walker move into one. */
+  private blockBySurfaces(prev: Vec2, mx: number, my: number): void {
+    const list = this.world.surfaces;
+    if (!list?.length) return;
+    const feet = this.y + this.jumpLift;
+    const step = this.jumpLift > 0 ? AIR_MANTLE : STEP_UP;
+    const blocked = (p: Vec2, ax: number, ay: number) =>
+      !!(surfaceBlocks(list, p.x, p.y, feet, step) || surfaceBlocks(list, p.x + ax * RADIUS, p.y + ay * RADIUS, feet, step));
+    if (!blocked(this.pos, mx, my)) return;
+    // already stuck inside something (spawned there): let them walk out
+    if (surfaceBlocks(list, prev.x, prev.y, feet, step)) return;
+    const tryX = { x: this.pos.x, y: prev.y };
+    if (Math.abs(tryX.x - prev.x) > 1e-5 && !blocked(tryX, Math.sign(mx), 0)) {
+      this.pos = tryX;
+      return;
+    }
+    const tryY = { x: prev.x, y: this.pos.y };
+    if (Math.abs(tryY.y - prev.y) > 1e-5 && !blocked(tryY, 0, Math.sign(my))) {
+      this.pos = tryY;
+      return;
+    }
+    this.pos = { ...prev };
   }
 
   /** Height on a staircase at this position, if the walker is on one. */
@@ -836,6 +1189,7 @@ export class WalkController {
         this.pos.x += mx * this.speed * dt;
         this.pos.y += my * this.speed * dt;
         this.resolveCollisions(this.pos, RADIUS);
+        this.blockBySurfaces(prev, mx, my);
         // never step off the edge of an upper floor
         if (upstairs && this.stairHeight(this.pos, this.y) === null) {
           const lv = upstairs.floors.levels;
@@ -868,9 +1222,41 @@ export class WalkController {
         this.velocity.x = this.velocity.y = 0;
       }
       if (!this.seat) {
-        const targetY = this.floorHeight(this.pos, this.y);
-        this.y += (targetY - this.y) * Math.min(1, dt * 18);
-        if (Math.abs(targetY - this.y) < 0.002) this.y = targetY;
+        let targetY = this.floorHeight(this.pos, this.y);
+        this.surfaceUnder = null;
+        const surfs = this.world.surfaces;
+        if (surfs?.length) {
+          // standable surfaces: step up onto low ones, land on / grab the edge of others, fall off edges
+          const feet = this.y + this.jumpLift;
+          const top = surfaceTop(surfs, this.pos.x, this.pos.y, this.jumpLift > 0 ? feet + AIR_MANTLE : this.y + STEP_UP);
+          if (top && top.h >= targetY - 0.01) {
+            targetY = top.h;
+            this.surfaceUnder = top.s;
+          }
+          if (this.jumpLift > 0) {
+            // in the air the feet keep their height; only the floor under them changes
+            if (Math.abs(targetY - this.y) > 1e-4) {
+              this.jumpLift = feet - targetY;
+              this.y = targetY;
+              if (this.jumpLift <= 0) {
+                // landed on (or grabbed the edge of) something: climb the last bit
+                this.y = feet;
+                this.landWalker();
+              }
+            }
+          } else if (targetY < this.y - DROP) {
+            // stepped off an edge: fall
+            this.jumpLift = this.y - targetY;
+            this.y = targetY;
+            this.vy = 0;
+            this.airT = 0;
+            this.emitAir({ phase: 'takeoff', vehicle: false, airTime: 0, spin: 0, align: 1, impact: 0, speed: this.speed, surface: null, y: this.y + this.jumpLift });
+          }
+        }
+        if (this.jumpLift <= 0) {
+          this.y += (targetY - this.y) * Math.min(1, dt * 18);
+          if (Math.abs(targetY - this.y) < 0.002) this.y = targetY;
+        }
         // arrived on another storey?
         if (this.floorCtx || this.y < 0.3) {
           const levelY = this.floorCtx ? this.floorCtx.floors.levels[this.floorCtx.level].y : 0;
@@ -882,13 +1268,10 @@ export class WalkController {
       }
       // jumping
       if (this.jumpLift > 0) {
+        this.airT += dt;
         this.vy -= GRAVITY * dt;
         this.jumpLift += this.vy * dt;
-        if (this.jumpLift <= 0) {
-          this.jumpLift = 0;
-          this.vy = 0;
-          audio.footstep(this.world.surfaceAt?.(this.pos.x, this.pos.y, this.y) ?? 'tile', 1);
-        }
+        if (this.jumpLift <= 0) this.landWalker();
       }
     }
 
