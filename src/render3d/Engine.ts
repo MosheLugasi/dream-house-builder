@@ -29,11 +29,14 @@ import {
 import { currentBuilding, currentLevel, useStore, type Mode } from '../store/store';
 import { Atmosphere } from './Atmosphere';
 import { BuildingView } from './BuildingView';
-import { buildSite, groundHeight, roadSet, SIDEWALK_HEIGHT } from './buildSite';
+import { buildSite, DEPTH_LAYER, groundHeight, roadPieces, roadSet, setDepthLayer, SIDEWALK_HEIGHT } from './buildSite';
 import { updateEffects } from './effects';
 import { ItemLayer, makeItemHolder, type ItemEntry } from './ItemLayer';
+import { itemBatches, StaticBatches } from './StaticBatches';
 import { Particles, Stars } from './Life';
 import { Traffic } from './Traffic';
+import { loadPhysics, type ImpactEvent, type PhysicsWorld } from '../physics';
+import { playCrash } from '../physics/feedback';
 import { MiniGames } from './MiniGames';
 import { useMiniGame } from '../game/minigames/store';
 import type { MiniGameId } from '../game/minigames/meta';
@@ -96,12 +99,19 @@ export class Engine {
   private particles = new Particles();
   private stars = new Stars(this.particles);
   private traffic = new Traffic();
+  /** walk-mode rigid-body physics (Rapier, loaded when walk mode starts; see src/physics) */
+  private physics: PhysicsWorld | null = null;
+  private physicsLoad = 0;
+  /** lamp posts knocked over: their lights are out until walk mode ends */
+  private brokenLamps = new Set<string>();
   private unsubLook: () => void = () => {};
   private ground: THREE.Mesh;
   private groundFinish = '';
   private buildings = new Map<string, BuildingView>();
   private buildingsGroup = new THREE.Group();
   private props = new ItemLayer();
+  /** draws the placed items' meshes in a few draw calls (see StaticBatches.ts) */
+  readonly batches = new StaticBatches();
   private siteGroup: THREE.Group | null = null;
   private siteKey: unknown[] = [];
   private roads = new Set<string>();
@@ -157,9 +167,16 @@ export class Engine {
     for (let i = 0; i < gp.count; i++) uv.setXY(i, gp.getX(i), gp.getZ(i));
     this.ground = new THREE.Mesh(groundGeo);
     this.ground.receiveShadow = true;
+    // areas, roads and floors lie millimetres above the ground: push it back in depth (no far-away z-fighting)
+    setDepthLayer(this.ground, DEPTH_LAYER.ground);
     this.scene.add(this.ground);
 
     this.scene.add(this.buildingsGroup, this.props.group);
+    // placed items are drawn through a few batches (one per material) instead of a draw call per mesh;
+    // the batches follow their items right before each render (after the world matrices are updated)
+    itemBatches.current = this.batches;
+    this.scene.add(this.batches.group);
+    this.scene.onBeforeRender = (_r, _s, camera) => this.batches.sync(camera);
     this.selectionBox.visible = false;
     (this.selectionBox.material as THREE.LineBasicMaterial).depthTest = false;
     this.selectionBox.renderOrder = 10;
@@ -251,6 +268,7 @@ export class Engine {
     this.unsub();
     this.unsubLook();
     this.walk.disable();
+    this.stopPhysics();
     if (itemEvents.current) itemEvents.current = null;
     const el = this.renderer.domElement;
     el.removeEventListener('pointerdown', this.onPointerDown);
@@ -261,6 +279,8 @@ export class Engine {
     window.removeEventListener('keydown', this.onKeyDown);
     this.controls.dispose();
     for (const v of this.buildings.values()) v.dispose();
+    if (itemBatches.current === this.batches) itemBatches.current = null;
+    this.batches.dispose();
     this.realism.dispose();
     this.renderer.dispose();
     el.remove();
@@ -315,6 +335,7 @@ export class Engine {
       this.dirty = false;
       this.sync();
       this.realism.invalidate();
+      this.sunShadowKey = '';
     }
     this.advanceClock(dt);
     if (this.mode === 'walk') {
@@ -605,8 +626,29 @@ export class Engine {
     }
     sun.target.position.copy(center);
     sun.position.copy(sun.target.position).addScaledVector(this.atmosphere.lightDir, 200);
+    // Walking, the character, people, pets and cars cast moving shadows: the map is drawn every frame.
+    // In the editor nothing but the foliage moves, and the map covers up to 340 m (every prop of the
+    // neighborhood casts into it): it is redrawn only when the light, its square or the scene changed,
+    // and a few times a second for the swaying trees. (Orbiting around the target costs no shadows.)
+    const shadow = sun.shadow;
+    if (this.mode === 'walk') {
+      shadow.autoUpdate = true;
+      this.sunShadowKey = '';
+    } else {
+      const d = this.atmosphere.lightDir;
+      const key = `${center.x},${center.z},${range},${d.x},${d.y},${d.z},${shadow.mapSize.x}`;
+      shadow.autoUpdate = false;
+      if (key !== this.sunShadowKey || this.sunShadowAge >= 6 || !shadow.map) {
+        this.sunShadowKey = key;
+        this.sunShadowAge = 0;
+        shadow.needsUpdate = true;
+      } else this.sunShadowAge++;
+    }
   }
   private sunCenter = new THREE.Vector3();
+  /** what the sun's shadow map was last drawn for (editor views) and frames since */
+  private sunShadowKey = '';
+  private sunShadowAge = 0;
 
   /** Interiors are only furnished for buildings close to the walker. */
   private updateNearBuildings(): void {
@@ -732,6 +774,7 @@ export class Engine {
     if (walking && (changed || modeChanged || project !== this.walkProject)) {
       this.walkProject = project;
       this.walk.world = this.buildWalkWorld();
+      this.physics?.setWorld(this.walk.world);
       this.interactions.setWorld(this.walk.world);
       if (this.pendingSpawn) {
         const { start, y, yaw } = this.pendingSpawn;
@@ -756,7 +799,7 @@ export class Engine {
     const out: LampSource[] = [];
     const add = (f: FurnitureItem, origin: Pick<Building, 'x' | 'y' | 'rotation'>, floorY: number, lift: number, holder?: THREE.Object3D) => {
       const def = getFurniture(f.catalogId);
-      if (!def?.light) return;
+      if (!def?.light || this.brokenLamps.has(f.id)) return;
       const rot = f.rotation + origin.rotation;
       const p = toSite(origin, { x: f.x, y: f.y });
       const c = Math.cos(rot);
@@ -792,6 +835,12 @@ export class Engine {
     const world = emptyWorld();
     const roads = this.roads;
     world.groundAt = (x, y) => groundHeight(roads, x, y);
+    world.items = [];
+    // sidewalks are raised: props standing on them rest on these (physics)
+    world.raised = [];
+    for (const [i, j] of project.site.roads) {
+      for (const [x0, y0, x1, y1] of roadPieces(roads, i, j).sidewalk) world.raised.push([x0, y0, x1, y1, SIDEWALK_HEIGHT]);
+    }
     world.surfaceAt = (x, y, feetY) => this.surfaceAt(x, y, feetY);
     world.occluders = [this.buildingsGroup];
 
@@ -827,8 +876,11 @@ export class Engine {
         world.walls.push({ a: tx(bars.exit[0]), b: tx(bars.exit[1]), half: 0.05, y0, y1, openY: floorY + rise });
         return;
       }
+      // the physics may turn it into a rigid body (small things, street furniture, vehicles)
+      const footprint = collisionFootprint(def);
+      world.items!.push({ id: f.id, def, size: itemSize(def, f), holder, multiBox: (def.parametric && (anchors?.boxes?.length ?? 0) > 1) || undefined, noFootprint: !footprint || undefined });
       // one solid box, or several for L / U shaped pieces (local boxes → world)
-      for (const b of placedBoxes(def, f, collisionFootprint(def), anchors)) {
+      for (const b of placedBoxes(def, f, footprint, anchors)) {
         const at = tx({ x: b.x, y: b.z });
         world.boxes.push({
           id: f.id,
@@ -873,6 +925,51 @@ export class Engine {
     world.boxes.push(...this.traffic.boxes);
     return world;
   }
+
+  // ---- walk-mode physics -------------------------------------------------------------------------
+
+  /** Load Rapier (lazily, once) and build the rigid-body world for the walk world. */
+  private startPhysics(): void {
+    const ticket = ++this.physicsLoad;
+    loadPhysics()
+      .then((p) => {
+        if (ticket !== this.physicsLoad || this.mode !== 'walk') {
+          p.dispose();
+          return;
+        }
+        this.physics = p;
+        p.impacts.add(this.onImpact);
+        p.setWorld(this.walk.world);
+        this.walk.physics = p;
+        this.traffic.setPhysics(p);
+      })
+      .catch((err) => console.warn('physics unavailable, walking without it', err));
+  }
+
+  /** Leave walk mode: everything that was knocked about goes back to its place. */
+  private stopPhysics(): void {
+    this.physicsLoad++;
+    const p = this.physics;
+    if (!p) return;
+    this.physics = null;
+    this.walk.physics = null;
+    this.traffic.setPhysics(null);
+    p.dispose();
+    if (this.brokenLamps.size) {
+      this.brokenLamps.clear();
+      this.lights.setSources(this.collectLamps());
+    }
+  }
+
+  private onImpact = (e: ImpactEvent): void => {
+    const plan = playCrash(e, this.interactions.particles, this.camera.position);
+    if (plan.shake > 0) this.walk.shakeCamera(plan.shake);
+    // a lamp post knocked over goes dark
+    if (e.broke && e.kind !== 'player' && getFurniture(this.props.entries.get(e.id)?.item.catalogId ?? '')?.light && !this.brokenLamps.has(e.id)) {
+      this.brokenLamps.add(e.id);
+      this.lights.setSources(this.collectLamps());
+    }
+  };
 
   private syncSelection(): void {
     const st = useStore.getState();
@@ -992,11 +1089,13 @@ export class Engine {
       this.camera.fov = 62;
       this.camera.updateProjectionMatrix();
       this.interactions.enterWalk(this.walk, this.walk.world);
+      this.startPhysics();
       this.interactions.particles.setViewport(this.height * this.renderer.getPixelRatio(), this.camera.fov);
     } else {
       this.games.stop();
       this.interactions.exitWalk();
       this.walk.disable();
+      this.stopPhysics();
       this.walk.character.root.visible = false;
       useStore.getState().setHint('');
       if (this.camera.fov !== 50) {

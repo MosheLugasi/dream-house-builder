@@ -11,8 +11,10 @@ import {
   rgbToHex,
   surfaceSwatch,
   surfaceToTextures,
+  trackTexture,
 } from './textureGen';
 import { CATALOG, type FinishSpec } from './catalog';
+import { hasDom, loadTexture } from '../assets/loader';
 import { applyShaderPatches } from './shaderPatches';
 
 export { setMaxAnisotropy } from './textureGen';
@@ -135,6 +137,8 @@ function addMacroVariation(
     finishMacroParams: { value: new THREE.Vector2(macro.strength, macro.tintAmount ?? 0) },
     finishMacroTint: { value: new THREE.Color(macro.tint ?? '#ffffff') },
   };
+  // kept so a photographic texture set with a different tile size can rescale the macro noise
+  mat.userData.finishMacro = uniforms;
   mat.onBeforeCompile = (shader) => {
     applyShaderPatches(shader);
     Object.assign(shader.uniforms, uniforms);
@@ -202,6 +206,8 @@ export function flushFinishUpgrades(): void {
 }
 
 function applyTextures(spec: FinishSpec, mat: THREE.MeshStandardMaterial, n: number): void {
+  // a photographic set has replaced the generated textures: never overwrite it
+  if (mat.userData.photo) return;
   const surface: Surface = spec.gen(n, spec.tile[0], spec.tile[1]);
   const tex = surfaceToTextures(surface, spec.normalStrength ?? 1, spec.rotation ?? 0);
   const old = [mat.map, mat.normalMap, mat.roughnessMap];
@@ -231,6 +237,49 @@ function scheduleUpgrade(): void {
   else setTimeout(run, 30);
 }
 
+/**
+ * Swap a finish to its photographic PBR set once the three maps have loaded (browser only). The same
+ * images are shared by every finish using the set; each finish gets its own texture objects so it can
+ * repeat them at its own scale.
+ */
+function loadPhoto(spec: FinishSpec, mat: THREE.MeshStandardMaterial): void {
+  const photo = spec.photo;
+  if (!photo || !hasDom) return;
+  const dir = `textures/${photo.set}`;
+  Promise.all([
+    loadTexture(`${dir}/color.webp`, { srgb: true }),
+    loadTexture(`${dir}/normal.webp`),
+    loadTexture(`${dir}/rough.webp`),
+  ])
+    .then(([c, nrm, r]) => {
+      const [tw, th] = photo.tile;
+      const own = (t: THREE.Texture) => {
+        const u = t.clone();
+        u.repeat.set(1 / tw, 1 / th);
+        trackTexture(u);
+        u.needsUpdate = true;
+        return u;
+      };
+      const old = [mat.map, mat.normalMap, mat.roughnessMap];
+      mat.userData.photo = photo.set;
+      mat.map = own(c);
+      mat.normalMap = own(nrm);
+      mat.roughnessMap = own(r);
+      mat.roughness = photo.roughness ?? 1;
+      mat.color.set(photo.color ?? '#ffffff');
+      const ns = photo.normalScale ?? 1;
+      mat.normalScale.set(ns, ns);
+      const macro = mat.userData.finishMacro as { finishMacroScale: { value: THREE.Vector4 } } | undefined;
+      macro?.finishMacroScale.value.set(tw / 9.7, th / 9.7, tw / 23.3, th / 23.3);
+      mat.needsUpdate = true;
+      for (const t of old) t?.dispose();
+      const i = upgradeQueue.findIndex((j) => j.mat === mat);
+      if (i >= 0) upgradeQueue.splice(i, 1);
+      for (const l of listeners) l(spec.id);
+    })
+    .catch(() => undefined);
+}
+
 function buildMaterial(spec: FinishSpec): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ metalness: 0 });
   const ns = spec.normalScale ?? 1;
@@ -245,6 +294,7 @@ function buildMaterial(spec: FinishSpec): THREE.MeshStandardMaterial {
   } else {
     applyTextures(spec, mat, spec.res);
   }
+  loadPhoto(spec, mat);
   return mat;
 }
 

@@ -12,6 +12,7 @@
  *                                                 water spout + fall line, flame points), `slide.path` (red = climb,
  *                                                 green = slide), the `bounce` disc and the axes of `ride.seatNodes`
  *                                                 (blue = facing); `&xray=1` draws them through the geometry
+ *   ?wait=4000                                    give downloaded assets (models, photo textures) time to load first
  *   ?ride=push&t=2.5&riders=0,1&coast=1           advance ride physics before rendering: `update(1/60, 1, riders)` for
  *                                                 t seconds, then `coast` seconds without pushing (`ride=idle`: no push)
  *
@@ -429,16 +430,31 @@ function renderRow(): void {
   s2d.drawImage(gl, 0, 0);
 }
 
-if (mode === 'row') renderRow();
-else renderSheet();
-
 declare global {
   interface Window {
     __report: unknown;
     __ready: boolean;
   }
 }
-window.__report = report;
-// for scripted checks (Playwright): the catalog and the three.js instance it was built with
-(window as unknown as Record<string, unknown>).__catalog = { THREE, FURNITURE, resolveColors };
-window.__ready = true;
+function finish(): void {
+  if (mode === 'row') renderRow();
+  else renderSheet();
+  window.__report = report;
+  // for scripted checks (Playwright): the catalog and the three.js instance it was built with
+  (window as unknown as Record<string, unknown>).__catalog = { THREE, FURNITURE, resolveColors };
+  window.__ready = true;
+}
+
+// `?wait=ms`: build everything once, give the downloaded assets (models, photographic textures) time to
+// arrive, then render
+const waitMs = Number(q.get('wait') ?? 0);
+if (waitMs > 0) {
+  for (const d of items) {
+    try {
+      d.build({ colors: resolveColors(d) });
+    } catch {
+      /* reported by the real pass */
+    }
+  }
+  setTimeout(finish, waitMs);
+} else finish();

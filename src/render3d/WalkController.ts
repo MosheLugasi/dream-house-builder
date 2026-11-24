@@ -10,6 +10,8 @@ import type { OpeningAnim } from '../catalog/openings';
 import { Character, type Activity, type Pose, type Prop } from './Character';
 import { sound } from '../audio/sound';
 import { decorateWalkWorld, surfaceBlocks, surfaceSlopeAlong, surfaceTop, type WalkSurface } from './walkSurfaces';
+import type { VehicleState, WalkItem, WalkPhysics } from '../physics/types';
+import { PLAYER_TYRES, type DriveIntent } from '../physics/drive';
 
 export type { WalkSurface } from './walkSurfaces';
 
@@ -99,6 +101,10 @@ export interface WalkWorld {
   surfaces?: WalkSurface[];
   /** ids of items whose collision box is replaced by their surfaces (the walker and the vehicles ignore those boxes) */
   surfaceOwners?: Set<string>;
+  /** the placed catalog items (the physics makes rigid bodies of the small ones, see src/physics) */
+  items?: WalkItem[];
+  /** raised ground as rectangles [x0, y0, x1, y1, top] (sidewalks: props stand on them) */
+  raised?: Array<[number, number, number, number, number]>;
 }
 
 /** Leaving the ground / landing again (jumps, falls, vehicles flying off ramps). */
@@ -364,6 +370,20 @@ export class WalkController {
   /** a running mini-game sees every key first (down and up); true = the key is used up */
   onGameKey: (code: string, down: boolean) => boolean = () => false;
   private lastHint = '';
+  /**
+   * Rigid-body physics (src/physics, loaded when walk mode starts). While it is null – or for a vehicle
+   * it cannot simulate – the vehicles use the arcade collisions (collideCircle) as before.
+   */
+  physics: WalkPhysics | null = null;
+  private pState: VehicleState = { x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0 };
+  private intent: DriveIntent = { speed: 0, yawRate: 0, ...PLAYER_TYRES };
+  /** where the vehicle update left the holder and the speed (a change = a game moved it) */
+  private vWritten = { x: NaN, z: NaN, yaw: NaN, speed: NaN };
+  private stepped = false;
+  /** camera shake after a crash, 0..1 */
+  private shake = 0;
+  private skip = new Set<string>();
+  private skipKey: unknown[] = [];
 
   constructor(
     private camera: THREE.PerspectiveCamera,
@@ -663,6 +683,8 @@ export class WalkController {
     let bestScore = Infinity;
     for (const s of this.world.seats) {
       if (Math.abs(s.floorY - this.y) > 0.6) continue;
+      // knocked over / pushed away by the physics: nothing to sit on there now
+      if (s.itemId && this.physics?.isDisplaced(s.itemId)) continue;
       const d = this.distTo(s.pos.x, s.pos.y);
       // a bed's anchor is the middle of the mattress, so it must be reachable from the bed's edge
       const reach = s.kind === 'lie' ? 1.75 : 1.15;
@@ -714,8 +736,14 @@ export class WalkController {
     this.character.reach = spec.rider.pose === 'stand' && !this.stanceOf(v);
     this.distance = spec.cameraDistance ?? 6;
     this.camDist = this.distance;
-    this.yaw = v.holder.rotation.y + Math.PI;
+    // (the physics may have tipped a parked bike over or written the turn as a quaternion: stand it up)
+    const q = v.holder.quaternion;
+    const heading = Math.atan2(2 * (q.x * q.z + q.w * q.y), 1 - 2 * (q.x * q.x + q.y * q.y));
     v.holder.rotation.order = 'YXZ';
+    v.holder.rotation.set(0, heading, 0);
+    this.yaw = heading + Math.PI;
+    this.vWritten.x = NaN;
+    if (this.physics?.ensureVehicle(v)) this.physics.setDriven(v.id);
     audio.play(spec.kind === 'car' || spec.kind === 'bus' ? 'door-close' : 'sit', { volume: 0.7 });
   }
 
@@ -727,6 +755,10 @@ export class WalkController {
     v.holder.rotation.x = 0;
     v.holder.rotation.z = 0;
     this.velocity.x = this.velocity.y = 0;
+    if (this.physics) {
+      this.physics.setDriven(null);
+      this.physics.park(v.id);
+    }
     const phi = v.holder.rotation.y;
     // step off to the vehicle's left (+X local)
     const side = v.def.size.w / 2 + 0.45;
@@ -791,6 +823,17 @@ export class WalkController {
     let p: Vec2;
     let hy: number;
     let theta = 0;
+    // rigid-body physics: the controller decides how fast and where to, the solver resolves the crashes
+    const phys = this.physics && this.physics.ensureVehicle(v) ? this.physics : null;
+    const st = this.pState;
+    if (phys) {
+      phys.setDriven(v.id);
+      const w = this.vWritten;
+      // a game moved the vehicle (respawn) or changed its speed: tell the body
+      if (Number.isNaN(w.x) || Math.abs(holder.position.x - w.x) > 1e-3 || Math.abs(holder.position.z - w.z) > 1e-3 || Math.abs(holder.rotation.y - w.yaw) > 1e-4) {
+        phys.place(v.id, holder.position.x, y0, holder.position.z, phi, this.vSpeed);
+      } else if (this.vSpeed !== w.speed) phys.setSpeed(v.id, this.vSpeed);
+    }
 
     if (!this.vAir) {
       // slope under the wheels along the heading (standable surfaces; the ground itself is flat)
@@ -813,12 +856,26 @@ export class WalkController {
       // steering eases in and gets gentler at speed
       const limit = spec.maxSteer * (1 - 0.55 * Math.min(1, Math.abs(this.vSpeed) / max));
       this.steer += (turn * limit - this.steer) * Math.min(1, dt * 6);
-      phi -= (this.vSpeed / spec.wheelbase) * Math.tan(this.steer) * dt;
-      const horiz = this.vSpeed * Math.cos(theta);
-      p = { x: holder.position.x + Math.sin(phi) * horiz * dt, y: holder.position.z + Math.cos(phi) * horiz * dt };
-      const before = { ...p };
-      this.resolveCollisions(p, spec.radius, v.id);
-      if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) this.vSpeed *= 0.6; // bumped into something
+      const yawRate = -(this.vSpeed / spec.wheelbase) * Math.tan(this.steer);
+      let horiz = this.vSpeed * Math.cos(theta);
+      if (phys) {
+        this.intent.speed = horiz;
+        this.intent.yawRate = yawRate;
+        phys.drive(v.id, this.intent, y0);
+        this.stepPhysics(dt);
+        phys.read(v.id, st);
+        p = { x: st.x, y: st.z };
+        phi = st.yaw;
+        // what is left of the speed after a crash (along the heading; the tyres soak up the sideways slide)
+        horiz = st.vx * Math.sin(phi) + st.vz * Math.cos(phi);
+        this.vSpeed = horiz / Math.max(0.3, Math.cos(theta));
+      } else {
+        phi += yawRate * dt;
+        p = { x: holder.position.x + Math.sin(phi) * horiz * dt, y: holder.position.z + Math.cos(phi) * horiz * dt };
+        const before = { ...p };
+        this.resolveCollisions(p, spec.radius, v.id);
+        if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) this.vSpeed *= 0.6; // bumped into something
+      }
       let ground = this.world.groundAt(p.x, p.y);
       if (surfs) {
         // too high to roll onto (the side of a box, a rail): solid
@@ -829,6 +886,7 @@ export class WalkController {
           p = { x: holder.position.x, y: holder.position.z };
           this.vSpeed *= -0.25;
           ground = this.world.groundAt(p.x, p.y);
+          phys?.place(v.id, p.x, y0, p.y, phi, this.vSpeed);
         }
         let surf: WalkSurface | null = null;
         const top = surfaceTop(surfs, p.x, p.y, y0 + VEHICLE_STEP);
@@ -865,21 +923,33 @@ export class WalkController {
       if (agile) {
         const want = -turn * AIR_SPIN;
         this.spinRate += (want - this.spinRate) * Math.min(1, dt * 12);
-        phi += this.spinRate * dt;
         this.airSpinTotal += this.spinRate * dt;
+        if (!phys) phi += this.spinRate * dt;
       }
-      p = { x: holder.position.x + this.vAirVel.x * dt, y: holder.position.z + this.vAirVel.y * dt };
-      const before = { ...p };
-      this.resolveCollisions(p, spec.radius, v.id);
-      if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) {
-        this.vAirVel.x *= 0.3;
-        this.vAirVel.y *= 0.3;
+      if (phys) {
+        phys.fly(v.id, this.vAirVel.x, this.vAirVel.y, agile ? this.spinRate : 0, y0);
+        this.stepPhysics(dt);
+        phys.read(v.id, st);
+        p = { x: st.x, y: st.z };
+        phi = st.yaw;
+        // hitting something in the air costs the speed
+        this.vAirVel.x = st.vx;
+        this.vAirVel.y = st.vz;
+      } else {
+        p = { x: holder.position.x + this.vAirVel.x * dt, y: holder.position.z + this.vAirVel.y * dt };
+        const before = { ...p };
+        this.resolveCollisions(p, spec.radius, v.id);
+        if (Math.hypot(p.x - before.x, p.y - before.y) > 1e-4) {
+          this.vAirVel.x *= 0.3;
+          this.vAirVel.y *= 0.3;
+        }
       }
       hy = y0 + this.vVy * dt;
       if (surfs && surfaceBlocks(surfs, p.x, p.y, hy, VEHICLE_AIR_GRACE, 1.2)) {
         // flew into the side of something
         p = { x: holder.position.x, y: holder.position.z };
         this.vAirVel.x = this.vAirVel.y = 0;
+        phys?.place(v.id, p.x, y0, p.y, phi, 0);
       }
       let ground = this.world.groundAt(p.x, p.y);
       let surf: WalkSurface | null = null;
@@ -891,6 +961,7 @@ export class WalkController {
       if (hy <= ground || this.airT > 8) {
         phi = this.land(p, phi, ground, surf, agile);
         hy = ground;
+        phys?.place(v.id, p.x, ground, p.y, phi, this.vSpeed);
         theta = Math.atan(surf ? surfaceSlopeAlong(surf, p.x, p.y, Math.sin(phi), Math.cos(phi)) : 0);
       }
     }
@@ -900,6 +971,9 @@ export class WalkController {
     this.rode += Math.hypot(p.x - holder.position.x, p.y - holder.position.z);
     holder.position.set(p.x, hy, p.y);
     holder.rotation.y = phi;
+    this.vWritten.x = p.x;
+    this.vWritten.z = p.y;
+    this.vWritten.yaw = phi;
 
     // two-wheelers lean into the turn; cars roll outwards and pitch a little; everything follows a ramp
     const accel = (this.vSpeed - speedBefore) / Math.max(dt, 1e-3);
@@ -941,6 +1015,33 @@ export class WalkController {
       while (diff < -Math.PI) diff += Math.PI * 2;
       this.yaw += diff * Math.min(1, dt * 2.2);
     }
+    this.vWritten.speed = this.vSpeed;
+  }
+
+  /** Advance the physics once per frame (the vehicle update does it between its intent and read-back). */
+  private stepPhysics(dt: number): void {
+    if (this.stepped || !this.physics) return;
+    this.stepped = true;
+    const busy = !!this.vehicle || !!this.seat || !!this.occupation;
+    this.physics.step(dt, { x: this.pos.x, y: this.y + this.jumpLift, z: this.pos.y, active: !busy });
+  }
+
+  /** A crash shakes the camera a little (0..1). */
+  shakeCamera(amount: number): void {
+    this.shake = Math.min(1, Math.max(this.shake, amount));
+  }
+
+  /** R while driving: stop dead and straighten up (the physics pushes the vehicle free of whatever it is stuck in). */
+  unstick(): void {
+    const v = this.vehicle;
+    if (!v) return;
+    this.vSpeed = 0;
+    this.steer = 0;
+    this.spinRate = 0;
+    v.holder.rotation.x = 0;
+    v.holder.rotation.z = 0;
+    this.physics?.place(v.id, v.holder.position.x, v.holder.position.y, v.holder.position.z, v.holder.rotation.y, 0);
+    this.vWritten.speed = 0;
   }
 
   /**
@@ -1022,6 +1123,10 @@ export class WalkController {
       if (!e.repeat) this.honk();
       return;
     }
+    if (e.code === 'KeyR' && this.vehicle) {
+      if (!e.repeat) this.unstick();
+      return;
+    }
     if (!e.repeat && !this.vehicle && this.onShortcut(e.code)) {
       e.preventDefault();
       return;
@@ -1064,7 +1169,22 @@ export class WalkController {
   // ---- collisions & floors -------------------------------------------------------------------
 
   private resolveCollisions(pos: Vec2, radius: number, ignoreBox?: string): void {
-    collideCircle(this.world, pos, radius, this.vehicle ? 0 : this.y, ignoreBox, this.world.surfaceOwners);
+    collideCircle(this.world, pos, radius, this.vehicle ? 0 : this.y, ignoreBox, this.skipIds());
+  }
+
+  /** boxes the walker passes: surfaces replace them, or the physics lets the walker shove them */
+  private skipIds(): ReadonlySet<string> | undefined {
+    const owners = this.world.surfaceOwners;
+    const push = this.physics?.pushable;
+    if (!push?.size) return owners;
+    const key = this.skipKey;
+    if (key[0] !== this._world || key[1] !== owners?.size || key[2] !== push.size || key[3] !== push) {
+      this.skipKey = [this._world, owners?.size, push.size, push];
+      this.skip.clear();
+      for (const id of push) this.skip.add(id);
+      if (owners) for (const id of owners) this.skip.add(id);
+    }
+    return this.skip;
   }
 
   /** Surfaces too high to step onto are solid: undo (or slide along) a walker move into one. */
@@ -1138,6 +1258,7 @@ export class WalkController {
 
   update(dt: number): void {
     dt = Math.min(dt, 0.05);
+    this.stepped = false;
     const k = this.keys;
     // camera forward on the ground plane
     const fx = -Math.sin(this.yaw);
@@ -1274,6 +1395,8 @@ export class WalkController {
         if (this.jumpLift <= 0) this.landWalker();
       }
     }
+    // the rest of the world moves on (props tumbling, the walker shoving light things)
+    this.stepPhysics(dt);
 
     // character
     const ch = this.character;
@@ -1346,12 +1469,22 @@ export class WalkController {
       // squeezed against a wall: hide the body instead of filling the screen with the back of a head
       if (this.camDist < 0.95) ch.root.visible = false;
     }
+    if (this.shake > 0.002) {
+      // a crash: a short, decaying wobble
+      const t = performance.now() * 0.001;
+      const a = this.shake * this.shake;
+      this.camera.position.x += (Math.sin(t * 61) + Math.sin(t * 23.7)) * 0.05 * a;
+      this.camera.position.y += (Math.sin(t * 53.3) + Math.sin(t * 31.1)) * 0.04 * a;
+      this.camera.position.z += (Math.sin(t * 47.9) + Math.sin(t * 19.3)) * 0.05 * a;
+      this.camera.rotateZ(Math.sin(t * 41) * 0.025 * a);
+      this.shake *= Math.exp(-dt * 4.5);
+    } else this.shake = 0;
 
     // hints
     let hint = '';
     if (this.occupation) hint = `${this.occupation.label} · ${this.occupation.lockMovement ? 'Esc' : 'E / Esc'} לסיום`;
     else if (this.onChoose && !this.vehicle) hint = '';
-    else if (this.vehicle) hint = 'W/S – גז ובלם · A/D – היגוי · H – צופר · E – לרדת';
+    else if (this.vehicle) hint = 'W/S – גז ובלם · A/D – היגוי · H – צופר · R – ייצוב · E – לרדת';
     else if (this.seat) hint = 'לחצו E כדי לקום';
     else {
       const v = this.nearestVehicle();

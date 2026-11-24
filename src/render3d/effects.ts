@@ -20,7 +20,14 @@ export function addWind<T extends THREE.Material>(mat: T, amount = 1): T {
         '#include <begin_vertex>',
         `#include <begin_vertex>
         {
-          vec4 windWorld = modelMatrix * vec4(position, 1.0);
+          vec4 windLocal = vec4(position, 1.0);
+          #ifdef USE_BATCHING
+            windLocal = batchingMatrix * windLocal;
+          #endif
+          #ifdef USE_INSTANCING
+            windLocal = instanceMatrix * windLocal;
+          #endif
+          vec4 windWorld = modelMatrix * windLocal;
           float windH = max(position.y - 0.25, 0.0);
           float windA = sin(uWindTime * 1.5 + windWorld.x * 0.31 + windWorld.z * 0.23) * 0.6 + sin(uWindTime * 2.9 + windWorld.x * 0.83 + position.y) * 0.4;
           float windB = cos(uWindTime * 1.2 + windWorld.z * 0.37) * 0.6 + sin(uWindTime * 3.3 + windWorld.z * 0.71 + position.y * 1.3) * 0.4;

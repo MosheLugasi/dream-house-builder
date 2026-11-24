@@ -5,6 +5,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { N8AOPass } from 'n8ao';
 import { AccumulatePass } from './AccumulatePass';
 import { GradedOutputPass } from './GradedOutputPass';
+import { SanitizePass } from './SanitizePass';
 import type { RenderPreset } from './presets';
 
 /** Halton low-discrepancy sequence: well spread sub-pixel offsets. */
@@ -22,7 +23,7 @@ const JITTER: [number, number][] = Array.from({ length: 32 }, (_, i) => [halton(
 
 /**
  * The post-processing chain of the 3D view:
- *   N8AO (renders the scene + ambient occlusion) → bloom → graded output (tone mapping, colour grade, sRGB)
+ *   N8AO (renders the scene + ambient occlusion) → sanitize (NaN / firefly guard) → bloom → graded output (tone mapping, colour grade, sRGB)
  *   → SMAA → [ultra] accumulation of jittered frames while the camera stands still.
  * Without `preset.post` the scene is rendered straight to the canvas.
  */
@@ -72,7 +73,21 @@ export class RenderPipeline {
       ao.configuration.depthAwareUpsampling = true;
       ao.configuration.gammaCorrection = false;
       ao.setQualityMode(preset.ao);
+      // N8AO's transparency mode renders the scene two more times every frame (and with them the sun's
+      // 4096² shadow map), walks the scene graph five times and allocates a map of every object: it was
+      // the most expensive part of the frame for a barely visible gain (no AO on glass and water)
+      ao.autoDetectTransparency = false;
+      ao.configuration.transparencyAware = false;
+      // multisampled scene render: the post chain renders off-screen, where the canvas' own antialiasing
+      // does not apply. SMAA alone left thin things (lamp posts, wires, railings, spokes) crawling and
+      // flickering while walking
+      if (preset.msaa > 0) {
+        const target = ao.beautyRenderTarget;
+        target.samples = Math.min(preset.msaa, this.renderer.capabilities.maxSamples);
+      }
       composer.addPass(ao);
+      // no NaN / Inf / single-pixel fireflies may reach bloom and accumulation (they spread and stay)
+      composer.addPass(new SanitizePass());
       // glow around lamps, windows at night and the low sun
       const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.03, 0.5, 4);
       composer.addPass(bloom);
@@ -128,7 +143,11 @@ export class RenderPipeline {
     }
     const acc = this.acc;
     const n = Math.min(this.still, this.maxAccumulate);
-    if (acc) acc.weight = 1 / (n + 1);
+    if (acc) {
+      acc.weight = 1 / (n + 1);
+      // (switched off, the pass costs nothing: SMAA then draws to the canvas)
+      acc.enabled = this.maxAccumulate > 0;
+    }
     const jitter = acc && this.maxAccumulate > 0 && this.still > 0;
     if (jitter) this.jitter(this.still, this.width * this.pixelRatio, this.height * this.pixelRatio);
     this.composer.render();
@@ -162,9 +181,12 @@ export class RenderPipeline {
     h = Math.max(1, Math.floor(h * fit));
     const acc = this.acc ?? new AccumulatePass(w, h);
     const own = !this.acc;
+    const wasEnabled = acc.enabled;
+    acc.enabled = true;
     if (own) composer.addPass(acc);
     const out = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
     const restore = () => {
+      acc.enabled = wasEnabled;
       if (own) {
         composer.removePass(acc);
         acc.dispose();

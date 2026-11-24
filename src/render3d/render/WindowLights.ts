@@ -141,6 +141,12 @@ export class WindowLights {
         scored.sort((a, b) => a.score - b.score);
       }
       const wanted = scored.slice(0, this.slots.length);
+      // windows near the end of the list fade out before they hand their light over to another window
+      // (moving around a room with more windows than lights, the light used to jump between them)
+      if (scored.length > wanted.length) {
+        const cut = scored[wanted.length].score;
+        for (const w of wanted) w.weight *= Math.max(0, Math.min(1, (cut - w.score) / 2.5));
+      }
       // only in the scene while some window is in reach (or still fading out)
       const on = wanted.length > 0 || this.slots.some((sl) => sl.light.intensity > 1e-3);
       if (this.group.visible !== on) {
@@ -154,7 +160,7 @@ export class WindowLights {
       }
       const held = new Set(this.slots.filter((sl) => sl.source && sl.target > 0).map((sl) => sl.source!.id));
       for (const w of wanted) {
-        if (held.has(w.s.id)) continue;
+        if (held.has(w.s.id) || w.weight <= 0) continue;
         const free = this.slots.find((sl) => !sl.source || (sl.target === 0 && sl.light.intensity < 1e-3));
         if (!free) break;
         free.source = w.s;

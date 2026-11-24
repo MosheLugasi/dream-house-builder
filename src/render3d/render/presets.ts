@@ -15,6 +15,8 @@ export interface RenderPreset {
   pixelRatioCap: number;
   /** post-processing chain (AO, bloom, graded output, SMAA); off = render straight to the canvas */
   post: boolean;
+  /** multisample antialiasing of the scene render with post-processing on (0 = off; SMAA still runs) */
+  msaa: number;
   /** N8AO quality mode */
   ao: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra';
   /** AO at half resolution with depth-aware upsampling (looks the same here, ~10% cheaper overall) */
@@ -44,6 +46,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'low',
     pixelRatioCap: 1,
     post: false,
+    msaa: 0,
     ao: 'Low',
     aoHalfRes: true,
     accumulate: 0,
@@ -60,6 +63,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'high',
     pixelRatioCap: 1,
     post: true,
+    msaa: 4,
     ao: 'Medium',
     aoHalfRes: true,
     accumulate: 0,
@@ -76,6 +80,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'ultra',
     pixelRatioCap: 1.5,
     post: true,
+    msaa: 4,
     ao: 'High',
     aoHalfRes: false,
     accumulate: 16,

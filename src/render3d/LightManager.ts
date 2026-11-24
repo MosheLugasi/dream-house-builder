@@ -132,7 +132,12 @@ export class LightManager {
       on.sort((a, b) => score(a) - score(b));
       const wanted = on.slice(0, POOL);
       const scale = DAY_SCALE + (NIGHT_SCALE - DAY_SCALE) * night;
-      const strength = (src: LampSource) => src.intensity * scale * (src.distance > 15 ? 2 : 1);
+      // the farthest lamps of the pool fade out before they lose their light to a nearer one: walking down
+      // a street, lamps hand their light over smoothly instead of switching their pools of light on and
+      // off (which flickered)
+      const cutoff = on.length > POOL ? score(on[POOL]) : Infinity;
+      const fade = (src: LampSource) => (cutoff === Infinity ? 1 : Math.max(0, Math.min(1, (cutoff - score(src)) / (cutoff * 0.3))));
+      const strength = (src: LampSource) => src.intensity * scale * (src.distance > 15 ? 2 : 1) * fade(src);
       // the shadow-casting slots (if any) take the nearest lamps; the others take the rest. A lamp that
       // moves into a shadow slot cross-fades from its old slot.
       const casters = this.pool.slice(0, this.shadowSlots);
@@ -140,9 +145,9 @@ export class LightManager {
       const assign = (slots: Slot[], want: LampSource[]) => {
         const ids = new Set(want.map((w) => w.id));
         for (const slot of slots) slot.target = slot.source && ids.has(slot.source.id) ? strength(slot.source) : 0;
-        const held = new Set(slots.filter((sl) => sl.source && sl.target > 0).map((sl) => sl.source!.id));
+        const held = new Set(slots.filter((sl) => sl.source && ids.has(sl.source.id)).map((sl) => sl.source!.id));
         for (const src of want) {
-          if (held.has(src.id)) continue;
+          if (held.has(src.id) || strength(src) <= 0) continue;
           const free = slots.find((slot) => slot.light.intensity < 1e-3 && (slot.target === 0 || !slot.source));
           if (!free) break;
           free.source = src;

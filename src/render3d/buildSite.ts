@@ -9,6 +9,7 @@ const ASPHALT_Y = 0.035;
 const MARK_Y = 0.045;
 const AREA_Y = 0.018;
 const MARK = '__mark';
+const AREA = '__area:';
 const markMaterial = new THREE.MeshStandardMaterial({ color: '#f2f0e6', roughness: 0.75 });
 
 const roadKey = (i: number, j: number) => `${i},${j}`;
@@ -83,6 +84,68 @@ export function roadPieces(set: Set<string>, i: number, j: number): RoadPieces {
   return out;
 }
 
+type Rect = [number, number, number, number]; // x0, y0, x1, y1 (x0 < x1, y0 < y1)
+
+/** `r` minus `cut`: up to four rectangles. */
+export function subtractRect(r: Rect, cut: Rect): Rect[] {
+  const [x0, y0, x1, y1] = r;
+  const cx0 = Math.max(x0, cut[0]);
+  const cy0 = Math.max(y0, cut[1]);
+  const cx1 = Math.min(x1, cut[2]);
+  const cy1 = Math.min(y1, cut[3]);
+  if (cx0 >= cx1 - 1e-6 || cy0 >= cy1 - 1e-6) return [r];
+  const out: Rect[] = [];
+  if (cy0 > y0 + 1e-6) out.push([x0, y0, x1, cy0]);
+  if (cy1 < y1 - 1e-6) out.push([x0, cy1, x1, y1]);
+  if (cx0 > x0 + 1e-6) out.push([x0, cy0, cx0, cy1]);
+  if (cx1 < x1 - 1e-6) out.push([cx1, cy0, x1, cy1]);
+  return out;
+}
+
+/**
+ * The visible part of every ground-cover area, as in the 2D site plan: a later area covers the earlier
+ * ones and roads cover areas. Overlapping coplanar areas would z-fight (flicker) in 3D, so the covered
+ * parts are cut away instead of being drawn twice at the same height.
+ */
+export function visibleAreas(site: Site): { finish: string; rects: Rect[] }[] {
+  const boxes: Rect[] = site.areas.map((a) => [Math.min(a.x0, a.x1), Math.min(a.y0, a.y1), Math.max(a.x0, a.x1), Math.max(a.y0, a.y1)]);
+  const roads: Rect[] = site.roads.map(([i, j]) => [i * ROAD_CELL, j * ROAD_CELL, (i + 1) * ROAD_CELL, (j + 1) * ROAD_CELL]);
+  const hits = (a: Rect, b: Rect) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  return site.areas.map((a, i) => {
+    let rects: Rect[] = [boxes[i]];
+    const cuts = [...boxes.slice(i + 1), ...roads].filter((c) => hits(c, boxes[i]));
+    for (const c of cuts) {
+      rects = rects.flatMap((r) => subtractRect(r, c));
+      if (!rects.length) break;
+    }
+    return { finish: a.finish, rects: rects.filter((r) => r[2] - r[0] > 1e-3 && r[3] - r[1] > 1e-3) };
+  });
+}
+
+/**
+ * Pushes a mesh's depth back by a slope-scaled amount while it is drawn, so that thin layers lying a
+ * few millimetres above it (areas on the lawn, asphalt, road markings) win the depth test even far
+ * away, where 24-bit depth cannot resolve the real gap. The materials are shared with other meshes
+ * (finish library), so the offset is switched on only around this mesh's own draw call; it is not a
+ * program parameter, so nothing recompiles.
+ */
+export function setDepthLayer(mesh: THREE.Mesh, layer: number): void {
+  if (layer <= 0) return;
+  mesh.onBeforeRender = (_r, _s, _c, _g, material) => {
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = layer;
+    material.polygonOffsetUnits = layer;
+  };
+  mesh.onAfterRender = (_r, _s, _c, _g, material) => {
+    material.polygonOffset = false;
+    material.polygonOffsetFactor = 0;
+    material.polygonOffsetUnits = 0;
+  };
+}
+
+/** Depth layers (bigger = pushed further back): ground < areas < asphalt / sidewalks < markings. */
+export const DEPTH_LAYER = { ground: 3, area: 2, road: 1, mark: 0 } as const;
+
 /** Roads (asphalt, raised sidewalks, markings) and ground-cover areas. */
 export function buildSite(site: Site): THREE.Group {
   const mb = new MeshBuilder();
@@ -96,9 +159,8 @@ export function buildSite(site: Site): THREE.Group {
       [x0, y1],
     ]);
   };
-  for (const a of site.areas) {
-    flat(a.finish, [Math.min(a.x0, a.x1), Math.min(a.y0, a.y1), Math.max(a.x0, a.x1), Math.max(a.y0, a.y1)], AREA_Y);
-  }
+  // (areas get their own bucket keys so that they can be layered below the roads that share a finish)
+  for (const a of visibleAreas(site)) for (const r of a.rects) flat(AREA + a.finish, r, AREA_Y);
   const set = roadSet(site);
   for (const [i, j] of site.roads) {
     const p = roadPieces(set, i, j);
@@ -123,9 +185,17 @@ export function buildSite(site: Site): THREE.Group {
       side(x1, y0, x1, y1, [1, 0, 0]);
     }
   }
-  const group = mb.build((key) => (key === MARK ? markMaterial : key === 'water' ? waterMaterial() : finishes.material(key)));
+  const group = mb.build((key) => {
+    const finish = key.startsWith(AREA) ? key.slice(AREA.length) : key;
+    return finish === MARK ? markMaterial : finish === 'water' ? waterMaterial() : finishes.material(finish);
+  });
   group.traverse((o) => {
     o.castShadow = false;
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    // (the kerbs' vertical faces need no offset; the markings are on top)
+    if (m.name.startsWith(AREA)) setDepthLayer(m, DEPTH_LAYER.area);
+    else if (m.name === 'asphalt' || m.name === 'pavers') setDepthLayer(m, DEPTH_LAYER.road);
   });
   return group;
 }

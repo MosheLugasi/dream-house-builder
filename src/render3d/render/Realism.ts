@@ -151,8 +151,10 @@ export class Realism {
       g.white.setRGB(1 + 0.03 * dusk - 0.04 * night, 1, 1 - 0.04 * dusk + 0.05 * night);
     }
 
-    // accumulation: long in the editor (nothing moves), short in walk mode (people, pets and cars do)
-    this.pipeline.maxAccumulate = f.walking ? Math.min(4, this.preset.accumulate) : this.preset.accumulate;
+    // accumulation: only in the editor. Walking, people, pets, cars and foliage move all the time: a short
+    // running average of jittered frames never converges there, it made every edge shimmer and left
+    // trails behind whatever moved
+    this.pipeline.maxAccumulate = f.walking ? 0 : this.preset.accumulate;
     if (atm.hours !== this.lastHours) {
       this.lastHours = atm.hours;
       this.pipeline.invalidate();

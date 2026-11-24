@@ -15,7 +15,10 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
   Use `{ transient: true }` + one `checkpoint()` for drags so a gesture is one undo step.
 - Rooms are derived from walls (`model/graph.ts`), never stored. Room styling is anchored by a point (`RoomStyle`).
 - `src/catalog/types.ts` and `src/materials/types.ts` are contracts – extend with optional fields only.
-- No network assets: textures and models are procedural.
+- Assets: most content is procedural. Real assets (GLB models, PBR textures, HDRIs) may be used where they matter most; they are
+  downloaded once, compressed and committed under `public/assets/` (loaded with `src/assets/loader.ts`, never fetched from the
+  internet at runtime), CC0 or CC-BY only, each listed in `public/assets/CREDITS.md`. Builds must stay synchronous with a
+  procedural fallback (Node tests have no DOM/fetch).
 - UI strings are Hebrew; keep code, comments and identifiers in English.
 - The saved file format is versioned (`version: 2`); structural changes need a migration in `io/storage.ts#parseProject`.
 - Two edit scopes: `site` (neighborhood map; items in site coordinates) and `building` (inside one building; building-local

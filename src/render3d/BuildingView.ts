@@ -6,6 +6,7 @@ import { levelElevation, SLAB, type Building, type FurnitureItem, type Level } f
 import { buildArchitecture, disposeArchitecture, type Architecture, type OrientedRect } from './buildArchitecture';
 import { buildRoof } from './buildRoof';
 import { ItemLayer } from './ItemLayer';
+import { itemBatches } from './StaticBatches';
 
 export interface BuildingViewOptions {
   /** the level being edited: levels above it are hidden. null = show the complete building with its roof */
@@ -57,6 +58,7 @@ export class BuildingView {
       const lv = this.levels.pop()!;
       lv.items.clear();
       this.group.remove(lv.group);
+      itemBatches.current?.remove(this.archId(this.levels.length));
       if (lv.arch) disposeArchitecture(lv.arch);
       changed = true;
     }
@@ -103,6 +105,7 @@ export class BuildingView {
         lv.key = key;
         if (lv.arch) {
           lv.group.remove(lv.arch.group);
+          itemBatches.current?.remove(this.archId(i));
           disposeArchitecture(lv.arch);
         }
         lv.arch = buildArchitecture(lvl, b, {
@@ -114,6 +117,8 @@ export class BuildingView {
           ceilingHoles,
         });
         lv.group.add(lv.arch.group);
+        // walls, floors, windows and doors are drawn through the shared batches too
+        itemBatches.current?.add(this.archId(i), lv.arch.group);
         changed = true;
       }
       if (!visible) return;
@@ -141,23 +146,33 @@ export class BuildingView {
     if (!sameKey(roofKey, this.roofKey)) {
       this.roofKey = roofKey;
       if (this.roof) {
+        itemBatches.current?.remove(`roof:${this.id}`);
         this.group.remove(this.roof);
         this.roof.traverse((m) => (m as THREE.Mesh).geometry?.dispose());
         this.roof = null;
       }
       if (wantRoof) {
         this.roof = buildRoof(b);
-        if (this.roof) this.group.add(this.roof);
+        if (this.roof) {
+          this.group.add(this.roof);
+          itemBatches.current?.add(`roof:${this.id}`, this.roof);
+        }
       }
     }
     return changed;
   }
 
+  private archId(level: number): string {
+    return `arch:${this.id}:${level}`;
+  }
+
   dispose(): void {
-    for (const lv of this.levels) {
+    this.levels.forEach((lv, i) => {
       lv.items.clear();
+      itemBatches.current?.remove(this.archId(i));
       if (lv.arch) disposeArchitecture(lv.arch);
-    }
+    });
+    itemBatches.current?.remove(`roof:${this.id}`);
     this.roof?.traverse((m) => (m as THREE.Mesh).geometry?.dispose());
   }
 }

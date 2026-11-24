@@ -1,5 +1,5 @@
 declare module 'n8ao' {
-  import type { Camera, Color, Scene } from 'three';
+  import type { Camera, Color, Scene, WebGLRenderTarget } from 'three';
   import { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
   export class N8AOPass extends Pass {
     constructor(scene: Scene, camera: Camera, width?: number, height?: number);
@@ -15,7 +15,12 @@ declare module 'n8ao' {
       denoiseRadius: number;
       screenSpaceRadius: boolean;
       depthAwareUpsampling: boolean;
+      transparencyAware: boolean;
     };
+    /** re-enables `transparencyAware` every frame when any material in the scene is transparent */
+    autoDetectTransparency: boolean;
+    /** the target the scene is rendered into (colour + depth texture) */
+    beautyRenderTarget: WebGLRenderTarget;
     setSize(width: number, height: number): void;
     setQualityMode(mode: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra'): void;
   }
