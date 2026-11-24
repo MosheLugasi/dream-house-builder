@@ -78,9 +78,8 @@ export class RenderPipeline {
       // the most expensive part of the frame for a barely visible gain (no AO on glass and water)
       ao.autoDetectTransparency = false;
       ao.configuration.transparencyAware = false;
-      // multisampled scene render: the post chain renders off-screen, where the canvas' own antialiasing
-      // does not apply. SMAA alone left thin things (lamp posts, wires, railings, spokes) crawling and
-      // flickering while walking
+      // optional multisampled scene render (the canvas' own antialiasing does not apply off-screen; see
+      // RenderPreset.msaa for why the presets leave it off)
       if (preset.msaa > 0) {
         const target = ao.beautyRenderTarget;
         target.samples = Math.min(preset.msaa, this.renderer.capabilities.maxSamples);
