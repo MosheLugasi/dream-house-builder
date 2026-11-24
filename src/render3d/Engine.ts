@@ -35,6 +35,7 @@ import { ItemLayer, makeItemHolder, type ItemEntry } from './ItemLayer';
 import { Particles, Stars } from './Life';
 import { Traffic } from './Traffic';
 import { MiniGames } from './MiniGames';
+import { useMiniGame } from '../game/minigames/store';
 import type { MiniGameId } from '../game/minigames/meta';
 import { installMiniGameVenue, needsVenue } from '../game/minigames/install';
 import { randomLook } from './characterTypes';
@@ -175,7 +176,8 @@ export class Engine {
     this.controls.target.set(6, 0.5, 4.5);
 
     this.walk = new WalkController(this.camera, renderer.domElement);
-    this.walk.onHint = (hint) => useStore.getState().setHint(hint);
+    // during a mini-game the game's own hint replaces the walk controls' one
+    this.walk.onHint = (hint) => useStore.getState().setHint(useMiniGame.getState().active ? '' : hint);
     this.walk.onToggleFirstPerson = () => {
       const st = useStore.getState();
       st.setView({ firstPerson: !st.view.firstPerson });

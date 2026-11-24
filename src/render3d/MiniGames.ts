@@ -85,6 +85,7 @@ export class MiniGames {
     const def = miniGame(id);
     const store = useMiniGame.getState();
     store.set({ active: id, intro: null, result: null, menuOpen: false, hud: {}, popups: [], banner: null, countdown: null, nav: null });
+    useStore.getState().setHint('');
     const root = new THREE.Group();
     root.name = `minigame:${id}`;
     this.host.scene.add(root);
