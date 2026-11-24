@@ -134,6 +134,14 @@ export function HelpDialog({ onClose }: { onClose: () => void }) {
           <kbd>Ctrl</kbd>+<kbd>Z</kbd> ביטול · <kbd>Ctrl</kbd>+<kbd>Y</kbd> ביצוע מחדש · <kbd>Delete</kbd> מחיקה · <kbd>Ctrl</kbd>+<kbd>D</kbd> שכפול ·{' '}
           <kbd>Esc</kbd> ביטול כלי · גלגלת – זום · גרירה על שטח ריק – הזזת המפה
         </p>
+        <h4>קרדיטים</h4>
+        <p className="note" dir="ltr" style={{ textAlign: 'left' }}>
+          &quot;Oak trees pack&quot; and &quot;Bush models pack&quot; by LOLIPOP (@lolipop_1707), licensed under{' '}
+          <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">
+            CC BY 4.0
+          </a>{' '}
+          (modified). Car models: Innerscene Free Parts Library (CC0). Textures and skies: CC0 (see assets/CREDITS.md).
+        </p>
       </div>
     </Modal>
   );
