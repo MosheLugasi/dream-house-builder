@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { FurnitureDef } from '../catalog/types';
 import type { WalkBox, WalkWorld } from '../render3d/WalkController';
 import { surfaceTop } from '../render3d/walkSurfaces';
+import { pointInPolygon } from '../model/geom';
 import { applyDrive, applySkid, forwardSpeed, yawOfQuat, type DriveIntent, type PlanarVelocity } from './drive';
 import { overlapDepth, projectBox, wallBox, type PlanBox } from './footprint';
 import { bodyGroups, GROUP, groups, physicsProfile, type PhysicsProfile, type PhysMaterial } from './profile';
@@ -79,6 +80,8 @@ interface Rec {
   loadY: number;
   loadZ: number;
   driven: boolean;
+  /** made for a placed item of the walk world (else: a mini-game vehicle or the traffic) */
+  fromItem: boolean;
 }
 
 let poleCache = new Map<string, { x: number; z: number; hw: number; hd: number } | null>();
@@ -125,7 +128,10 @@ export class PhysicsWorld implements WalkPhysics {
   private byBody = new Map<number, Rec>();
   private planar: Rec[] = [];
   private staticColliders: Collider[] = [];
-  private boxColliders = new Map<WalkBox, { col: Collider; x: number; y: number; r: number; stamp: number }>();
+  private boxColliders = new Map<WalkBox, BoxEntry>();
+  /** fixed boxes of the previous walk world, reused by content when the world is rebuilt */
+  private boxPool = new Map<string, BoxEntry>();
+  private staticKey = '';
   private stamp = 0;
   /** ids whose walk-world boxes are simulated bodies (not fixed colliders) */
   private owned = new Set<string>();
@@ -188,15 +194,64 @@ export class PhysicsWorld implements WalkPhysics {
   /** Rebuild the fixed colliders for a walk world and reconcile the bodies (moved props stay moved). */
   setWorld(w: WalkWorld): void {
     this.walkWorld = w;
+    // the walk world is rebuilt often (vehicles parked, buildings furnished as you come near): keep
+    // what did not change – the walls / floors / sidewalks, and the fixed boxes (matched by content)
+    this.boxPool.clear();
+    for (const [b, e] of this.boxColliders) this.boxPool.set(boxKey(b), e);
+    this.boxColliders.clear();
+    const key = staticKey(w);
+    if (key !== this.staticKey) this.buildStatic(w, key);
+
+    // bodies: reconcile with the items of the new world
+    const boxesById = new Map<string, WalkBox[]>();
+    for (const b of w.boxes) {
+      if (b.id === undefined) continue;
+      const list = boxesById.get(b.id);
+      if (list) list.push(b);
+      else boxesById.set(b.id, [b]);
+    }
+    const keep = new Set<string>();
+    const fresh: Rec[] = [];
+    for (const item of w.items ?? []) {
+      if (!item.holder) continue;
+      const old = this.recs.get(item.id);
+      if (old && old.holder === item.holder && old.def === item.def) {
+        keep.add(item.id);
+        this.attachBox(old, boxesById.get(item.id));
+        continue;
+      }
+      if (old) this.remove(old, true);
+      const rec = this.createFromItem(item, w);
+      if (rec) {
+        keep.add(item.id);
+        fresh.push(rec);
+        this.attachBox(rec, boxesById.get(item.id));
+      }
+    }
+    for (const v of w.vehicles) {
+      if (this.recs.has(v.id)) keep.add(v.id);
+    }
+    for (const rec of [...this.recs.values()]) {
+      // mini-game vehicles are added to each new walk world later by their game: they stay
+      if (!rec.fromItem || keep.has(rec.id)) continue;
+      this.remove(rec, true);
+    }
+    this.syncBoxes();
+    for (const e of this.boxPool.values()) {
+      this.colliderOwner.delete(e.col.handle);
+      this.world.removeCollider(e.col, false);
+    }
+    this.boxPool.clear();
+    if (fresh.length) this.findOverlaps(w, fresh);
+  }
+
+  private buildStatic(w: WalkWorld, key: string): void {
+    this.staticKey = key;
     for (const c of this.staticColliders) {
       this.colliderOwner.delete(c.handle);
       this.world.removeCollider(c, false);
     }
     this.staticColliders = [];
-    for (const e of this.boxColliders.values()) this.world.removeCollider(e.col, false);
-    this.boxColliders.clear();
-    this.ignore.clear();
-
     const addFixed = (desc: RAPIER.ColliderDesc, member: number, filter: number, owner?: string): Collider => {
       desc.setCollisionGroups(groups(member, filter));
       const c = this.world.createCollider(desc);
@@ -257,40 +312,6 @@ export class PhysicsWorld implements WalkPhysics {
         addFixed(desc, GROUP.GROUND, GROUP.LIGHT | GROUP.HEAVY);
       }
     }
-
-    // bodies: reconcile with the items of the new world
-    const boxesById = new Map<string, WalkBox[]>();
-    for (const b of w.boxes) {
-      if (b.id === undefined) continue;
-      const list = boxesById.get(b.id);
-      if (list) list.push(b);
-      else boxesById.set(b.id, [b]);
-    }
-    const keep = new Set<string>();
-    for (const item of w.items ?? []) {
-      if (!item.holder) continue;
-      const old = this.recs.get(item.id);
-      if (old && old.holder === item.holder && old.def === item.def) {
-        keep.add(item.id);
-        this.attachBox(old, boxesById.get(item.id));
-        continue;
-      }
-      if (old) this.remove(old, true);
-      const rec = this.createFromItem(item, w);
-      if (rec) {
-        keep.add(item.id);
-        this.attachBox(rec, boxesById.get(item.id));
-      }
-    }
-    for (const v of w.vehicles) {
-      if (this.recs.has(v.id)) keep.add(v.id);
-    }
-    for (const rec of [...this.recs.values()]) {
-      if (rec.role === 'traffic' || keep.has(rec.id)) continue;
-      this.remove(rec, true);
-    }
-    this.syncBoxes();
-    this.findOverlaps(w);
   }
 
   private attachBox(rec: Rec, boxes: WalkBox[] | undefined): void {
@@ -309,13 +330,18 @@ export class PhysicsWorld implements WalkPhysics {
       if (pole) profile = physicsProfile(def, item.size, { ...opts, pole });
     }
     if (profile.kind === 'none' || profile.kind === 'static') return null;
+    const make = () => {
+      const rec = this.create(item.id, profile.kind === 'vehicle' ? 'vehicle' : 'prop', def, profile, item.holder!);
+      rec.fromItem = true;
+      return rec;
+    };
     // standing on a ramp, a stage or a platform (standable surfaces have no colliders): it stays there
     if (w.surfaces?.length && profile.kind !== 'vehicle') {
       item.holder!.getWorldPosition(this.v3);
       const top = surfaceTop(w.surfaces, this.v3.x, this.v3.z, this.v3.y + 0.05);
       if (top && top.h > w.groundAt(this.v3.x, this.v3.z) + 0.05) return null;
     }
-    return this.create(item.id, profile.kind === 'vehicle' ? 'vehicle' : 'prop', def, profile, item.holder!);
+    return make();
   }
 
   private create(id: string, role: Role, def: FurnitureDef, profile: PhysicsProfile, holder: THREE.Object3D): Rec {
@@ -350,7 +376,8 @@ export class PhysicsWorld implements WalkPhysics {
       .setContactForceEventThreshold(anchored ? profile.breakImpulse * 0.12 * 60 : Math.max(30, profile.mass * 1.2 * 60));
     cd.setCollisionGroups(bodyGroups(profile));
     const collider = this.world.createCollider(cd, body);
-    if (profile.pushable || profile.mass < 30) body.enableCcd(true);
+    // anything knocked about may fly fast: continuous collision keeps thin things (a fallen pole) out of walls
+    if (profile.kind !== 'vehicle') body.enableCcd(true);
     const parent = holder.parent;
     let parentInv: THREE.Matrix4 | null = null;
     if (parent) {
@@ -391,6 +418,7 @@ export class PhysicsWorld implements WalkPhysics {
       loadY: 0,
       loadZ: 0,
       driven: false,
+      fromItem: false,
     };
     this.recs.set(id, rec);
     if (!anchored && role !== 'traffic') this.settle.push(rec);
@@ -403,8 +431,9 @@ export class PhysicsWorld implements WalkPhysics {
   }
 
   private remove(rec: Rec, restore: boolean): void {
-    if (restore) this.restoreHolder(rec);
+    if (restore && !rec.driven) this.restoreHolder(rec);
     this.byCollider.delete(rec.collider.handle);
+    this.ignore.delete(rec.collider.handle);
     this.byBody.delete(rec.body.handle);
     this.world.removeRigidBody(rec.body);
     this.recs.delete(rec.id);
@@ -424,6 +453,14 @@ export class PhysicsWorld implements WalkPhysics {
     for (const b of w.boxes) {
       if (b.id !== undefined && (this.owned.has(b.id) || this.recs.has(b.id) || skip?.has(b.id))) continue;
       let e = this.boxColliders.get(b);
+      if (!e && this.boxPool.size) {
+        const k = boxKey(b);
+        e = this.boxPool.get(k);
+        if (e) {
+          this.boxPool.delete(k);
+          this.boxColliders.set(b, e);
+        }
+      }
       if (!e) {
         const desc = RAPIER.ColliderDesc.cuboid(Math.max(0.02, b.hw), Math.max(0.02, (b.y1 - b.y0) / 2), Math.max(0.02, b.hd)).setFriction(0.6).setRestitution(0.15);
         desc.setCollisionGroups(groups(GROUP.STATIC, GROUP.LIGHT | GROUP.HEAVY | GROUP.VEHICLE));
@@ -457,9 +494,13 @@ export class PhysicsWorld implements WalkPhysics {
   }
 
   /** bodies placed overlapping something would be shot apart: let those pairs pass through each other */
-  private findOverlaps(w: WalkWorld): void {
-    // (things already knocked about are not "placed" anywhere: they collide normally)
-    const recs = [...this.recs.values()].filter((r) => r.role !== 'traffic' && r.body.isEnabled() && !r.displaced);
+  private findOverlaps(w: WalkWorld, fresh: Rec[]): void {
+    // new bodies first (only they are checked against everything); things already knocked about are
+    // not "placed" anywhere: they collide normally
+    const isNew = new Set(fresh);
+    const others = [...this.recs.values()].filter((r) => !isNew.has(r) && r.role !== 'traffic' && r.body.isEnabled() && !r.displaced);
+    const recs = [...fresh.filter((r) => r.body.isEnabled()), ...others];
+    const nFresh = recs.length - others.length;
     const boxOf = (r: Rec): PlanBox => {
       const b = { x: 0, y: 0, hw: 0, hd: 0, rotation: 0, y0: 0, y1: 0 };
       const p = r.body.translation();
@@ -473,6 +514,7 @@ export class PhysicsWorld implements WalkPhysics {
       return b;
     };
     const boxes = recs.map(boxOf);
+    const fixedToo = new Set<Rec>();
     const pair = (a: number, b: number) => {
       let s = this.ignore.get(a);
       if (!s) this.ignore.set(a, (s = new Set()));
@@ -480,7 +522,7 @@ export class PhysicsWorld implements WalkPhysics {
     };
     const flag = (c: Collider) => c.setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS);
     const near = (a: PlanBox, b: PlanBox) => Math.abs(a.x - b.x) < a.hw + a.hd + b.hw + b.hd && Math.abs(a.y - b.y) < a.hw + a.hd + b.hw + b.hd;
-    for (let i = 0; i < recs.length; i++) {
+    for (let i = 0; i < nFresh; i++) {
       const a = boxes[i];
       for (let j = i + 1; j < recs.length; j++) {
         const b = boxes[j];
@@ -489,11 +531,19 @@ export class PhysicsWorld implements WalkPhysics {
         flag(recs[i].collider);
         flag(recs[j].collider);
       }
-      for (const [box, e] of this.boxColliders) {
-        if (!near(a, box) || overlapDepth(a, box) <= 0.02) continue;
-        pair(recs[i].collider.handle, e.col.handle);
-        flag(recs[i].collider);
+      for (const box of this.boxColliders.keys()) {
+        // standing in a piece of fixed scenery (a DJ booth on a stage): part of the scenery as well
+        if (near(a, box) && overlapDepth(a, box) > 0.02) fixedToo.add(recs[i]);
       }
+    }
+    // nothing under it (placed floating, or on a stage the walk world has no box for): it stays put
+    for (let i = 0; i < nFresh; i++) if (!fixedToo.has(recs[i]) && !this.supported(recs[i], boxes[i], w)) fixedToo.add(recs[i]);
+    if (fixedToo.size) {
+      for (const r of fixedToo) {
+        if (r.role === 'vehicle') continue;
+        this.remove(r, true);
+      }
+      this.syncBoxes();
     }
     // walls only matter for props standing in them (rare): let those through as well
     if (!recs.length) return;
@@ -505,12 +555,30 @@ export class PhysicsWorld implements WalkPhysics {
       const col = wallCols[k++];
       if (!col) break;
       const wb = wallBox(wall.a, wall.b, wall.half, wall.y0, wall.y1);
-      for (let i = 0; i < recs.length; i++) {
-        if (!near(boxes[i], wb) || overlapDepth(boxes[i], wb) <= 0.02) continue;
+      for (let i = 0; i < nFresh; i++) {
+        if (fixedToo.has(recs[i]) || !near(boxes[i], wb) || overlapDepth(boxes[i], wb) <= 0.02) continue;
         pair(recs[i].collider.handle, col.handle);
         flag(recs[i].collider);
       }
     }
+  }
+
+  /** something holds the body up where it was placed: the ground, a sidewalk, a floor, a box under it */
+  private supported(r: Rec, b: PlanBox, w: WalkWorld): boolean {
+    const bottom = b.y0 - 0.02;
+    const x = b.x;
+    const z = b.y;
+    if (Math.abs(bottom - w.groundAt(x, z)) < 0.08 || bottom < 0.08) return true;
+    for (const f of w.floors) for (const lv of f.levels) if (Math.abs(lv.y - bottom) < 0.08 && lv.rooms.some((poly) => pointInPolygon({ x, y: z }, poly))) return true;
+    for (const box of w.boxes) {
+      if (box.id === r.id || Math.abs(box.y1 - bottom) > 0.1) continue;
+      const c = Math.cos(-box.rotation);
+      const sn = Math.sin(-box.rotation);
+      const lx = (x - box.x) * c - (z - box.y) * sn;
+      const lz = (x - box.x) * sn + (z - box.y) * c;
+      if (Math.abs(lx) <= box.hw + 0.05 && Math.abs(lz) <= box.hd + 0.05) return true;
+    }
+    return false;
   }
 
   // ---- vehicles & traffic --------------------------------------------------------------------
@@ -534,7 +602,7 @@ export class PhysicsWorld implements WalkPhysics {
       prev.driven = false;
       prev.intent = null;
       prev.air = null;
-      prev.body.enableCcd(prev.profile.pushable);
+      prev.body.enableCcd(!prev.profile.planar);
       if (!prev.profile.planar) {
         // two-wheelers become ordinary props again (they can fall over)
         prev.body.setEnabledTranslations(true, true, true, true);
@@ -662,7 +730,13 @@ export class PhysicsWorld implements WalkPhysics {
   }
 
   isDisplaced(id: string): boolean {
-    return this.recs.get(id)?.displaced ?? false;
+    const r = this.recs.get(id);
+    if (!r?.displaced) return false;
+    // nudged a little (a chair pushed by the walker) still counts as in place
+    const p = r.body.translation(this.bp);
+    const q = r.body.rotation(this.bq);
+    this.q3.set(q.x, q.y, q.z, q.w);
+    return Math.hypot(p.x - r.worldPos.x, p.y - r.worldPos.y, p.z - r.worldPos.z) > 0.3 || this.q3.angleTo(r.worldQuat) > 0.35;
   }
 
   /** an anchored thing that was knocked loose (lamp posts stop shining) */
@@ -756,6 +830,11 @@ export class PhysicsWorld implements WalkPhysics {
     for (const r of this.recs.values()) {
       const h = r.holder;
       if (!h || r.role === 'traffic') continue;
+      if (!r.fromItem && !h.parent && !r.driven) {
+        // a mini-game vehicle whose round is over
+        this.remove(r, false);
+        continue;
+      }
       const visible = h.visible && !!h.parent;
       if (visible !== r.enabled) {
         r.enabled = visible;
@@ -781,10 +860,11 @@ export class PhysicsWorld implements WalkPhysics {
           r.standing = true;
           r.broken = false;
         }
-        r.body.setTranslation(r.worldPos, false);
-        r.body.setRotation(r.worldQuat, false);
-        r.body.setLinvel({ x: 0, y: 0, z: 0 }, false);
-        r.body.setAngvel({ x: 0, y: 0, z: 0 }, false);
+        r.body.setTranslation(r.worldPos, true);
+        r.body.setRotation(r.worldQuat, true);
+        r.body.setLinvel(this.zero, true);
+        r.body.setAngvel(this.zero, true);
+        if (!r.standing && !this.settle.includes(r)) this.settle.push(r);
         if (r.box) this.updateBox(r);
       }
     }
@@ -902,13 +982,29 @@ export class PhysicsWorld implements WalkPhysics {
         speed = Math.hypot(v.x, v.z);
       }
       const len = Math.hypot(dx, dz) || 1;
-      // knocked over away from the hitter: a push high up tips it over (the hitter itself shoves the foot)
-      const J = r.profile.mass * Math.max(1.5, speed * 0.45);
-      this.tv.x = (dx / len) * J;
+      const ux = dx / len;
+      const uz = dz / len;
+
+      if (hitter) {
+        // the hitter rolls on over the foot instead of bulldozing the falling pole along (or squeezing it
+        // through a wall): those two never touch again
+        let set = this.ignore.get(r.collider.handle);
+        if (!set) this.ignore.set(r.collider.handle, (set = new Set()));
+        set.add(hitter.collider.handle);
+        r.collider.setActiveHooks(RAPIER.ActiveHooks.FILTER_CONTACT_PAIRS);
+      }
+      // knocked over away from the hitter, pivoting about its foot: it turns about ω = up × dir and its
+      // centre of mass (at height cy) moves forward at ω·cy
+      const spin = Math.min(1.8, 0.7 + speed * 0.09);
+      this.tv.x = uz * spin;
       this.tv.y = 0;
-      this.tv.z = (dz / len) * J;
-      const at = { x: p.x + r.profile.cx, y: p.y + r.profile.cy + r.profile.hy * 0.7, z: p.z + r.profile.cz };
-      r.body.applyImpulseAtPoint(this.tv, at, true);
+      this.tv.z = -ux * spin;
+      r.body.setAngvel(this.tv, true);
+      const lift = spin * r.profile.cy;
+      this.tv.x = ux * lift;
+      this.tv.y = 0;
+      this.tv.z = uz * lift;
+      r.body.setLinvel(this.tv, true);
       const ev = this.event(r, hitter, hitter?.collider.handle ?? -1, speed, r.load, r.loadX, r.loadY, r.loadZ);
       ev.broke = true;
       r.hit = ev;
@@ -954,6 +1050,19 @@ export class PhysicsWorld implements WalkPhysics {
         px = p.x;
         py = p.y + r.profile.cy;
         pz = p.z;
+      }
+      const o = other as Rec | null;
+      if (o && o.profile.pushable && !o.profile.planar && r.profile.mass > o.profile.mass * 4) {
+        // a light thing (a bin pinned against a wall, a cone) never stops a car: it gets shoved aside
+        this.tv.x = r.pre.vx * 0.97;
+        this.tv.y = 0;
+        this.tv.z = r.pre.vz * 0.97;
+        r.body.setLinvel(this.tv, true);
+        this.tv.x = 0;
+        this.tv.y = r.pre.w;
+        this.tv.z = 0;
+        r.body.setAngvel(this.tv, true);
+        continue;
       }
       r.hit = this.event(r, other, otherCol, dv, dv * r.profile.mass, px, py, pz);
     }
@@ -1100,6 +1209,31 @@ export class PhysicsWorld implements WalkPhysics {
     this.world.free();
     this.queue.free();
   }
+}
+
+interface BoxEntry {
+  col: Collider;
+  x: number;
+  y: number;
+  r: number;
+  stamp: number;
+}
+
+const r3 = (v: number) => Math.round(v * 1000);
+const boxKey = (b: WalkBox) => `${b.id ?? ''}|${r3(b.x)}|${r3(b.y)}|${r3(b.hw)}|${r3(b.hd)}|${r3(b.rotation)}|${r3(b.y0)}|${r3(b.y1)}`;
+
+/** Content of the walk world's walls, floors and raised ground (rebuild the fixed colliders only when it changes). */
+function staticKey(w: WalkWorld): string {
+  const parts: number[] = [];
+  for (const wall of w.walls) if (wall.openY === undefined) parts.push(r3(wall.a.x), r3(wall.a.y), r3(wall.b.x), r3(wall.b.y), r3(wall.half), r3(wall.y0), r3(wall.y1));
+  parts.push(-1);
+  for (const f of w.floors) for (const lv of f.levels) {
+    parts.push(r3(lv.y));
+    for (const poly of lv.rooms) for (const p of poly) parts.push(r3(p.x), r3(p.y));
+  }
+  parts.push(-2);
+  for (const r of w.raised ?? []) parts.push(...r.map(r3));
+  return parts.join(',');
 }
 
 function isIdentity(m: THREE.Matrix4): boolean {

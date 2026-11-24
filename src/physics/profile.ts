@@ -214,7 +214,7 @@ export function physicsProfile(def: FurnitureDef, size: ItemSize, opts: ProfileO
     const planar = k === 'car' || k === 'bus' || k === 'other';
     const mass = spec.mass ?? inferMass(def, size);
     // the body floats a little above the ground (wheels): kerbs and low debris pass under it
-    const clear = planar ? Math.min(0.28, size.h * 0.18) : 0.05;
+    const clear = planar ? Math.min(0.17, size.h * 0.12) : 0.05;
     return {
       ...base,
       kind: 'vehicle',

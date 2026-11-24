@@ -40,6 +40,9 @@ Product requirements: `docs/requirements.md`. Architecture + roadmap: `docs/arch
 - Neighborhood mini-games: `src/game/minigames/` (contract `types.ts`, one folder per game, venues installed into plots by
   `plots.ts#installVenue`, runtime `render3d/MiniGames.ts`). Game modules are imported by `sampleProject()`: never import
   `store/store.ts` from them at module level (circular import) – use the `MiniGameContext`.
+- Physics (walk mode only): Rapier in `src/physics/`, loaded lazily when walk mode starts. Mass/behaviour per catalog item is
+  inferred in `src/physics/profile.ts` (optional `physics` field overrides). Moved / toppled props are play state: never written
+  to `Project`, reset when walk mode ends.
 - Several sessions may push to `main`: `git fetch` and merge before pushing, never force-push.
 - Agents working in parallel share one scratchpad directory: use a private subfolder and never `pkill` by a generic name.
 

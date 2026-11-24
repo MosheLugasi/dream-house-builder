@@ -207,18 +207,18 @@ async function makeWorld() {
   const scene = new THREE.Scene();
   const world: WalkWorld = emptyWorld();
   world.items = [];
-  const place = (id: string, catalogId: string, x: number, z: number, rot = 0): THREE.Group => {
+  const place = (id: string, catalogId: string, x: number, z: number, rot = 0, y = 0): THREE.Group => {
     const d = def(catalogId);
     const holder = new THREE.Group();
     const body = new THREE.Mesh(new THREE.BoxGeometry(d.size.w, d.size.h, d.size.d));
     body.position.y = d.size.h / 2;
     holder.add(body);
     holder.userData.body = body;
-    holder.position.set(x, 0, z);
+    holder.position.set(x, y, z);
     holder.rotation.y = -rot;
     scene.add(holder);
     world.items!.push({ id, def: d, size: d.size, holder });
-    world.boxes.push({ id, x, y: z, hw: d.size.w / 2, hd: d.size.d / 2, rotation: rot, y0: 0, y1: d.size.h } as WalkBox);
+    world.boxes.push({ id, x, y: z, hw: d.size.w / 2, hd: d.size.d / 2, rotation: rot, y0: y, y1: y + d.size.h } as WalkBox);
     if (d.vehicle) world.vehicles.push({ id, def: d, holder });
     return holder;
   };
@@ -255,6 +255,12 @@ describe('rigid-body world (Rapier)', () => {
     expect(physics.isDisplaced('cone')).toBe(true);
     expect(cone.position.z).toBeGreaterThan(8);
     expect(hits.some((e) => e.id === 'cone')).toBe(true);
+    // the walk world is rebuilt (a vehicle parked, a building furnished): what was knocked about stays so
+    const z = cone.position.z;
+    physics.setWorld(world);
+    physics.step(1 / 60, { x: 50, y: 0, z: 50, active: false });
+    expect(physics.isDisplaced('cone')).toBe(true);
+    expect(cone.position.z).toBeCloseTo(z, 0);
     // reset puts it back exactly
     physics.resetAll();
     expect(cone.position.z).toBeCloseTo(6, 6);
@@ -338,6 +344,23 @@ describe('rigid-body world (Rapier)', () => {
     for (let i = 0; i < 60; i++) physics.step(1 / 60, { x: 0.15, y: 0, z: 0.9, active: true });
     expect(table.position.distanceTo(new THREE.Vector3(0, 0, 0))).toBeLessThan(0.3);
     expect(chair.position.distanceTo(new THREE.Vector3(0.15, 0, 0.1))).toBeLessThan(0.6);
+    physics.dispose();
+  });
+
+  it('things placed floating or standing inside fixed scenery stay where they were placed', async () => {
+    const { physics, world, place } = await makeWorld();
+    const floating = place('vase', 'trash-bin', 0, 0, 0, 1.2);
+    // a big static box (a stage) with a bin standing half inside it
+    world.boxes.push({ id: 'stage', x: 5, y: 0, hw: 2, hd: 2, rotation: 0, y0: 0, y1: 0.8 } as WalkBox);
+    const sunk = place('bin2', 'trash-bin', 5, 0, 0, 0.5);
+    // and one standing on top of it
+    const onTop = place('bin3', 'trash-bin', 4, 1, 0, 0.8);
+    physics.setWorld(world);
+    for (let i = 0; i < 60; i++) physics.step(1 / 60, { x: 30, y: 0, z: 30, active: false });
+    expect(floating.position.y).toBeCloseTo(1.2, 5);
+    expect(sunk.position.y).toBeCloseTo(0.5, 5);
+    expect(onTop.position.y).toBeCloseTo(0.8, 2);
+    expect(physics.isDisplaced('bin3')).toBe(false);
     physics.dispose();
   });
 });

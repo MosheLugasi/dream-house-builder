@@ -97,7 +97,7 @@ export interface WalkPhysics {
   park(id: string): void;
   /** ids of light props the walker shoves (they do not block it) */
   readonly pushable: ReadonlySet<string>;
-  /** the item was moved / knocked over by the simulation (its seats are gone for now) */
+  /** the item was moved away (> 30 cm) or knocked over by the simulation (its seats are gone for now) */
   isDisplaced(id: string): boolean;
   readonly impacts: Set<(e: ImpactEvent) => void>;
   // traffic

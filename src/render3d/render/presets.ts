@@ -15,7 +15,11 @@ export interface RenderPreset {
   pixelRatioCap: number;
   /** post-processing chain (AO, bloom, graded output, SMAA); off = render straight to the canvas */
   post: boolean;
-  /** multisample antialiasing of the scene render with post-processing on (0 = off; SMAA still runs) */
+  /**
+   * multisample antialiasing of the scene render with post-processing on (0 = off). Off on every preset:
+   * N8AO reads one depth sample per pixel while the colour is the resolved average, which left dotted
+   * bright seams along edges and made edges flip back and forth while walking; SMAA alone was steadier.
+   */
   msaa: number;
   /** N8AO quality mode */
   ao: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra';
@@ -63,7 +67,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'high',
     pixelRatioCap: 1,
     post: true,
-    msaa: 4,
+    msaa: 0,
     ao: 'Medium',
     aoHalfRes: true,
     accumulate: 0,
@@ -80,7 +84,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'ultra',
     pixelRatioCap: 1.5,
     post: true,
-    msaa: 4,
+    msaa: 0,
     ao: 'High',
     aoHalfRes: false,
     accumulate: 16,

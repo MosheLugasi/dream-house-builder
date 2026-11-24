@@ -44,6 +44,11 @@ export class WindowLights {
   private key: unknown = null;
   private timer = 0;
 
+  /** size of the pool */
+  get size(): number {
+    return this.slots.length;
+  }
+
   /** Number of area lights (changing it recompiles the lit shaders: only on a quality change). */
   setPoolSize(n: number): void {
     if (n > 0 && !ltcReady) {

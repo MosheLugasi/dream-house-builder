@@ -103,6 +103,7 @@ export class Realism {
 
   /** Something in the scene changed: restart the still-camera accumulation. */
   invalidate(): void {
+    this.version++;
     this.pipeline.invalidate();
   }
 
@@ -123,6 +124,9 @@ export class Realism {
 
     // daylight through the windows (only matters where ceilings are drawn)
     this.windows.setBuildings(f.project.buildings);
+    this.warmTimer -= dt;
+    if (f.walking && this.windows.size > 0 && this.warmTimer <= 0) this.prewarmWindows(this.version);
+    else if (!f.walking) this.warmKey = null;
     const radiance = f.walking ? t.windowRadiance * atm.daylight * this.scene.environmentIntensity : 0;
     this.windows.update(dt, this.camera.position, radiance, atm.skyColor, f.walking && atm.daylight > 0.01);
 
@@ -160,6 +164,38 @@ export class Realism {
       this.pipeline.invalidate();
     }
   }
+
+  /**
+   * The window lights join and leave the scene (they cost every lit pixel while on): each switch needs
+   * other variants of the lit shaders, which compiled the first time a window came into reach – a stall
+   * of a second or more walking up to a house. Compile them in the background when walking starts and
+   * after the scene changed (e.g. a house nearby got its furniture), without blocking a frame.
+   */
+  private prewarmWindows(key: unknown): void {
+    if (key === this.warmKey || this.warming) return;
+    this.warmKey = key;
+    this.warmTimer = 2;
+    const group = this.windows.group;
+    const was = group.visible;
+    group.visible = true;
+    try {
+      this.warming = true;
+      this.renderer
+        .compileAsync(this.scene, this.camera)
+        .catch(() => undefined)
+        .finally(() => {
+          this.warming = false;
+        });
+    } catch {
+      this.warming = false;
+    }
+    group.visible = was;
+  }
+  private warmKey: unknown = null;
+  private warming = false;
+  private warmTimer = 0;
+  /** bumped whenever the scene changed (see invalidate) */
+  private version = 0;
 
   /**
    * Where the sun's shadow map goes: a square of ±`range` m around `center`. Walking, ultra uses a

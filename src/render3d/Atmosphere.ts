@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
+import { HdriEnvironment } from './render/HdriEnvironment';
 
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
@@ -59,6 +60,13 @@ export class Atmosphere {
   private envHours = -99;
   private envCooldown = 0;
   private fog: THREE.Fog;
+  /** photographed skies for the image-based light (once loaded; see render/HdriEnvironment.ts) */
+  readonly hdri: HdriEnvironment;
+  /** use the photographed skies when they are loaded (false = the procedural gradient dome) */
+  useHdri = true;
+  private envFromHdri = false;
+  /** day / dusk / night shares of the current time */
+  private moment: [number, number, number] = [1, 0, 0];
 
   constructor(
     private renderer: THREE.WebGLRenderer,
@@ -153,6 +161,11 @@ export class Atmosphere {
       }),
     );
     this.envScene.add(dome);
+    this.hdri = new HdriEnvironment(renderer);
+    this.hdri.onReady = () => {
+      this.envHours = -99;
+      this.envCooldown = 0;
+    };
     this.fog = new THREE.Fog('#cfdde8', 160, 620);
     scene.fog = this.fog;
     scene.environmentIntensity = 0.75;
@@ -175,6 +188,7 @@ export class Atmosphere {
     const night = smooth(3, -7, elev);
     const dusk = Math.max(0, 1 - day - night);
     this.night = night;
+    this.moment = [day, dusk, night];
 
     // sky dome
     this.sky.material.uniforms.sunPosition.value.copy(this.sunDir);
@@ -235,14 +249,46 @@ export class Atmosphere {
     if (Math.abs(this.hours - this.envHours) > 0.12 && this.envCooldown <= 0) {
       this.envHours = this.hours;
       this.envCooldown = 0.6;
-      const next = this.pmrem.fromScene(this.envScene, 0, 0.1, 200);
-      this.scene.environment = next.texture;
-      this.envTarget?.dispose();
-      this.envTarget = next;
+      const eq = this.useHdri ? this.hdriTexture() : null;
+      if (eq) {
+        // (the same pre-filtered target is refilled each time)
+        const reuse = this.envFromHdri ? this.envTarget : null;
+        const next = this.pmrem.fromEquirectangular(eq, reuse as THREE.WebGLCubeRenderTarget | null);
+        if (next !== this.envTarget) this.envTarget?.dispose();
+        this.envTarget = next;
+        this.envFromHdri = true;
+      } else {
+        const next = this.pmrem.fromScene(this.envScene, 0, 0.1, 200);
+        this.envTarget?.dispose();
+        this.envTarget = next;
+        this.envFromHdri = false;
+      }
+      this.scene.environment = this.envTarget.texture;
     }
   }
 
+  /** The blended photographed sky for now (null while not loaded). */
+  private hdriTexture(): THREE.Texture | null {
+    const z = this.envUniforms.zenith.value;
+    const h = this.envUniforms.horizon.value;
+    const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    return this.hdri.render({
+      weights: this.moment,
+      skyLuminance: (lum(z) + lum(h)) / 2,
+      sunDir: this.envUniforms.sunDir.value,
+      glow: this.envUniforms.glow.value,
+      ground: this.envUniforms.ground.value,
+    });
+  }
+
+  /** Re-render the environment now (e.g. after switching between photographed and procedural). */
+  refreshEnvironment(): void {
+    this.envHours = -99;
+    this.envCooldown = 0;
+  }
+
   dispose(): void {
+    this.hdri.dispose();
     this.envTarget?.dispose();
     this.pmrem.dispose();
   }
