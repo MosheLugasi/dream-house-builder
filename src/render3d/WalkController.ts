@@ -9,6 +9,9 @@ import type { Vec2 } from '../model/types';
 import type { OpeningAnim } from '../catalog/openings';
 import { Character, type Activity, type Pose, type Prop } from './Character';
 import { sound } from '../audio/sound';
+import { decorateWalkWorld, surfaceBlocks, surfaceSlopeAlong, surfaceTop, type WalkSurface } from './walkSurfaces';
+
+export type { WalkSurface } from './walkSurfaces';
 
 /** A solid stretch of wall (site coordinates) between two heights. */
 export interface WalkWall {
@@ -89,10 +92,52 @@ export interface WalkWorld {
   groundAt: (x: number, y: number) => number;
   /** what the floor is made of at a place (footstep sounds) */
   surfaceAt?: (x: number, y: number, feetY: number) => Surface;
+  /**
+   * Standable surfaces (ramps, platforms, rails, beams – see walkSurfaces.ts): the walker and the
+   * vehicles stand on / ride over them, jump onto them and fly off their lips. Filled by world decorators.
+   */
+  surfaces?: WalkSurface[];
+  /** ids of items whose collision box is replaced by their surfaces (the walker and the vehicles ignore those boxes) */
+  surfaceOwners?: Set<string>;
+}
+
+/** Leaving the ground / landing again (jumps, falls, vehicles flying off ramps). */
+export interface AirEvent {
+  phase: 'takeoff' | 'land';
+  /** true for the vehicle being driven, false for the walker */
+  vehicle: boolean;
+  /** seconds spent in the air (land) */
+  airTime: number;
+  /** vehicles: total yaw turned in the air, radians (positive = counter-clockwise seen from above) */
+  spin: number;
+  /** vehicles: heading vs travel direction at landing – 1 forwards, −1 backwards (fakie), ≈0 sideways */
+  align: number;
+  /** vertical speed at the moment of landing, m/s (positive = downwards) */
+  impact: number;
+  /** horizontal speed right after landing / at take-off, m/s */
+  speed: number;
+  /** the surface landed on / taken off from (null = ground or floor) */
+  surface: WalkSurface | null;
+  /** height of the feet (walker) or of the wheels (vehicle) */
+  y: number;
 }
 
 export const RADIUS = 0.22;
 const GRAVITY = 9.8;
+/** how high the walker steps up onto a surface without jumping, and how far it may land below a ledge it grabs */
+const STEP_UP = 0.36;
+const AIR_MANTLE = 0.3;
+/** a drop larger than this (stepping off a surface) is a fall, not a step down */
+const DROP = 0.3;
+/** how high a vehicle rolls onto a surface / may be below an edge it lands on */
+const VEHICLE_STEP = 0.3;
+const VEHICLE_AIR_GRACE = 0.25;
+/** launching from a slope steeper than this (rad) goes straight up (quarter pipes) */
+const VERT_LAUNCH = 0.95;
+/** air spin rate of two-wheelers and boards, rad/s */
+const AIR_SPIN = 7.2;
+/** vertical speed of a hop (ollie / bunny hop) */
+const HOP_SPEED = 3.1;
 const ACTION_KEYS = ['KeyE', 'KeyF', 'KeyG', 'KeyT'];
 
 /** Where the character is while it is "using" something (riding a swing, playing piano…). */
@@ -133,7 +178,7 @@ export interface Occupation {
  * Push a circle (feet at height y) out of walls and furniture boxes. Returns the summed push
  * (zero when nothing was hit) so moving bodies can bounce.
  */
-export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: number, ignoreBox?: string): Vec2 {
+export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: number, ignoreBox?: string, skip?: ReadonlySet<string>): Vec2 {
   const push = { x: 0, y: 0 };
   for (let iter = 0; iter < 4; iter++) {
     for (const w of world.walls) {
@@ -161,7 +206,7 @@ export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: nu
       push.y += ny * d;
     }
     for (const b of world.boxes) {
-      if (b.id !== undefined && b.id === ignoreBox) continue;
+      if (b.id !== undefined && (b.id === ignoreBox || skip?.has(b.id))) continue;
       if (y > b.y1 - 0.1 || y + 1.4 < b.y0) continue;
       const c = Math.cos(-b.rotation);
       const s = Math.sin(-b.rotation);
@@ -286,8 +331,28 @@ export class WalkController {
   private vehicle: WalkVehicle | null = null;
   private vSpeed = 0;
   private steer = 0;
+  // vehicle in the air (ramps, hops) and on surfaces
+  private vAir = false;
+  private vVy = 0;
+  private vAirVel: Vec2 = { x: 0, y: 0 };
+  private vSurface: WalkSurface | null = null;
+  private spinRate = 0;
+  private airSpinTotal = 0;
+  private airT = 0;
+  /** the surface the walker / vehicle stands on (null = ground, floor, stairs or in the air) */
+  surfaceUnder: WalkSurface | null = null;
+  /** take-offs and landings of the walker and of the vehicle being driven (mini-games listen) */
+  readonly airListeners = new Set<(e: AirEvent) => void>();
   firstPerson = false;
-  world: WalkWorld = emptyWorld();
+  private _world: WalkWorld = emptyWorld();
+  /** the walk world; assigning one runs the registered decorators (they add standable surfaces) */
+  get world(): WalkWorld {
+    return this._world;
+  }
+  set world(w: WalkWorld) {
+    this._world = w;
+    decorateWalkWorld(w);
+  }
   onHint: (hint: string) => void = () => {};
   onToggleFirstPerson: () => void = () => {};
   /** called when a vehicle is parked so that its new place can be saved */
@@ -348,8 +413,62 @@ export class WalkController {
     this.seat = null;
     this.floorCtx = null;
     this.character.setPose('stand');
+    this.jumpLift = 0;
+    this.vy = 0;
+    this.airT = 0;
     this.resolveCollisions(this.pos, RADIUS);
     this.y = this.floorHeight(this.pos, this.y);
+    const top = surfaceTop(this.world.surfaces, this.pos.x, this.pos.y, y + STEP_UP);
+    if (top && top.h > this.y) this.y = top.h;
+  }
+
+  /** height of the feet (includes a jump / fall in progress) */
+  get feetY(): number {
+    return this.y + this.jumpLift;
+  }
+
+  /** the walker (or the vehicle being driven) is in the air */
+  get airborne(): boolean {
+    return this.vehicle ? this.vAir : this.jumpLift > 0;
+  }
+
+  /** vehicles: yaw turned since leaving the ground, radians (positive = counter-clockwise from above) */
+  get airSpin(): number {
+    return this.airSpinTotal;
+  }
+
+  /** seconds since leaving the ground (0 when standing / rolling) */
+  get airTime(): number {
+    return this.vehicle ? (this.vAir ? this.airT : 0) : this.jumpLift > 0 ? this.airT : 0;
+  }
+
+  /** vertical speed of the walker's jump / fall or of the flying vehicle, m/s */
+  get verticalSpeed(): number {
+    return this.vehicle ? (this.vAir ? this.vVy : 0) : this.jumpLift > 0 ? this.vy : 0;
+  }
+
+  /** Set the signed speed of the vehicle being driven (mini-games: stop after a fall, boost…). */
+  setVehicleSpeed(v: number): void {
+    if (this.vehicle) this.vSpeed = v;
+  }
+
+  /** Get on a given vehicle (mini-games put the player on a board / bike). */
+  ride(v: WalkVehicle): void {
+    this.release();
+    this.dismount();
+    this.standUp();
+    this.timed = null;
+    this.mount(v);
+  }
+
+  private emitAir(e: AirEvent): void {
+    for (const fn of this.airListeners) {
+      try {
+        fn(e);
+      } catch (err) {
+        console.error('air listener failed', err);
+      }
+    }
   }
 
   get driving(): boolean {
@@ -501,15 +620,21 @@ export class WalkController {
   }
 
   jump(): void {
-    if (this.occupation || this.vehicle || this.jumpLift > 0.001) return;
+    if (this.vehicle) {
+      this.hop();
+      return;
+    }
+    if (this.occupation || this.jumpLift > 0.001) return;
     if (this.seat) {
       this.standUp();
       return;
     }
     this.vy = 3.4;
     this.jumpLift = 0.001;
+    this.airT = 0;
     this.character.setActivity('jump');
     sound.sfx('whoosh', 0.4);
+    this.emitAir({ phase: 'takeoff', vehicle: false, airTime: 0, spin: 0, align: 1, impact: 0, speed: this.speed, surface: this.surfaceUnder, y: this.y });
   }
 
   standUp(): void {
