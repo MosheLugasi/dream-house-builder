@@ -126,13 +126,13 @@ class DanceShow implements MiniGameSession {
     ctx.root.add(this.hw);
     const mk = (color: string, opacity: number) => this.bin.add(new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, toneMapped: false, fog: false, side: THREE.DoubleSide }));
     // a solid panel (semi-transparent dark panels wash out in the post-processing)
-    const bg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.5), mk('#140b2a', 1));
-    bg.position.set(0, 0.1, -0.001);
+    const bg = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 1.42), mk('#140b2a', 1));
+    bg.position.set(0, 0.04, -0.001);
     bg.renderOrder = 40;
     this.hw.add(bg);
     for (let i = 0; i < 4; i++) {
-      const lane = new THREE.Mesh(new THREE.PlaneGeometry(0.004, 1.5), mk('#3a2c5c', 1));
-      lane.position.set(this.laneX(i) + 0.09, 0.1, 0);
+      const lane = new THREE.Mesh(new THREE.PlaneGeometry(0.004, 1.42), mk('#3a2c5c', 1));
+      lane.position.set(this.laneX(i) + 0.09, 0.04, 0);
       lane.renderOrder = 41;
       if (i < 3) this.hw.add(lane);
     }
@@ -296,10 +296,10 @@ class DanceShow implements MiniGameSession {
     return (i - 1.5) * 0.18;
   }
   private hitY(): number {
-    return -0.5;
+    return -0.52;
   }
   private spawnY(): number {
-    return 0.8;
+    return 0.68;
   }
 
   // ---- flow --------------------------------------------------------------------------------

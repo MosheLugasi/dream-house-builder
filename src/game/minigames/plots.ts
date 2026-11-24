@@ -71,6 +71,10 @@ export function ensureDistrictRoads(p: Project): void {
   for (const [i, j] of added) {
     if ((i + j) % 2 !== 0 || !getFurniture('street-lamp')) continue;
     const horizontal = have.has(`${i + 1},${j}`) || have.has(`${i - 1},${j}`);
+    const vertical = have.has(`${i},${j + 1}`) || have.has(`${i},${j - 1}`);
+    // junctions have no sidewalk to stand on; nor does a side that another street continues from
+    if (horizontal && vertical) continue;
+    if (horizontal ? have.has(`${i},${j + 1}`) : have.has(`${i + 1},${j}`)) continue;
     const x = horizontal ? i * 10 + 5 : i * 10 + 9;
     const y = horizontal ? j * 10 + 9 : j * 10 + 5;
     p.site.props.push({ id: `v-roads-${i}-${j}-${n++}`, catalogId: 'street-lamp', x, y, rotation: horizontal ? Math.PI : Math.PI / 2, elevation: 0 });

@@ -58,7 +58,7 @@ const stage: FurnitureDef = {
 /* ------------------------------------------------------------------ lighting truss */
 
 /** Lighting truss over a stage: towers at x = ±tower, top beam at `beamY`, par cans hang at `cans`. */
-export const TRUSS = { w: 12.8, d: 0.7, h: 7.2, tower: 6.15, beamY: 6.8, cans: [-4.5, -3, -1.5, 0, 1.5, 3, 4.5], canY: 6.35 };
+export const TRUSS = { w: 12.8, d: 0.62, h: 7.05, tower: 6.15, beamY: 6.8, cans: [-4.5, -3, -1.5, 0, 1.5, 3, 4.5], canY: 6.35 };
 export const TRUSS_COLORS = ['#ff3b7f', '#3bc3ff', '#ffd23b', '#9b5cff', '#3bff9a', '#ff7b2e', '#ff3b7f'];
 
 function lattice(k: Kit, a: V3, b: V3, size: number, mat: THREE.Material, step = 0.5): void {
@@ -86,7 +86,7 @@ function lattice(k: Kit, a: V3, b: V3, size: number, mat: THREE.Material, step =
   for (let s = 0; s < n; s++) {
     const p0 = at(s / n);
     const p1 = at((s + 1) / n);
-    for (const [i, j] of faces) k.rod(corner(p0, s % 2 ? i : j), corner(p1, s % 2 ? j : i), 0.011, mat, 0.011, 4);
+    for (const [i, j] of faces) k.rod(corner(p0, s % 2 ? i : j), corner(p1, s % 2 ? j : i), 0.011, mat, 0.011, 3);
   }
 }
 
@@ -181,7 +181,7 @@ const speaker: FurnitureDef = {
 /* ------------------------------------------------------------------ LED screen */
 
 /** Face of the LED wall (local, facing +Z): the dance game shows its visuals on it. */
-export const LED = { w: 7.4, d: 0.8, h: 6.6, faceY: 4.0, faceW: 7.0, faceH: 4.0, faceZ: 0.14 };
+export const LED = { w: 7.4, d: 0.8, h: 6.32, faceY: 4.0, faceW: 7.0, faceH: 4.0, faceZ: 0.14 };
 
 const ledScreen: FurnitureDef = {
   id: 'led-screen',

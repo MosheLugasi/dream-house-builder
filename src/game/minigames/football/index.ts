@@ -1042,7 +1042,9 @@ class PenaltyRound implements MiniGameSession {
     const y = this.aim.y + Math.sin(t * 2.3 + 0.5) * w * 0.7;
     this.reticle.position.set(x, y, 0.03);
     const pulse = this.phase === 'power' ? 1 : 1 + Math.sin(this.ctx.elapsed() * 6) * 0.06;
-    this.reticle.scale.setScalar(pulse);
+    // bigger from far away (free kicks) so it stays easy to see
+    const far = Math.max(1, Math.hypot(this.ballStart.x, this.ballStart.z) / this.spot);
+    this.reticle.scale.setScalar(pulse * far);
   }
 
   private updateNet(dt: number): void {
@@ -1075,17 +1077,20 @@ class PenaltyRound implements MiniGameSession {
     const pos = this.tmp;
     const look = this.tmp2;
     // behind and to the right of the shooter, looking at the goal; it follows the ball a little in flight
-    const back = 4.6 * s;
+    const back = 5.6 * s;
     if (this.phase === 'flight' || this.phase === 'result') {
       const u = smooth(this.flightT / 1.1);
       const b = this.ball;
       this.behind(lerp(back, back * 0.4, u), lerp(0.4, 0.3, u), pos);
-      pos.y = lerp(1.9, 1.6, u);
-      look.set(lerp(bs.x * 0.3, clamp(b.x, -4, 4) * 0.6, u), lerp(0.7 * s, clamp(b.y, 0.3, 2.5) * 0.6 + 0.3, u), lerp(bs.z * 0.22, Math.max(-1, Math.min(b.z, bs.z)) * 0.4, u));
+      pos.y = lerp(2.0, 1.6, u);
+      this.behind(-5 * s, 0.1, look);
+      look.set(lerp(look.x, clamp(b.x, -4, 4) * 0.6, u), lerp(0.35, clamp(b.y, 0.3, 2.5) * 0.6 + 0.3, u), lerp(look.z, Math.max(-1, Math.min(b.z, bs.z)) * 0.4, u));
     } else {
       this.behind(back, 0.4, pos);
-      pos.y = 1.9;
-      look.set(bs.x * 0.3, 0.7 * s, bs.z * 0.22);
+      pos.y = 2.0;
+      // a point 5 m in front of the ball keeps the ball in the lower third and the goal in view
+      this.behind(-5 * s, 0.1, look);
+      look.y = 0.35;
     }
     this.inner.localToWorld(pos);
     this.inner.localToWorld(look);

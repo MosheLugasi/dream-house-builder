@@ -146,7 +146,7 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
   let lastLap: number | null = null;
   let bestLap: number | null = null;
   let wrongWay = 0;
-  let wrongShown = 0;
+  let wrongShown = -10;
   let offTrack = 0;
   let missedShown = -10;
   let doneTimer = 0;
@@ -156,11 +156,9 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
   let lights: THREE.Mesh[] = [];
   let lightsLit = 0;
   let gateCurtain: THREE.Mesh | null = null;
-  let gantryPos = new THREE.Vector3();
   let gridStart = 0;
   let prevX = ctx.walk.pos.x;
   let prevY = ctx.walk.pos.y;
-  const gateLabels: THREE.Sprite[] = [];
   const timers: ReturnType<typeof setTimeout>[] = [];
   const later = (ms: number, fn: () => void) => timers.push(setTimeout(fn, ms));
 
@@ -309,7 +307,6 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
         hooks.addBox({ id: `mg-race-post-${gi}-${b.x}`, x: g.x + b.x * c + b.z * s, y: g.y - b.x * s + b.z * c, hw: b.w / 2, hd: b.d / 2, rotation: -obj.rotation.y, y0: 0, y1: 5 });
       }
       if (gi === 0) {
-        gantryPos = new THREE.Vector3(g.x, 4.5, g.y);
         // five start lights that the countdown switches on
         const L = GANTRY_LIGHTS;
         const geo = new THREE.CircleGeometry(L.r * 0.92, 18);
@@ -323,7 +320,6 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
         const label = textSprite(`שער ${gi}`, { bg: 'rgba(20,22,26,0.75)', height: 0.75 });
         label.position.set(g.x, 5.6, g.y);
         ctx.root.add(label);
-        gateLabels.push(label);
       }
     });
     gateCurtain = curtain(8.6, 3.6, '#ffd84a');
@@ -612,7 +608,7 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
           const d = (gi - (q % G()) + G()) % G();
           if (d >= 1 && d <= G() - 2 && raceT - missedShown > 2.5) {
             missedShown = raceT;
-            ctx.ui.banner(`⛔ פספסת שער! חזרו ל${q % G() === 0 ? 'קו' : `שער ${q % G()}`}`, 2200);
+            ctx.ui.banner(`⛔ פספסת שער! חזרו ל${q % G() === 0 ? (q === 0 ? 'קו הזינוק' : 'קו הסיום') : `שער ${q % G()}`}`, 2200);
             ctx.sfx('miss', 0.8);
           }
         }
@@ -693,7 +689,6 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
       ctx.ui.set({ timer: me.finishedAt, bar: null });
       if (doneTimer <= 0) endRound(true);
     }
-    void gantryPos;
   };
 
   return {
@@ -739,7 +734,6 @@ export function startRace(ctx: MiniGameContext): MiniGameSession {
       for (const ai of ais) ai.rider.dispose();
       hooks.dispose();
       disposeFx();
-      void gateLabels;
     },
   };
 }

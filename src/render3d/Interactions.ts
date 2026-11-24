@@ -10,6 +10,7 @@ import { report } from '../game/progress';
 import type { FurnitureItem, Vec2 } from '../model/types';
 import { sound, STATIONS, type Voice } from '../audio/sound';
 import { useWalk } from '../store/walk';
+import { useMiniGame } from '../game/minigames/store';
 import type { Activity, Prop } from './Character';
 import { Particles, Screens, TV_CHANNELS, type Channel } from './fx';
 import { collideCircle, RADIUS, type Occupation, type OccupationFrame, type WalkController, type WalkWorld } from './WalkController';
@@ -613,6 +614,8 @@ export class Interactions {
     const walk = this.walk!;
     const out: Choice[] = [];
     const vehicle = walk.vehicleAction();
+    // in a mini-game the game decides when you get off (races, deliveries)
+    if (walk.driving && useMiniGame.getState().active) return [];
     if (walk.driving && vehicle) return [{ id: 'vehicle', label: vehicle.label, icon: '🚗', run: vehicle.run }];
     if (walk.occupation) {
       out.push({ id: 'end', label: 'לסיים', icon: ICON.stop!, run: () => walk.release() });

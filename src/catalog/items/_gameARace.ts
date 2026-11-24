@@ -469,8 +469,8 @@ const podium: FurnitureDef = {
       [1.0, 0.4, 3],
     ];
     for (const [x, h, n] of blocks) {
-      k.rbox(0.98, h, 1.1, 0.02, body, x, 0, 0);
-      k.box(0.34, 0.34, 0.01, podiumFace(n), x, h / 2 - 0.17, 0.545);
+      k.rbox(0.98, h, 1.08, 0.02, body, x, 0, -0.01);
+      k.box(0.34, 0.34, 0.008, podiumFace(n), x, h / 2 - 0.17, 0.546);
     }
     return k.g;
   },

@@ -150,8 +150,8 @@ const stadiumStand: FurnitureDef = {
         const x = -((n - 1) * seatW) / 2 + j * seatW;
         const mat = (j + i * 3) % 7 === 3 ? seatB : seatA;
         const z = zFront - tread * 0.42;
-        k.rbox(0.42, 0.05, 0.38, 0.02, mat, x, top + seatH - 0.05, z, 1);
-        k.rbox(0.42, 0.32, 0.04, 0.02, mat, x, top + seatH - 0.02, z - 0.2, 1);
+        k.box(0.42, 0.05, 0.38, mat, x, top + seatH - 0.05, z);
+        k.box(0.42, 0.32, 0.04, mat, x, top + seatH - 0.02, z - 0.2);
         k.box(0.08, seatH - 0.05, 0.12, concDark, x, top, z - 0.02);
       }
     }
@@ -246,7 +246,7 @@ const floodlight: FurnitureDef = {
 /* ------------------------------------------------------------------ scoreboard */
 
 /** The face of the scoreboard (local): the penalty game paints the live score over it. */
-export const SCOREBOARD = { w: 5.2, d: 0.76, h: 5.6, faceY: 4.3, faceW: 4.7, faceH: 2.1, faceZ: 0.16 };
+export const SCOREBOARD = { w: 5.2, d: 0.76, h: 5.62, faceY: 4.3, faceW: 4.7, faceH: 2.1, faceZ: 0.16 };
 
 function drawBoard(g: C2D, w: number, h: number): void {
   g.fillStyle = '#0d1013';

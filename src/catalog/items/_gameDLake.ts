@@ -121,7 +121,7 @@ const rowboat: FurnitureDef = {
   category: 'outdoor',
   group: GROUP,
   tags: ['סירה', 'משוטים', 'אגם', 'דייג'],
-  size: { w: 1.5, d: 3.6, h: 0.72 },
+  size: { w: 1.4, d: 3.55, h: 0.7 },
   resize: false,
   colors: [slot('hull', 'גוף', '#e9e4d8'), slot('stripe', 'פס', '#c8452f'), slot('wood', 'עץ', '#9b7148')],
   seats: [
@@ -232,7 +232,7 @@ const rocks: FurnitureDef = {
   category: 'outdoor',
   group: GROUP,
   tags: ['סלע', 'אבנים', 'חוף', 'אגם', 'גינה'],
-  size: { w: 2.2, d: 1.5, h: 0.8 },
+  size: { w: 2.0, d: 1.4, h: 0.72 },
   colors: [slot('stone', 'אבן', '#8f8a80')],
   seats: [{ x: -0.45, z: 0.1, height: 0.62, facing: 0, kind: 'sit' }],
   build: ({ colors: c }) => {
@@ -246,7 +246,7 @@ const rocks: FurnitureDef = {
     // [x, z, half height, half width, half depth, seed]; blobs reach about 1.2 × their scale
     for (const [x, z, hs, sx, sz, seed] of set) {
       const g = blobGeo(1, 2, seed, 0.22, 1.4);
-      const m = k.geo(g, M.stone(seed % 2 ? c.stone : lighten(c.stone, 0.1), 0.8), x, hs * 1.24, z);
+      const m = k.geo(g, M.stone(seed % 2 ? c.stone : lighten(c.stone, 0.1), 0.8), x, hs * 1.2, z);
       m.scale.set(sx, hs, sz);
     }
     // moss
@@ -270,7 +270,7 @@ const lily: FurnitureDef = {
   category: 'outdoor',
   group: GROUP,
   tags: ['נופר', 'פרחים', 'אגם', 'מים'],
-  size: { w: 1.8, d: 1.6, h: 0.12 },
+  size: { w: 1.4, d: 1.3, h: 0.1 },
   walkable: true,
   colors: [slot('pad', 'עלים', '#4f8a3a'), slot('flower', 'פרח', '#f4a6c6')],
   build: ({ colors: c }) => {
