@@ -407,7 +407,7 @@ class PenaltyRound implements MiniGameSession {
       sg.computeVertexNormals();
       this.inner.add(new THREE.Mesh(sg, mat));
     }
-    this.net = { mesh, base: Float32Array.from(pos), hit: new THREE.Vector3(), amp: 0, t: 0 };
+    this.net = { mesh, base: Float32Array.from(pos), hit: new THREE.Vector3(), amp: 0, t: 9 };
   }
 
   private makeCrowd(): void {
@@ -813,9 +813,9 @@ class PenaltyRound implements MiniGameSession {
       }
       if (inNet(b, g) && this.touched !== 'keeper' && this.touched !== 'wall') {
         const bulge = netCatch(b, g, h);
-        if (bulge > 0.5 && this.net) {
+        if (bulge > 1.5 && this.net && this.net.t > 0.25) {
           this.net.hit.set(b.x, b.y, b.z);
-          this.net.amp = Math.min(0.45, bulge * 0.022) * this.scale;
+          this.net.amp = Math.min(0.5, bulge * 0.024) * this.scale;
           this.net.t = 0;
         }
         if (this.phase === 'flight') this.resolve('goal');

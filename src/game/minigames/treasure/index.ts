@@ -317,7 +317,7 @@ function start(ctx: MiniGameContext): MiniGameSession {
   const launchInView = (at: Vec2, gy: number) => {
     const f = walk.forward();
     const side = (ctx.random() - 0.5) * 12;
-    fireworks.launch(at.x + f.x * 14 - f.y * side, gy, at.y + f.y * 14 + f.x * side, 6 + ctx.random() * 5, () => ctx.random());
+    fireworks.launch(at.x + f.x * 18 - f.y * side, gy, at.y + f.y * 18 + f.x * side, 3.5 + ctx.random() * 3, () => ctx.random());
   };
 
   const done = () => {

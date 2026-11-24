@@ -481,12 +481,13 @@ function start(ctx: MiniGameContext): MiniGameSession {
   type ViewStore = { getState(): { view: { timeOfDay: number }; setView(p: { timeOfDay: number }): void } };
   let viewStore: ViewStore | null = null;
   let savedHour: number | null = null;
-  void import('../../../store/store').then((m) => {
-    if (over) return;
-    viewStore = m.useStore as unknown as ViewStore;
+  // (the app's store is reached through the page, never imported: game modules load inside the store's own import)
+  const pageStore = typeof window !== 'undefined' ? (window as unknown as { __store?: ViewStore }).__store : undefined;
+  if (pageStore) {
+    viewStore = pageStore;
     savedHour = viewStore.getState().view.timeOfDay;
     viewStore.getState().setView({ timeOfDay: dayHour(0) });
-  });
+  }
   disposers.push(() => {
     if (viewStore && savedHour !== null) viewStore.getState().setView({ timeOfDay: savedHour });
   });
@@ -670,7 +671,7 @@ function start(ctx: MiniGameContext): MiniGameSession {
       later(() => {
         const f = walk.forward();
         const side = (ctx.random() - 0.5) * 14;
-        fireworks.launch(walk.pos.x + f.x * 16 - f.y * side, walk.y, walk.pos.y + f.y * 16 + f.x * side, 6 + ctx.random() * 5, () => ctx.random());
+        fireworks.launch(walk.pos.x + f.x * 18 - f.y * side, walk.y, walk.pos.y + f.y * 18 + f.x * side, 3.5 + ctx.random() * 3, () => ctx.random());
       }, 300 + k * 350);
     later(() => {
       walk.character.setActivity('none');

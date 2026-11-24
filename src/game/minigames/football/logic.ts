@@ -268,8 +268,9 @@ export function netCatch(b: Ball, g: GoalFrame, dt: number): number {
   const backAt = (y: number) => -(g.roof + (g.depth - g.roof) * (1 - Math.min(1, y / g.top)));
   let bulge = 0;
   const back = backAt(b.y) + BALL_R;
+  const speed = Math.hypot(b.vx, b.vy, b.vz);
   if (b.z < back) {
-    bulge = Math.max(bulge, Math.abs(b.vz));
+    bulge = Math.max(bulge, speed);
     b.z = back;
     b.vz = Math.abs(b.vz) * 0.12;
     b.vx *= 0.5;
@@ -277,7 +278,7 @@ export function netCatch(b: Ball, g: GoalFrame, dt: number): number {
   }
   for (const s of [-1, 1]) {
     if (s * b.x > g.halfW - BALL_R) {
-      bulge = Math.max(bulge, Math.abs(b.vx) * 0.6);
+      bulge = Math.max(bulge, speed * 0.5);
       b.x = s * (g.halfW - BALL_R);
       b.vx = -b.vx * 0.15;
     }
