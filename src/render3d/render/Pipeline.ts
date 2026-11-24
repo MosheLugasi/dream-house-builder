@@ -22,6 +22,47 @@ function halton(i: number, base: number): number {
 const JITTER: [number, number][] = Array.from({ length: 32 }, (_, i) => [halton(i + 1, 2) - 0.5, halton(i + 1, 3) - 0.5]);
 
 /**
+ * UnrealBloomPass passes a pixel's whole colour once it crosses the threshold (a 0.01 wide step). A
+ * small bright source – a far street lamp, a bulb, a sparkle – lands on the half-resolution bright pass
+ * with a weight that depends on where it falls between pixels, so it crossed the step on some frames and
+ * not on others: lamps' halos pulsed and blinked while walking. Here the bright pass averages the four
+ * pixels with Karis weights (as in Call of Duty's bloom: tiny very bright features cannot dominate) and a
+ * soft knee lets only the brightness above the threshold through, eased in over `smoothWidth` (as in
+ * Unreal / Unity), which is continuous.
+ */
+function softKnee(bloom: UnrealBloomPass): void {
+  const m = bloom.materialHighPassFilter;
+  m.fragmentShader = /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float luminosityThreshold;
+    uniform float smoothWidth;
+    varying vec2 vUv;
+    float karis( vec3 c ) { return 1.0 / ( 1.0 + max( c.r, max( c.g, c.b ) ) ); }
+    void main() {
+      // the four full-resolution pixels under this half-resolution one, averaged with Karis weights
+      // (1 / (1 + brightness)): a lone hot pixel or a one-pixel bright sliver counts about as much as an
+      // ordinary bright pixel instead of its full radiance, so it cannot blink a whole halo on and off
+      vec2 t = 0.5 / vec2( textureSize( tDiffuse, 0 ) );
+      vec3 a = texture2D( tDiffuse, vUv + vec2( -t.x, -t.y ) ).rgb;
+      vec3 b = texture2D( tDiffuse, vUv + vec2( t.x, -t.y ) ).rgb;
+      vec3 c = texture2D( tDiffuse, vUv + vec2( -t.x, t.y ) ).rgb;
+      vec3 d = texture2D( tDiffuse, vUv + vec2( t.x, t.y ) ).rgb;
+      float wa = karis( a ), wb = karis( b ), wc = karis( c ), wd = karis( d );
+      vec4 texel = vec4( ( a * wa + b * wb + c * wc + d * wd ) / ( wa + wb + wc + wd ), 1.0 );
+      float v = max( texel.r, max( texel.g, texel.b ) );
+      float knee = max( smoothWidth, 1e-4 );
+      float soft = clamp( v - luminosityThreshold + knee, 0.0, 2.0 * knee );
+      soft = soft * soft / ( 4.0 * knee );
+      float k = max( soft, v - luminosityThreshold ) / max( v, 1e-4 );
+      gl_FragColor = vec4( texel.rgb * k, 1.0 );
+    }`;
+  m.needsUpdate = true;
+}
+
+/** knee of the bloom threshold, as a fraction of the threshold */
+export const BLOOM_KNEE = 0.5;
+
+/**
  * The post-processing chain of the 3D view:
  *   N8AO (renders the scene + ambient occlusion) → sanitize (NaN / firefly guard) → bloom → graded output (tone mapping, colour grade, sRGB)
  *   → SMAA → [ultra] accumulation of jittered frames while the camera stands still.
@@ -89,6 +130,7 @@ export class RenderPipeline {
       composer.addPass(new SanitizePass());
       // glow around lamps, windows at night and the low sun
       const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), 0.03, 0.5, 4);
+      softKnee(bloom);
       composer.addPass(bloom);
       const output = new GradedOutputPass();
       composer.addPass(output);
@@ -155,7 +197,9 @@ export class RenderPipeline {
       this.lastProj.copy(cam.projectionMatrix);
     }
     this.still++;
-    this.passes = this.composer.passes.filter((p) => p.enabled).length;
+    let passes = 0;
+    for (const p of this.composer.passes) if (p.enabled) passes++;
+    this.passes = passes;
   }
 
   private jitter(i: number, w: number, h: number): void {

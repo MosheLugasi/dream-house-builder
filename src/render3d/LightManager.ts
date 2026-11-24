@@ -9,7 +9,25 @@ export interface LampSource {
   distance: number;
 }
 
+/**
+ * Lights have a size: three's point / spot light falloff 1 / max(d², 0.01) gives the lamp's own head,
+ * shade and pole – centimetres from the light – up to 100× the light's intensity. Those few pixels were
+ * the brightest of the frame by far, so bloom turned them into big halos that pulsed and blinked as
+ * sub-pixel motion showed or hid them (street lamps at night). A source radius of 25 cm,
+ * 1 / (d² + r²), keeps them sane and changes nothing a metre away (−6 %) or further.
+ */
+const FALLOFF = 'float distanceFalloff = 1.0 / max( pow( lightDistance, decayExponent ), 0.01 );';
+if (THREE.ShaderChunk.lights_pars_begin.includes(FALLOFF)) {
+  THREE.ShaderChunk.lights_pars_begin = THREE.ShaderChunk.lights_pars_begin.replace(
+    FALLOFF,
+    'float distanceFalloff = 1.0 / ( pow( lightDistance, decayExponent ) + 0.0625 );',
+  );
+}
+
 const POOL = 8;
+const STREET_LIFT = 0.15;
+/** brightness of the glow sprites */
+const GLOW = 2.4;
 /** lamps reaching further than this never cast shadows */
 const SHADOW_RANGE = 10;
 
@@ -118,10 +136,12 @@ export class LightManager {
       for (const s of on) {
         if (this.glows.has(s.id)) continue;
         const sprite = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: glowMap(), color: new THREE.Color(s.color).multiplyScalar(1.05), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+          // (bright enough to drive the bloom: the soft, steady sprite makes the lamp's halo, not the
+          // few pixels of the fixture next to the light)
+          new THREE.SpriteMaterial({ map: glowMap(), color: new THREE.Color(s.color).multiplyScalar(GLOW), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
         );
         sprite.position.copy(s.pos);
-        sprite.scale.setScalar(0.18 + Math.sqrt(s.intensity) * 0.024);
+        sprite.scale.setScalar((0.18 + Math.sqrt(s.intensity) * 0.024) * 1.7);
         this.group.add(sprite);
         this.glows.set(s.id, sprite);
       }
@@ -153,6 +173,9 @@ export class LightManager {
           free.source = src;
           free.target = strength(src);
           free.light.position.copy(src.pos);
+          // a street light sits a little up inside its head: the diffuser under the bulb faces away from
+          // it instead of being lit from centimetres away (a blown-out sliver that made the halo blink)
+          if (src.distance > 15) free.light.position.y += STREET_LIFT;
           free.light.color.set(src.color);
           free.light.distance = src.distance;
         }

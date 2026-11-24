@@ -542,7 +542,7 @@ export class Engine {
       // by day the sky itself is far brighter than any lamp: keep the glow for the evening,
       // and keep it gentle in a lit room
       bloom.threshold = 4 - 2.9 * night;
-      bloom.strength = 0.03 + 0.25 * night * (indoors ? 0.2 : 1);
+      bloom.strength = 0.03 + 0.32 * night * (indoors ? 0.2 : 1);
     }
   }
 
@@ -612,6 +612,13 @@ export class Engine {
     const sun = this.atmosphere.sun;
     const focus = this.mode === 'walk' ? this.walk.character.root.position : this.controls.target;
     const center = this.sunCenter;
+    // walking, the map covers a small square: a smaller map is as sharp there and much cheaper
+    const size = this.mode === 'walk' ? this.realism.preset.walkShadowMapSize : this.realism.preset.shadowMapSize;
+    if (sun.shadow.mapSize.x !== size) {
+      sun.shadow.mapSize.setScalar(size);
+      sun.shadow.map?.dispose();
+      sun.shadow.map = null;
+    }
     const range = this.realism.sunShadowFit(this.mode === 'walk', focus, this.camera.position.distanceTo(this.controls.target), center);
     snapToShadowTexels(center, this.atmosphere.lightDir, (2 * range) / sun.shadow.mapSize.x);
     const cam = sun.shadow.camera;

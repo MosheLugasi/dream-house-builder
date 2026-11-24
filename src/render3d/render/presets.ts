@@ -27,8 +27,10 @@ export interface RenderPreset {
   aoHalfRes: boolean;
   /** frames averaged with sub-pixel jitter while the camera stands still (0 = off) */
   accumulate: number;
-  /** sun shadow map size */
+  /** sun shadow map size in the editor (the map covers up to 340 m there) */
   shadowMapSize: number;
+  /** … and walking (the map covers ±26 m around the walker: 2048 texels are 2.5 cm) */
+  walkShadowMapSize: number;
   /** walking: a tighter sun shadow map pushed ahead of the camera, with a smaller blur */
   sharpShadows: boolean;
   /** pool of area lights that bring daylight in through the nearest windows */
@@ -55,6 +57,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     aoHalfRes: true,
     accumulate: 0,
     shadowMapSize: 2048,
+    walkShadowMapSize: 1024,
     sharpShadows: false,
     windowLights: 0,
     indoorAmbient: false,
@@ -72,6 +75,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     aoHalfRes: true,
     accumulate: 0,
     shadowMapSize: 4096,
+    walkShadowMapSize: 2048,
     sharpShadows: false,
     windowLights: 3,
     indoorAmbient: true,
@@ -89,6 +93,7 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     aoHalfRes: false,
     accumulate: 16,
     shadowMapSize: 4096,
+    walkShadowMapSize: 4096,
     sharpShadows: true,
     windowLights: 6,
     indoorAmbient: true,

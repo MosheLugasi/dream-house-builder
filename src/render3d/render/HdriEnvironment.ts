@@ -13,6 +13,8 @@ import { assetUrl, hasDom } from '../../assets/loader';
  *    glow is added where it really is,
  *  - given our ground below the horizon where the photo has none (the day sky is sky only).
  * Until the files are loaded (and in Node) Atmosphere keeps its procedural gradient environment.
+ * Off by default (Atmosphere.useHdri): matched to the tuned procedural lighting the photos changed the
+ * image little (slightly brighter, flatter, less warm at sunset) for 4.5 MB of downloads.
  */
 
 interface Source {
@@ -26,6 +28,8 @@ interface Source {
   mean: number;
   /** luminance clamp (removes the photographed sun) */
   clamp: number;
+  /** cosine-weighted mean colour of the upper hemisphere (what lights an upward-facing surface) */
+  irr: THREE.Color;
 }
 
 const FILES: [string, number][] = [
@@ -37,8 +41,10 @@ const FILES: [string, number][] = [
 export interface HdriParams {
   /** weights of the day, sunset and night photos (sum 1) */
   weights: [number, number, number];
-  /** mean luminance the sky should have (procedural sky at this time) */
-  skyLuminance: number;
+  /** cosine-weighted mean colour of the procedural sky at this time: the photos are matched to it */
+  skyIrradiance: THREE.Color;
+  /** how much of the photos' own colour is kept (0 = the procedural colour, 1 = the photo's) */
+  ownColor: number;
   sunDir: THREE.Vector3;
   /** strength of the added sun glow */
   glow: number;
@@ -51,16 +57,23 @@ const H = 256;
 export class HdriEnvironment {
   ready = false;
   onReady: (() => void) | null = null;
-  private sources: Source[] = FILES.map(([file, ground]) => ({ file, ground, tex: null, sunPhi: 0, mean: 1, clamp: 100 }));
+  private sources: Source[] = FILES.map(([file, ground]) => ({ file, ground, tex: null, sunPhi: 0, mean: 1, clamp: 100, irr: new THREE.Color(1, 1, 1) }));
   private target: THREE.WebGLRenderTarget | null = null;
   private material: THREE.ShaderMaterial | null = null;
   private quad: FullScreenQuad | null = null;
 
-  constructor(private renderer: THREE.WebGLRenderer) {
-    if (hasDom) void this.load();
+  private loading = false;
+
+  constructor(private renderer: THREE.WebGLRenderer) {}
+
+  /** Start loading the photos (once; nothing happens in Node). */
+  load(): void {
+    if (this.loading || !hasDom) return;
+    this.loading = true;
+    void this.fetch();
   }
 
-  private async load(): Promise<void> {
+  private async fetch(): Promise<void> {
     try {
       const { HDRLoader } = await import('three/examples/jsm/loaders/HDRLoader.js');
       const loader = new HDRLoader();
@@ -95,7 +108,9 @@ export class HdriEnvironment {
           tDay: { value: this.sources[0].tex },
           tDusk: { value: this.sources[1].tex },
           tNight: { value: this.sources[2].tex },
-          scale: { value: new THREE.Vector3() },
+          scaleDay: { value: new THREE.Vector3() },
+          scaleDusk: { value: new THREE.Vector3() },
+          scaleNight: { value: new THREE.Vector3() },
           wts: { value: new THREE.Vector3() },
           offset: { value: new THREE.Vector3() },
           clampLum: { value: new THREE.Vector3() },
@@ -109,7 +124,9 @@ export class HdriEnvironment {
           uniform sampler2D tDay;
           uniform sampler2D tDusk;
           uniform sampler2D tNight;
-          uniform vec3 scale;
+          uniform vec3 scaleDay;
+          uniform vec3 scaleDusk;
+          uniform vec3 scaleNight;
           uniform vec3 wts;
           uniform vec3 offset;
           uniform vec3 clampLum;
@@ -132,9 +149,9 @@ export class HdriEnvironment {
             float lower = 1.0 - smoothstep( -0.06, 0.01, dir.y );
             vec3 c = vec3( 0.0 );
             // (below the horizon the procedural ground replaces part of the photo)
-            if ( wts.x > 0.0 ) c += mix( fetch( tDay, offset.x, clampLum.x ) * scale.x, ground * wts.x, groundMix.x * lower );
-            if ( wts.y > 0.0 ) c += mix( fetch( tDusk, offset.y, clampLum.y ) * scale.y, ground * wts.y, groundMix.y * lower );
-            if ( wts.z > 0.0 ) c += mix( fetch( tNight, offset.z, clampLum.z ) * scale.z, ground * wts.z, groundMix.z * lower );
+            if ( wts.x > 0.0 ) c += mix( fetch( tDay, offset.x, clampLum.x ) * scaleDay, ground * wts.x, groundMix.x * lower );
+            if ( wts.y > 0.0 ) c += mix( fetch( tDusk, offset.y, clampLum.y ) * scaleDusk, ground * wts.y, groundMix.y * lower );
+            if ( wts.z > 0.0 ) c += mix( fetch( tNight, offset.z, clampLum.z ) * scaleNight, ground * wts.z, groundMix.z * lower );
             float s = max( dot( dir, sunDir ), 0.0 );
             c += vec3( 1.0, 0.9, 0.74 ) * ( pow( s, 90.0 ) * 5.0 + pow( s, 6.0 ) * 0.3 ) * glow * ( 1.0 - lower );
             gl_FragColor = vec4( c, 1.0 );
@@ -146,13 +163,18 @@ export class HdriEnvironment {
     }
     const u = this.material!.uniforms;
     const sunPhi = Math.atan2(p.sunDir.z, p.sunDir.x);
-    const sc = u.scale.value as THREE.Vector3;
+    const scales = [u.scaleDay.value, u.scaleDusk.value, u.scaleNight.value] as THREE.Vector3[];
+    const want = p.skyIrradiance;
+    const lum = (c: THREE.Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
     const off = u.offset.value as THREE.Vector3;
     const lim = u.clampLum.value as THREE.Vector3;
     this.sources.forEach((s, i) => {
-      // ground colours are absolute; the photos are scaled to the procedural sky's brightness
-      const k = (p.weights[i] * p.skyLuminance) / Math.max(1e-4, s.mean);
-      sc.setComponent(i, p.weights[i] > 1e-3 ? k : 0);
+      // the photo lights an upward surface as much as the procedural sky does (exposure stays as tuned),
+      // keeping `ownColor` of its own colour balance
+      const w = p.weights[i];
+      const kl = lum(want) / Math.max(1e-5, lum(s.irr));
+      const mixc = (a: number, b: number) => w * (kl + (a / Math.max(1e-5, b) - kl) * (1 - p.ownColor));
+      scales[i].set(mixc(want.r, s.irr.r), mixc(want.g, s.irr.g), mixc(want.b, s.irr.b));
       off.setComponent(i, (((s.sunPhi - sunPhi) / (Math.PI * 2)) % 1 + 1) % 1);
       lim.setComponent(i, s.clamp);
     });
@@ -214,6 +236,33 @@ function analyse(tex: THREE.DataTexture, s: Source): void {
     wsum += weights[k];
   });
   s.mean = Math.max(1e-4, sum / Math.max(1e-6, wsum));
+  // cosine-weighted (towards the zenith) mean colour, sun clamped
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  let cw = 0;
+  for (let y = 0; y < h / 2; y += step) {
+    const lat = (0.5 - (y + 0.5) / h) * Math.PI;
+    const wgt = Math.cos(lat) * Math.sin(lat);
+    for (let x = 0; x < w; x += step) {
+      const i = (y * w + x) * 4;
+      let cr = get(i);
+      let cg = get(i + 1);
+      let cb = get(i + 2);
+      if (!(cr >= 0 && cg >= 0 && cb >= 0) || !isFinite(cr + cg + cb)) continue;
+      const l = 0.2126 * cr + 0.7152 * cg + 0.0722 * cb;
+      if (l > clamp) {
+        cr *= clamp / l;
+        cg *= clamp / l;
+        cb *= clamp / l;
+      }
+      r += cr * wgt;
+      g += cg * wgt;
+      b += cb * wgt;
+      cw += wgt;
+    }
+  }
+  s.irr.setRGB(r / cw, g / cw, b / cw);
   s.clamp = clamp;
   s.sunPhi = ((bestX + 0.5) / w - 0.5) * Math.PI * 2;
 }
