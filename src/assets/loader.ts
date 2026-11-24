@@ -67,7 +67,10 @@ export function loadTexture(path: string, opts: TextureOpts = {}): Promise<THREE
   let p = pending.get(key);
   if (!p) {
     p = hasDom
-      ? new THREE.TextureLoader().loadAsync(assetUrl(path)).then((t) => {
+      ? new THREE.TextureLoader().loadAsync(assetUrl(path)).then(async (t) => {
+          // decode the picture off the main thread now; otherwise the browser decodes it in the middle of
+          // the frame that first uploads it (a hitch the first time a textured surface comes into view)
+          await (t.image as HTMLImageElement | undefined)?.decode?.().catch(() => undefined);
           t.wrapS = t.wrapT = THREE.RepeatWrapping;
           t.colorSpace = opts.srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
           t.anisotropy = opts.anisotropy ?? 8;

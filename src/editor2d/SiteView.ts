@@ -178,6 +178,9 @@ export class SiteView {
     if (this.raf) return;
     this.raf = requestAnimationFrame(() => {
       this.raf = 0;
+      // hidden (another view is open): drawing would be wasted – the store changes all the time while
+      // walking. Showing the view again resizes it, which draws.
+      if (!this.canvas.offsetParent) return;
       this.draw();
     });
   };

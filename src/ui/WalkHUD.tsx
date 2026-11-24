@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { DAY_MOMENTS, momentOf, type Engine } from '../render3d/Engine';
+import type { Engine } from '../render3d/Engine';
+import { DAY_MOMENTS, momentOf } from '../render3d/dayMoments';
 import { audio } from '../audio';
 import { WalkExtras } from './GameHud';
 import { MiniGamesButton } from './MiniGameHud';

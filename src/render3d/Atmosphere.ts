@@ -57,6 +57,10 @@ export class Atmosphere {
     glow: { value: 1 },
   };
   private envTarget: THREE.WebGLRenderTarget | null = null;
+  /** the gradient dome rendered into a cube, filtered into `envTarget` (both reused: allocating a new
+   * pre-filtered target every second with the clock running stalled the GPU) */
+  private domeCube = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+  private domeCamera = new THREE.CubeCamera(0.1, 200, this.domeCube);
   private envHours = -99;
   private envCooldown = 0;
   private fog: THREE.Fog;
@@ -268,8 +272,10 @@ export class Atmosphere {
         this.envTarget = next;
         this.envFromHdri = true;
       } else {
-        const next = this.pmrem.fromScene(this.envScene, 0, 0.1, 200);
-        this.envTarget?.dispose();
+        this.domeCamera.update(this.renderer, this.envScene);
+        const reuse = this.envFromHdri ? null : this.envTarget;
+        const next = this.pmrem.fromCubemap(this.domeCube.texture, reuse as THREE.WebGLCubeRenderTarget | null);
+        if (next !== this.envTarget) this.envTarget?.dispose();
         this.envTarget = next;
         this.envFromHdri = false;
       }
@@ -312,6 +318,7 @@ export class Atmosphere {
   dispose(): void {
     this.hdri.dispose();
     this.envTarget?.dispose();
+    this.domeCube.dispose();
     this.pmrem.dispose();
   }
 }

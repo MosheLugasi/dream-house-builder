@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Engine } from '../render3d/Engine';
 import { useStore } from '../store/store';
-import { saveQuality, type Quality } from '../store/quality';
+import { saveQuality, type QualityChoice } from '../store/quality';
 import { Icon } from './icons';
 import { TimeOfDayChips, WalkHUD } from './WalkHUD';
 
@@ -33,27 +33,30 @@ function TimeControl() {
   );
 }
 
-const QUALITY_CHOICES: { id: Quality; label: string; title: string }[] = [
+const QUALITY_CHOICES: { id: QualityChoice; label: string; title: string }[] = [
+  { id: 'auto', label: 'אוטומטי', title: 'המחשב בוחר: יפה כמה שאפשר, ומוריד איכות לבד אם התצוגה איטית' },
   { id: 'low', label: 'רגיל', title: 'מהיר: בלי אפקטים (למחשבים חלשים)' },
   { id: 'high', label: 'גבוה', title: 'צללים, הצללת סביבה, אור מהחלונות' },
   { id: 'ultra', label: 'אולטרה', title: 'הכי מציאותי: צללים חדים, דשא, החלקת קצוות כשהמצלמה עומדת (דורש כרטיס מסך חזק)' },
 ];
 
-/** Rendering quality: רגיל / גבוה / אולטרה (remembered on this device). */
+/** Rendering quality: אוטומטי / רגיל / גבוה / אולטרה (remembered on this device). */
 function QualityChips() {
   const quality = useStore((s) => s.view.quality);
+  const auto = useStore((s) => s.view.autoQuality);
   const setView = useStore((s) => s.setView);
+  const current: QualityChoice = auto ? 'auto' : quality;
   return (
     <div className="chip-group" role="group" aria-label="איכות תצוגה">
       {QUALITY_CHOICES.map((q) => (
         <button
           key={q.id}
-          className={`chip ${quality === q.id ? 'on' : ''}`}
+          className={`chip ${current === q.id ? 'on' : ''}`}
           title={q.title}
-          aria-pressed={quality === q.id}
+          aria-pressed={current === q.id}
           onClick={() => {
             saveQuality(q.id);
-            setView({ quality: q.id });
+            setView(q.id === 'auto' ? { quality: 'high', autoQuality: true } : { quality: q.id, autoQuality: false });
           }}
         >
           {q.label}
@@ -71,6 +74,7 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
   const view = useStore((s) => s.view);
   const hint = useStore((s) => s.hint);
   const [engine, setEngine] = useState<Engine | null>(null);
+  const [preparing, setPreparing] = useState(false);
   const setView = useStore((s) => s.setView);
   const scope = useStore((s) => s.scope);
 
@@ -83,6 +87,7 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
       .then(({ Engine }) => {
         if (disposed || !hostRef.current) return;
         const engine = new Engine(hostRef.current);
+        engine.onPreparing = setPreparing;
         engineRef.current = engine;
         setEngine(engine);
         (window as unknown as { __engine?: Engine }).__engine = engine;
@@ -119,6 +124,12 @@ export function View3D({ active, onAvatar }: { active: boolean; onAvatar: () => 
     <div className="viewport" style={{ display: active ? 'block' : 'none' }}>
       <div ref={hostRef} className="three-host" />
       {error && <div className="viewport-error">{error}</div>}
+      {!error && (preparing || (active && !engine)) && (
+        <div className="viewport-preparing" role="status">
+          <span className="spinner" aria-hidden="true" />
+          רגע, מכינים את העולם…
+        </div>
+      )}
       {!error && <TimeControl />}
       {mode === 'view3d' && (
         <div className="view-controls">

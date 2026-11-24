@@ -186,13 +186,20 @@ export interface Occupation {
  */
 export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: number, ignoreBox?: string, skip?: ReadonlySet<string>): Vec2 {
   const push = { x: 0, y: 0 };
+  // (the world holds every wall and box of the neighborhood and this runs for the walker, every pet
+  // and ball each frame: far-away pieces are rejected with a cheap bounds test, and once a pass pushes
+  // nothing the next passes would not either)
   for (let iter = 0; iter < 4; iter++) {
+    let hit = false;
     for (const w of world.walls) {
       if (y < w.y0 - 0.15 || y > w.y1 - 0.5) continue;
       if (w.openY !== undefined && Math.abs(y - w.openY) < 0.45) continue;
-      const c = closestOnSegment(pos, w.a, w.b);
       const min = w.half + radius;
+      if (pos.x < Math.min(w.a.x, w.b.x) - min || pos.x > Math.max(w.a.x, w.b.x) + min) continue;
+      if (pos.y < Math.min(w.a.y, w.b.y) - min || pos.y > Math.max(w.a.y, w.b.y) + min) continue;
+      const c = closestOnSegment(pos, w.a, w.b);
       if (c.dist >= min) continue;
+      hit = true;
       let nx: number;
       let ny: number;
       if (c.dist > 1e-5) {
@@ -212,6 +219,8 @@ export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: nu
       push.y += ny * d;
     }
     for (const b of world.boxes) {
+      const reach = b.hw + b.hd + radius;
+      if (Math.abs(pos.x - b.x) > reach || Math.abs(pos.y - b.y) > reach) continue;
       if (b.id !== undefined && (b.id === ignoreBox || skip?.has(b.id))) continue;
       if (y > b.y1 - 0.1 || y + 1.4 < b.y0) continue;
       const c = Math.cos(-b.rotation);
@@ -252,7 +261,9 @@ export function collideCircle(world: WalkWorld, pos: Vec2, radius: number, y: nu
       pos.y += wy * amount;
       push.x += wx * amount;
       push.y += wy * amount;
+      hit = true;
     }
+    if (!hit) break;
   }
   return push;
 }

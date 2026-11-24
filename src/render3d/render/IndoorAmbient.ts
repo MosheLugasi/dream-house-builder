@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { roomsKey, sameKey } from './buildingKey';
 import { getGraph } from '../../model/graph';
 import { levelElevation, toSite, type Building } from '../../model/types';
 import { registerShaderPatch } from '../../materials/shaderPatches';
@@ -92,12 +93,16 @@ registerShaderPatch(patchIndoorShader);
 /** Builds and updates the room mask from the project's buildings. */
 export class IndoorAmbient {
   private texture: THREE.CanvasTexture | null = null;
-  private key: unknown = null;
+  private key: unknown[] | null = null;
+  private buildings: unknown = null;
 
-  /** Rebuild the mask when the buildings changed (cheap identity check otherwise). */
+  /** Rebuild the mask when the rooms changed (cheap identity checks otherwise; furniture moves do not count). */
   update(buildings: Building[]): void {
-    if (buildings === this.key) return;
-    this.key = buildings;
+    if (buildings === this.buildings) return;
+    this.buildings = buildings;
+    const key = roomsKey(buildings);
+    if (sameKey(this.key, key)) return;
+    this.key = key;
     if (typeof document === 'undefined') return;
     let minX = Infinity;
     let minY = Infinity;

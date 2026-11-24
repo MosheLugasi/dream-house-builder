@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { roomsKey, sameKey } from './buildingKey';
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js';
 import { getGraph } from '../../model/graph';
 import { pointInPolygon } from '../../model/geom';
@@ -41,7 +42,8 @@ export class WindowLights {
   readonly group = new THREE.Group();
   private slots: Slot[] = [];
   private sources: WindowSource[] = [];
-  private key: unknown = null;
+  private key: unknown[] | null = null;
+  private buildings: unknown = null;
   private timer = 0;
 
   /** size of the pool */
@@ -68,10 +70,13 @@ export class WindowLights {
     this.timer = 0;
   }
 
-  /** Re-collect the windows when the buildings changed. */
+  /** Re-collect the windows when the buildings changed (walls, windows; not furniture). */
   setBuildings(buildings: Building[]): void {
-    if (buildings === this.key) return;
-    this.key = buildings;
+    if (buildings === this.buildings) return;
+    this.buildings = buildings;
+    const key = roomsKey(buildings, true);
+    if (sameKey(this.key, key)) return;
+    this.key = key;
     const out: WindowSource[] = [];
     for (const b of buildings) {
       const rot = b.rotation;
@@ -188,6 +193,20 @@ export class WindowLights {
       }
     }
   }
+
+  /**
+   * Put the pool into the scene if it is out of it and vice versa; returns the undo. The lit shaders
+   * have a variant with and one without the area lights: the shader warm-up compiles both (see
+   * ShaderWarmup.variants) – each switch used to compile the other variant in the middle of a frame,
+   * a stall of a second or more walking up to a house.
+   */
+  readonly flipVisibility = (): (() => void) => {
+    const was = this.group.visible;
+    this.group.visible = !was;
+    return () => {
+      this.group.visible = was;
+    };
+  };
 
   /** Switch everything off at once (e.g. leaving walk mode). */
   clear(): void {

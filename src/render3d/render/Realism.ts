@@ -8,6 +8,7 @@ import { Grass } from './Grass';
 import { IndoorAmbient } from './IndoorAmbient';
 import { BLOOM_KNEE, RenderPipeline } from './Pipeline';
 import { PRESETS, type RenderPreset } from './presets';
+import { QUALITY_STEPS, type QualityStep } from './AdaptiveQuality';
 import { WindowLights } from './WindowLights';
 
 /** What the renderer needs to know about the frame being drawn. */
@@ -82,10 +83,24 @@ export class Realism {
 
   private onInput = (): void => this.pipeline.invalidate();
 
-  setQuality(q: Quality, width: number, height: number): void {
+  /** automatic quality step on top of the preset (see AdaptiveQuality.ts) */
+  step: QualityStep = QUALITY_STEPS[0];
+  /** multiplier of the sun's shadow map sizes (automatic quality) */
+  get shadowScale(): number {
+    return this.step.shadow;
+  }
+
+  private aoFor: { pass: unknown; mode: string } = { pass: null, mode: '' };
+
+  private pixelRatio(): number {
+    return Math.min(window.devicePixelRatio || 1, this.preset.pixelRatioCap) * this.step.scale;
+  }
+
+  setQuality(q: Quality, width: number, height: number, step: QualityStep = QUALITY_STEPS[0]): void {
     const preset = PRESETS[q] ?? PRESETS.high;
     this.preset = preset;
-    const ratio = Math.min(window.devicePixelRatio || 1, preset.pixelRatioCap);
+    this.step = step;
+    const ratio = this.pixelRatio();
     this.renderer.setPixelRatio(ratio);
     const sun = this.atmosphere.sun;
     sun.shadow.mapSize.setScalar(preset.shadowMapSize);
@@ -95,6 +110,29 @@ export class Realism {
     this.lamps.setShadowCasters(preset.lampShadows);
     sun.shadow.radius = preset.sharpShadows ? 1.4 : 2.5;
     this.pipeline.configure(preset, width, height, ratio);
+    this.applyStepToPasses();
+  }
+
+  /** Change the automatic quality step without rebuilding anything (same preset). */
+  setStep(step: QualityStep): void {
+    this.step = step;
+    const ratio = this.pixelRatio();
+    this.renderer.setPixelRatio(ratio);
+    this.pipeline.setPixelRatio(ratio);
+    this.applyStepToPasses();
+  }
+
+  private applyStepToPasses(): void {
+    const ao = this.pipeline.ao;
+    // (each mode change rebuilds the AO shaders: only on a real change)
+    const aoMode = this.step.lightAo ? 'Performance' : this.preset.ao;
+    if (ao && ao !== this.aoFor.pass) this.aoFor = { pass: ao, mode: this.preset.ao };
+    if (ao && aoMode !== this.aoFor.mode) {
+      ao.setQualityMode(aoMode);
+      this.aoFor.mode = aoMode;
+    }
+    if (this.pipeline.bloom) this.pipeline.bloom.enabled = this.step.bloom;
+    this.pipeline.invalidate();
   }
 
   setSize(width: number, height: number): void {
@@ -123,10 +161,6 @@ export class Realism {
 
     // daylight through the windows (only matters where ceilings are drawn)
     this.windows.setBuildings(f.project.buildings);
-    this.warmTimer -= dt;
-    // (new programs = materials not seen before: their other variant is compiled too)
-    if (f.walking && this.windows.size > 0 && this.warmTimer <= 0) this.prewarmWindows(this.renderer.info.programs?.length ?? 0);
-    else if (!f.walking) this.warmKey = null;
     const radiance = f.walking ? t.windowRadiance * atm.daylight * this.scene.environmentIntensity : 0;
     this.windows.update(dt, this.camera.position, radiance, atm.skyColor, f.walking && atm.daylight > 0.01);
 
@@ -169,37 +203,10 @@ export class Realism {
     }
   }
 
-  /**
-   * The window lights join and leave the scene (they cost every lit pixel while on): each switch needs
-   * other variants of the lit shaders, which compiled the first time a window came into reach – a stall
-   * of a second or more walking up to a house. Compile them in the background when walking starts and
-   * whenever new materials appeared (e.g. a house nearby got its furniture), without blocking a frame.
-   */
-  private prewarmWindows(key: unknown): void {
-    if (key === this.warmKey || this.warming) return;
-    this.warmKey = key;
-    this.warmTimer = 2;
-    const group = this.windows.group;
-    const was = group.visible;
-    group.visible = true;
-    try {
-      if (this.renderer.extensions.has('KHR_parallel_shader_compile')) {
-        this.warming = true;
-        this.renderer
-          .compileAsync(this.scene, this.camera)
-          .catch(() => undefined)
-          .finally(() => {
-            this.warming = false;
-          });
-      } else this.renderer.compile(this.scene, this.camera);
-    } catch {
-      this.warming = false;
-    }
-    group.visible = was;
+  /** The render target the scene itself is drawn into (null: the canvas), for compiling its shaders. */
+  sceneTarget(): THREE.WebGLRenderTarget | null {
+    return this.pipeline.ao?.beautyRenderTarget ?? null;
   }
-  private warmKey: unknown = null;
-  private warming = false;
-  private warmTimer = 0;
 
   /**
    * Where the sun's shadow map goes: a square of ±`range` m around `center`. Walking, ultra uses a

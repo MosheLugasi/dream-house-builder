@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Realism, snapToShadowTexels } from './render/Realism';
+import { ShaderWarmup } from './render/ShaderWarmup';
+import { FrameGovernor, QUALITY_STEPS } from './render/AdaptiveQuality';
 import type { Quality } from '../store/quality';
 import { getFurniture, itemSize, type ItemAnchors } from '../catalog';
 import { placedBoxes, placedLight, placedSeats } from '../catalog/placed';
@@ -26,7 +28,7 @@ import {
   updateFurniture,
   updateProp,
 } from '../store/actions';
-import { currentBuilding, currentLevel, useStore, type Mode } from '../store/store';
+import { currentBuilding, currentLevel, useStore, type Mode, type ViewOptions } from '../store/store';
 import { Atmosphere } from './Atmosphere';
 import { BuildingView } from './BuildingView';
 import { buildSite, DEPTH_LAYER, groundHeight, roadPieces, roadSet, setDepthLayer, SIDEWALK_HEIGHT } from './buildSite';
@@ -50,13 +52,8 @@ import { sound } from '../audio/sound';
 import { useWalk } from '../store/walk';
 import { normalizeLook, type Activity } from './Character';
 
-/** Named moments of the day (the HUD buttons and the N key jump between them). */
-// (the sun sets at 18:00 in Atmosphere's model: 17:42 is the golden hour, 18:36 was already full night)
-export const DAY_MOMENTS = { day: 14.5, sunset: 17.7, night: 21.5 } as const;
-export type TimeOfDay = keyof typeof DAY_MOMENTS;
-export function momentOf(hours: number): TimeOfDay {
-  return hours >= 20 || hours < 5.5 ? 'night' : hours >= 17.5 ? 'sunset' : 'day';
-}
+import { DAY_MOMENTS, momentOf, type TimeOfDay } from './dayMoments';
+export { DAY_MOMENTS, momentOf, type TimeOfDay };
 
 const EMOTES: Record<string, { activity: Activity; seconds: number; text: string }> = {
   Digit1: { activity: 'wave', seconds: 2.5, text: '👋' },
@@ -137,6 +134,25 @@ export class Engine {
   private nearTimer = 0;
   private pendingSpawn: { start: Vec2; y: number; yaw: number } | null = null;
   private windowGlow = -1;
+  /** compiles shaders ahead of the frames that need them (see render/ShaderWarmup.ts) */
+  readonly warm: ShaderWarmup;
+  private warmTimer = 0;
+  /** the post-processing passes have drawn once (their own shaders are compiled) */
+  private passesWarm = false;
+  private preparing = false;
+  /** the 3D view is preparing (compiling shaders) and shows the previous image: the UI shows a note */
+  onPreparing: ((on: boolean) => void) | null = null;
+  /** automatic quality (see render/AdaptiveQuality.ts) */
+  readonly governor = new FrameGovernor();
+  private autoQuality = false;
+  private qualityDirty = false;
+  private lastDrawAt = 0;
+  /** the editor has been still (no input, camera, store or scene change) since then (ms) */
+  private calmSince = 0;
+  private skipFrame = false;
+  private wake = (): void => {
+    this.calmSince = performance.now();
+  };
 
   constructor(private host: HTMLElement) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -149,6 +165,7 @@ export class Engine {
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.touchAction = 'none';
     setMaxAnisotropy(renderer.capabilities.getMaxAnisotropy());
+    this.warm = new ShaderWarmup(renderer);
 
     // sky, sun / moon, ambient light
     this.atmosphere = new Atmosphere(renderer, this.scene);
@@ -255,14 +272,31 @@ export class Engine {
     el.addEventListener('pointerleave', this.onPointerLeave);
     el.addEventListener('dblclick', this.onDblClick);
     window.addEventListener('keydown', this.onKeyDown);
+    el.addEventListener('pointermove', this.wake);
+    el.addEventListener('wheel', this.wake, { passive: true });
+    window.addEventListener('keydown', this.wake);
+    this.controls.addEventListener('change', this.wake);
 
-    this.unsub = useStore.subscribe(() => {
-      this.dirty = true;
+    // the scene follows the store; the hint text, the undo history and the clock (read every frame by
+    // advanceClock) do not touch it – with the clock running the store changes every second
+    this.unsub = useStore.subscribe((s, p) => {
+      if (
+        s.project !== p.project ||
+        s.mode !== p.mode ||
+        s.scope !== p.scope ||
+        s.buildingIndex !== p.buildingIndex ||
+        s.levelIndex !== p.levelIndex ||
+        s.selection !== p.selection ||
+        s.tool !== p.tool ||
+        (s.view !== p.view && Object.keys(s.view).some((k) => k !== 'timeOfDay' && k !== 'autoTime' && s.view[k as keyof ViewOptions] !== p.view[k as keyof ViewOptions]))
+      )
+        this.dirty = true;
     });
     this.applyQuality(useStore.getState().view.quality);
   }
 
   dispose(): void {
+    this.warm.clear();
     this.games.dispose();
     this.stop();
     this.unsub();
@@ -277,6 +311,10 @@ export class Engine {
     el.removeEventListener('pointerleave', this.onPointerLeave);
     el.removeEventListener('dblclick', this.onDblClick);
     window.removeEventListener('keydown', this.onKeyDown);
+    el.removeEventListener('pointermove', this.wake);
+    el.removeEventListener('wheel', this.wake);
+    window.removeEventListener('keydown', this.wake);
+    this.controls.removeEventListener('change', this.wake);
     this.controls.dispose();
     for (const v of this.buildings.values()) v.dispose();
     if (itemBatches.current === this.batches) itemBatches.current = null;
@@ -299,7 +337,14 @@ export class Engine {
 
   private applyQuality(q: Quality): void {
     this.quality = q;
-    this.realism.setQuality(q, this.width, this.height);
+    this.realism.setQuality(q, this.width, this.height, this.autoQuality ? this.governor.step : QUALITY_STEPS[0]);
+  }
+
+  /** The automatic quality stepped down: a lower resolution / fewer effects, or another preset. */
+  private applyStep(): void {
+    const step = this.governor.step;
+    if ((step.preset ?? useStore.getState().view.quality) !== this.quality) this.dirty = true;
+    else this.realism.setStep(step);
   }
 
   // ---- run loop ------------------------------------------------------------------------------
@@ -311,9 +356,21 @@ export class Engine {
     const loop = () => {
       if (!this.running) return;
       this.raf = requestAnimationFrame(loop);
+      // the editor standing still (only the foliage sways): every other frame is enough
+      if (this.calm()) {
+        this.skipFrame = !this.skipFrame;
+        if (this.skipFrame) return;
+      }
       this.frame();
     };
     loop();
+  }
+
+  /** Nothing in the editor has moved or changed for a while. */
+  private calm(): boolean {
+    const now = performance.now();
+    if (this.mode === 'walk' || this.dirty || this.photoPending || this.warm.busy || this.drag || useStore.getState().view.autoTime) this.calmSince = now;
+    return now - this.calmSince > 2000;
   }
 
   stop(): void {
@@ -331,9 +388,13 @@ export class Engine {
         this.updateNearBuildings();
       }
     }
+    let big = false;
+    let changed = false;
     if (this.dirty) {
       this.dirty = false;
-      this.sync();
+      const res = this.sync();
+      big = res.big;
+      changed = res.changed;
       this.realism.invalidate();
       this.sunShadowKey = '';
     }
@@ -363,6 +424,39 @@ export class Engine {
     const walking = this.mode === 'walk';
     const lampLight = walking ? this.lights.brightnessAt(this.walk.character.root.position, this.atmosphere.night) : 0;
     this.realism.update(dt, { walking, indoors: walking && this.walk.indoors, project: useStore.getState().project, focus, lampLight });
+    // shaders: after a big change everything visible is prepared while the last image stays on screen;
+    // anything that appears later waits (hidden) until its shaders are ready
+    this.warmTimer -= dt;
+    if (big) this.warm.scan(this.scene, { all: true, hold: 5000 });
+    else if (changed || this.warmTimer <= 0) {
+      this.warmTimer = 0.5;
+      this.warm.scan(this.scene);
+    }
+    this.warm.pump(this.scene, this.camera, this.realism.sceneTarget(), this.warm.holding ? 14 : 5);
+    const holding = this.warm.holding;
+    if (holding !== this.preparing) {
+      this.preparing = holding;
+      this.onPreparing?.(holding);
+    }
+    const now = performance.now();
+    if (holding || big) this.governor.pause(now);
+    else if (this.autoQuality && this.lastDrawAt > 0 && now - this.calmSince < 2000) {
+      // (not while the editor stands still: those frames are drawn at half rate on purpose)
+      if (this.governor.frame(now - this.lastDrawAt, now)) this.applyStep();
+    }
+    this.lastDrawAt = holding ? 0 : now;
+    if (holding) {
+      // the post-processing passes compile their own shaders the first time they draw: let them do that
+      // now (with nothing in view) instead of on the first real frame
+      if (!this.passesWarm) {
+        this.passesWarm = true;
+        const mask = this.camera.layers.mask;
+        this.camera.layers.set(30);
+        this.realism.render();
+        this.camera.layers.mask = mask;
+      }
+      return;
+    }
     this.realism.render();
     if (this.photoPending) {
       this.photoPending = false;
@@ -613,7 +707,7 @@ export class Engine {
     const focus = this.mode === 'walk' ? this.walk.character.root.position : this.controls.target;
     const center = this.sunCenter;
     // walking, the map covers a small square: a smaller map is as sharp there and much cheaper
-    const size = this.mode === 'walk' ? this.realism.preset.walkShadowMapSize : this.realism.preset.shadowMapSize;
+    const size = (this.mode === 'walk' ? this.realism.preset.walkShadowMapSize : this.realism.preset.shadowMapSize) * this.realism.shadowScale;
     if (sun.shadow.mapSize.x !== size) {
       sun.shadow.mapSize.setScalar(size);
       sun.shadow.map?.dispose();
@@ -639,7 +733,11 @@ export class Engine {
     // and a few times a second for the swaying trees. (Orbiting around the target costs no shadows.)
     const shadow = sun.shadow;
     if (this.mode === 'walk') {
-      shadow.autoUpdate = true;
+      // (automatic quality may redraw it every other frame: the map and its matrix stay together, so
+      // shadows lag by a frame at most instead of jumping)
+      const every = this.autoQuality ? this.governor.step.shadowEvery : 1;
+      shadow.autoUpdate = false;
+      shadow.needsUpdate = ++this.sunShadowAge % every === 0 || !shadow.map;
       this.sunShadowKey = '';
     } else {
       const d = this.atmosphere.lightDir;
@@ -705,11 +803,30 @@ export class Engine {
     return levelElevation(b, Math.min(st.levelIndex, b.levels.length - 1));
   }
 
-  private sync(): void {
+  /** Bring the scene up to date with the store. `changed`: objects were added or rebuilt; `big`: the
+   * view changed as a whole (first build, mode, scope, quality) */
+  private sync(): { changed: boolean; big: boolean } {
     const st = useStore.getState();
     const { project, view } = st;
-    if (view.quality !== this.quality) this.applyQuality(view.quality);
+    let big = this.syncCount++ === 0;
+    if (view.autoQuality !== this.autoQuality) {
+      this.autoQuality = view.autoQuality;
+      this.governor.reset(performance.now());
+      this.qualityDirty = true;
+    }
+    const quality = this.autoQuality ? (this.governor.step.preset ?? view.quality) : view.quality;
+    if (quality !== this.quality || this.qualityDirty) {
+      this.qualityDirty = false;
+      this.applyQuality(quality);
+      big = true;
+    }
     const modeChanged = st.mode !== this.mode;
+    if (modeChanged) big = true;
+    const viewKey = `${st.scope}|${st.buildingIndex}|${st.levelIndex}|${view.showRoof}|${view.wallsLow}`;
+    if (viewKey !== this.viewKey) {
+      this.viewKey = viewKey;
+      big = true;
+    }
     if (modeChanged) this.mode = st.mode;
     const walking = this.mode === 'walk';
     const active = st.scope === 'building' && !walking ? currentBuilding(project) : null;
@@ -798,7 +915,13 @@ export class Engine {
       this.framedKey = frameKey;
       this.frameAll();
     }
+    // the window lights join the scene by themselves while walking: their shader variant is prepared too
+    const windows = this.realism.windows;
+    this.warm.variants = walking && windows.size > 0 ? [windows.flipVisibility] : [];
+    return { changed, big };
   }
+  private syncCount = 0;
+  private viewKey = '';
 
   /** Every lamp that currently exists in the scene, with its position in the world. */
   private collectLamps(): LampSource[] {

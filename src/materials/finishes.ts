@@ -233,7 +233,9 @@ function scheduleUpgrade(): void {
     upgradeNext();
     scheduleUpgrade();
   };
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 250 });
+  // (a generous timeout: with the 3D view running there is little idle time, and a forced slot is a
+  // long task in the middle of the animation – the low resolution textures are shown meanwhile)
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1500 });
   else setTimeout(run, 30);
 }
 
@@ -277,7 +279,14 @@ function loadPhoto(spec: FinishSpec, mat: THREE.MeshStandardMaterial): void {
       if (i >= 0) upgradeQueue.splice(i, 1);
       for (const l of listeners) l(spec.id);
     })
-    .catch(() => undefined);
+    .catch(() => {
+      if (progressive && spec.res > PREVIEW_RES && !mat.userData.photo) queueUpgrade(spec, mat);
+    });
+}
+
+function queueUpgrade(spec: FinishSpec, mat: THREE.MeshStandardMaterial): void {
+  upgradeQueue.push({ spec, mat });
+  scheduleUpgrade();
 }
 
 function buildMaterial(spec: FinishSpec): THREE.MeshStandardMaterial {
@@ -289,8 +298,9 @@ function buildMaterial(spec: FinishSpec): THREE.MeshStandardMaterial {
   mat.name = spec.id;
   if (progressive && spec.res > PREVIEW_RES) {
     applyTextures(spec, mat, PREVIEW_RES);
-    upgradeQueue.push({ spec, mat });
-    scheduleUpgrade();
+    // a photographic set replaces the generated textures anyway: generate the full resolution only if
+    // the photos cannot be loaded (each generation is a main-thread task of 100-500 ms)
+    if (!spec.photo || !hasDom) queueUpgrade(spec, mat);
   } else {
     applyTextures(spec, mat, spec.res);
   }

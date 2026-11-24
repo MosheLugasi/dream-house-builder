@@ -164,6 +164,16 @@ export class RenderPipeline {
     this.still = 0;
   }
 
+  /** Render at another resolution (automatic quality): resizes the passes' targets. */
+  setPixelRatio(pixelRatio: number): void {
+    if (pixelRatio === this.pixelRatio) return;
+    this.pixelRatio = pixelRatio;
+    if (!this.composer) return;
+    this.composer.setPixelRatio(pixelRatio);
+    this.composer.setSize(this.width, this.height);
+    this.still = 0;
+  }
+
   /** Something changed that the running average must not smear (the scene, the light, …). */
   invalidate(): void {
     this.still = 0;

@@ -7,6 +7,7 @@ import { useWalk } from './store/walk';
 import { useMiniGame } from './game/minigames/store';
 import { audio } from './audio';
 import { sound } from './audio/sound';
+import { startPrebuilding } from './render3d/prebuild';
 import './ui/styles.css';
 
 // handy for debugging and automated checks
@@ -24,6 +25,9 @@ const unlockAudio = (): void => {
 };
 window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
+
+// build the 3D view's items and materials in idle time while the player is still in the 2D editor
+startPrebuilding(useStore);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
