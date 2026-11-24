@@ -225,11 +225,23 @@ function upgradeNext(): void {
   for (const l of listeners) l(job.spec.id);
 }
 
+let upgradesPaused = false;
+
+/**
+ * Hold the full-resolution upgrades back (e.g. while only the 2D editor is open: each is a main-thread
+ * task of 100-500 ms that would make dragging stutter, and the 3D view is not looking at them yet).
+ */
+export function pauseFinishUpgrades(paused: boolean): void {
+  upgradesPaused = paused;
+  if (!paused) scheduleUpgrade();
+}
+
 function scheduleUpgrade(): void {
-  if (upgradeScheduled || !upgradeQueue.length) return;
+  if (upgradeScheduled || upgradesPaused || !upgradeQueue.length) return;
   upgradeScheduled = true;
   const run = () => {
     upgradeScheduled = false;
+    if (upgradesPaused) return;
     upgradeNext();
     scheduleUpgrade();
   };

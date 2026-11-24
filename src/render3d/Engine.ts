@@ -7,7 +7,7 @@ import type { Quality } from '../store/quality';
 import { getFurniture, itemSize, type ItemAnchors } from '../catalog';
 import { placedBoxes, placedLight, placedSeats } from '../catalog/placed';
 import { setWindowGlow } from '../catalog/openings';
-import { finishes, onFinishTexturesUpdated } from '../materials/finishes';
+import { finishes, onFinishTexturesUpdated, pauseFinishUpgrades } from '../materials/finishes';
 import { setMaxAnisotropy } from '../materials/textureGen';
 import { snapTo } from '../model/geom';
 import { getGraph, roomAt, styleOfRoom } from '../model/graph';
@@ -169,6 +169,7 @@ export class Engine {
     this.warm = new ShaderWarmup(renderer);
     // a finish got its full-resolution or photographic textures (in an idle slot / when the pictures
     // arrived): upload them now rather than in the middle of the next frame
+    pauseFinishUpgrades(false);
     this.unsubFinishes = onFinishTexturesUpdated((id) => {
       const m = finishes.material(id);
       for (const t of [m.map, m.normalMap, m.roughnessMap]) if (t && needsUpload(renderer, t)) renderer.initTexture(t);

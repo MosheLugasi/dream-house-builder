@@ -8,6 +8,7 @@ import { useMiniGame } from './game/minigames/store';
 import { audio } from './audio';
 import { sound } from './audio/sound';
 import { startPrebuilding } from './render3d/prebuild';
+import { pauseFinishUpgrades } from './materials/finishes';
 import './ui/styles.css';
 
 // handy for debugging and automated checks
@@ -27,6 +28,8 @@ window.addEventListener('pointerdown', unlockAudio);
 window.addEventListener('keydown', unlockAudio);
 
 // build the 3D view's items and materials in idle time while the player is still in the 2D editor
+// (the finishes' full-resolution textures wait for the 3D view: see Engine)
+pauseFinishUpgrades(true);
 startPrebuilding(useStore);
 
 createRoot(document.getElementById('root')!).render(

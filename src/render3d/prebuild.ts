@@ -118,6 +118,14 @@ export class Prebuilder {
     if (this.handle || !this.queue.length || typeof requestIdleCallback !== 'function') return;
     this.handle = requestIdleCallback((deadline) => {
       this.handle = 0;
+      // the player is drawing / dragging: a job (up to ~100 ms) now would make it stutter – wait
+      if (performance.now() - lastInput < 700) {
+        this.handle = window.setTimeout(() => {
+          this.handle = 0;
+          this.schedule();
+        }, 400);
+        return;
+      }
       // at least one job per slot; another only while a good part of the slot is left
       do {
         this.queue.shift()!();
@@ -130,9 +138,15 @@ export class Prebuilder {
 
 export const prebuilder = new Prebuilder();
 
+let lastInput = -1e9;
+const onInput = (): void => {
+  lastInput = performance.now();
+};
+
 /** Keep preparing the project in the store (a second after it last changed). */
 export function startPrebuilding(store: { getState(): { project: Project }; subscribe(fn: (s: { project: Project }, p: { project: Project }) => void): () => void }): void {
   if (typeof requestIdleCallback !== 'function') return;
+  for (const type of ['pointerdown', 'pointermove', 'wheel', 'keydown']) window.addEventListener(type, onInput, { passive: true, capture: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   const later = () => {
     clearTimeout(timer);
