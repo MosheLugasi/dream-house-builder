@@ -238,7 +238,11 @@ export function buildArchitecture(level: Level, building: Building, opts: ArchOp
           [1, 1],
           [0, 1],
         ]);
-        mb.quad(BASEBOARD_KEY, Q(u0, h, off), Q(u1, h, off), Q(u1, h, half), Q(u0, h, half), [0, 1, 0], [
+        // the 12 mm top is seen almost edge-on from across a room: thinner than a pixel, it was drawn as a
+        // dotted line of bright (sky-lit, upward facing) pixels along every wall. A rounded-over top that
+        // is shaded like the baseboard's face (mostly facing the room) keeps those pixels the same colour.
+        const top: V3 = [normal[0] * 0.92, 0.4, normal[2] * 0.92];
+        mb.quad(BASEBOARD_KEY, Q(u0, h, off), Q(u1, h, off), Q(u1, h + 0.004, half), Q(u0, h + 0.004, half), top, [
           [0, 0],
           [1, 0],
           [1, 1],

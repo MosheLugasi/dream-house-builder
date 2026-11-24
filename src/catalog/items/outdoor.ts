@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { FurnitureDef, RideRuntime } from '../types';
 import { D, INK_SOFT, Kit, LINE_THIN, M, PAL, blobGeo, darken, latheGeo, lighten, mix, noise3, organicGeo, rng, roundedBoxGeo, roundedRectShape, ellipseShape, sym, tint, type Ctx2D } from '../kit';
 import { barHandle, slot } from './_parts';
+import { modelPlant, preloadPlants, type PlantSpec } from './_modelPlants';
 import { Pendulum, bakedPart, partKey, push01, seatNode, substeps } from './_ride';
 
 type Colors = Record<string, string>;
@@ -320,13 +321,17 @@ function drawTree(ctx: Ctx2D, c: Colors, R: number, trunkR: number, seed: number
 const TREE_BIG: TreeOpts = { seed: 3, trunkH: 2.4, trunkR: 0.17, canopyY: 3.4, canopyR: 1.95, squash: 0.84 };
 const TREE_FRUIT: TreeOpts = { seed: 8, trunkH: 1.25, trunkR: 0.085, canopyY: 2.0, canopyR: 1.1, squash: 0.85, fruits: 16, detail: 2 };
 
+/** photographic oak (leaf cards + bark textures, see public/assets/CREDITS.md) */
+const OAK: PlantSpec = { file: 'oak', leaves: '#5d8c45', trunk: '#6d5544', overhang: 1.3 };
+
 const tree: FurnitureDef = {
   id: 'tree',
   name: 'עץ נשיר',
   category: 'outdoor',
   size: { w: 3.5, d: 3.5, h: 5.0 },
   colors: [slot('leaves', 'עלווה', '#5d8c45'), slot('trunk', 'גזע', '#6d5544')],
-  build: ({ colors }) => buildTree(colors, TREE_BIG),
+  noBake: true,
+  build: ({ colors }) => modelPlant('tree', colors, OAK, tree.size, () => buildTree(colors, TREE_BIG)),
   draw2d: (ctx, c) => drawTree(ctx, c, 1.75, 0.17, 3),
 };
 
@@ -372,29 +377,44 @@ const cypress: FurnitureDef = {
     }),
 };
 
+/** photographic bush clump: three copies of one game-ready bush (see public/assets/CREDITS.md) */
+const BUSH: PlantSpec = {
+  file: 'bush',
+  leaves: '#5b8a48',
+  stretch: 1.6,
+  copies: [
+    { x: -0.24, z: 0.05, rot: 0, scale: 1 },
+    { x: 0.25, z: -0.09, rot: 2.1, scale: 0.9 },
+    { x: 0.04, z: 0.2, rot: 4.2, scale: 0.8 },
+  ],
+};
+
+function bushFallback(c: Record<string, string>): THREE.Object3D {
+  const k = new Kit();
+  const mats = [M.foliage(c.leaves), M.foliage(lighten(c.leaves, 0.1)), M.foliage(darken(c.leaves, 0.13))];
+  const blobs: Array<[number, number, number, number]> = [
+    [0, 0.4, 0, 0.4],
+    [-0.26, 0.3, 0.1, 0.27],
+    [0.26, 0.31, -0.06, 0.28],
+    [0.06, 0.28, 0.22, 0.25],
+    [-0.05, 0.3, -0.2, 0.26],
+  ];
+  blobs.forEach(([x, y, z, r], i) => {
+    const m = k.geo(blobGeo(r, 2, 30 + i, 0.14, 2.2), mats[i % 3], x, y, z);
+    m.scale.y = 0.9;
+  });
+  k.cyl(0.04, 0.2, M.bark(), 0, 0, 0, 0.03, 6);
+  return k.g;
+}
+
 const bush: FurnitureDef = {
   id: 'bush',
   name: 'שיח',
   category: 'outdoor',
   size: { w: 1.1, d: 0.96, h: 0.8 },
   colors: [slot('leaves', 'עלווה', '#5b8a48')],
-  build: ({ colors: c }) => {
-    const k = new Kit();
-    const mats = [M.foliage(c.leaves), M.foliage(lighten(c.leaves, 0.1)), M.foliage(darken(c.leaves, 0.13))];
-    const blobs: Array<[number, number, number, number]> = [
-      [0, 0.4, 0, 0.4],
-      [-0.26, 0.3, 0.1, 0.27],
-      [0.26, 0.31, -0.06, 0.28],
-      [0.06, 0.28, 0.22, 0.25],
-      [-0.05, 0.3, -0.2, 0.26],
-    ];
-    blobs.forEach(([x, y, z, r], i) => {
-      const m = k.geo(blobGeo(r, 2, 30 + i, 0.14, 2.2), mats[i % 3], x, y, z);
-      m.scale.y = 0.9;
-    });
-    k.cyl(0.04, 0.2, M.bark(), 0, 0, 0, 0.03, 6);
-    return k.g;
-  },
+  noBake: true,
+  build: ({ colors: c }) => modelPlant('bush', c, BUSH, bush.size, () => bushFallback(c)),
   draw2d: (ctx, c) =>
     sym(ctx, () => {
       ctx.save();
@@ -881,3 +901,5 @@ export const OUTDOOR: FurnitureDef[] = [
   sandbox,
   gardenLamp,
 ];
+
+preloadPlants(['oak', 'bush']);

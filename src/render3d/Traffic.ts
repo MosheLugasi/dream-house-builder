@@ -5,6 +5,8 @@ import { ROAD_CELL, ROAD_SIDEWALK, type Vec2 } from '../model/types';
 import { Character } from './Character';
 import type { CharacterLook } from './characterTypes';
 import type { WalkBox, WalkController } from './WalkController';
+import { TRAFFIC_TYRES, type DriveIntent } from '../physics/drive';
+import type { ImpactEvent, VehicleState, WalkPhysics } from '../physics/types';
 
 const DIRS: [number, number][] = [
   [0, -1],
@@ -20,6 +22,7 @@ const wrap = (a: number) => {
 };
 
 interface Car {
+  id: string;
   def: FurnitureDef;
   holder: THREE.Group;
   body: THREE.Object3D;
@@ -31,6 +34,30 @@ interface Car {
   target: Vec2;
   box: WalkBox;
   honked: number;
+  /** physics: seconds left standing still after being hit (hazard lights blink) */
+  crashed: number;
+  hazard: THREE.Group | null;
+  intent: DriveIntent;
+}
+
+const hazardMaterial = new THREE.MeshBasicMaterial({ color: '#ffae1a', toneMapped: false });
+const hazardGeometry = new THREE.SphereGeometry(0.075, 10, 8);
+
+/** Four blinking orange lamps at the corners of a car (hazard lights after a crash). */
+function makeHazards(def: FurnitureDef): THREE.Group {
+  const g = new THREE.Group();
+  const { w, d, h } = def.size;
+  const y = Math.min(h * 0.5, 0.85);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const m = new THREE.Mesh(hazardGeometry, hazardMaterial);
+      m.position.set(sx * (w / 2 - 0.12), y, sz * (d / 2 + 0.01));
+      m.castShadow = false;
+      g.add(m);
+    }
+  }
+  g.visible = false;
+  return g;
 }
 
 interface Walker {
@@ -61,6 +88,36 @@ export class Traffic {
   private roads = new Set<string>();
   private roadKey: unknown = null;
   private groundAt: (x: number, y: number) => number = () => 0;
+  /** rigid bodies for the cars (null = they drive kinematically, as before the physics loaded) */
+  private physics: WalkPhysics | null = null;
+  private state: VehicleState = { x: 0, y: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0 };
+  private hidden = false;
+  private time = 0;
+  private onImpact = (e: ImpactEvent): void => {
+    if (e.kind !== 'traffic' || e.dv < 1.6) return;
+    const car = this.cars.find((c) => c.id === e.id);
+    // hit hard: it stops where it ends up, hazards on, for a while
+    if (car) car.crashed = Math.max(car.crashed, 6 + Math.min(6, e.dv));
+  };
+
+  /** Give the cars rigid bodies (or take them away: null). */
+  setPhysics(p: WalkPhysics | null): void {
+    if (this.physics === p) return;
+    if (this.physics) {
+      this.physics.impacts.delete(this.onImpact);
+      for (const c of this.cars) this.physics.removeTraffic(c.id);
+    }
+    this.physics = p;
+    if (p) {
+      p.impacts.add(this.onImpact);
+      for (const c of this.cars) p.addTraffic(c.id, c.def, c.holder);
+      this.hidden = false;
+    }
+    for (const c of this.cars) {
+      c.crashed = 0;
+      if (c.hazard) c.hazard.visible = false;
+    }
+  }
 
   /** Rebuild for a road layout. `looks` supplies appearances for the neighbors. */
   setRoads(roads: [number, number][], groundAt: (x: number, y: number) => number, looks: (seed: number) => CharacterLook | null): void {
@@ -68,7 +125,10 @@ export class Traffic {
     this.roadKey = roads;
     this.groundAt = groundAt;
     this.roads = new Set(roads.map(([i, j]) => key(i, j)));
-    for (const c of this.cars) this.group.remove(c.holder);
+    for (const c of this.cars) {
+      this.group.remove(c.holder);
+      this.physics?.removeTraffic(c.id);
+    }
     for (const w of this.walkers) {
       this.group.remove(w.character.root);
       w.character.dispose();
@@ -94,20 +154,30 @@ export class Traffic {
       holder.rotation.order = 'YXZ';
       this.group.add(holder);
       const start = this.lanePoint(cell, dir, 0.5);
+      const hazard = makeHazards(def);
+      holder.add(hazard);
+      const heading = Math.atan2(DIRS[dir][0], DIRS[dir][1]);
+      holder.position.set(start.x, groundAt(start.x, start.y), start.y);
+      holder.rotation.y = heading;
       const car: Car = {
+        id: `traffic-${n}`,
         def,
         holder,
         body,
         cell: [cell[0], cell[1]],
         dir,
         pos: start,
-        heading: Math.atan2(DIRS[dir][0], DIRS[dir][1]),
+        heading,
         speed: 0,
         target: this.lanePoint(cell, dir, 1),
-        box: { id: `traffic-${n}`, x: start.x, y: start.y, hw: def.size.w / 2, hd: def.size.d / 2, rotation: 0, y0: 0, y1: def.size.h },
+        box: { id: `traffic-${n}`, x: start.x, y: start.y, hw: def.size.w / 2, hd: def.size.d / 2, rotation: -heading, y0: 0, y1: def.size.h },
         honked: 0,
+        crashed: 0,
+        hazard,
+        intent: { speed: 0, yawRate: 0, ...TRAFFIC_TYRES },
       };
       this.cars.push(car);
+      this.physics?.addTraffic(car.id, def, holder);
       this.boxes.push(car.box);
     }
 
@@ -181,10 +251,71 @@ export class Traffic {
     return { key: pick.join(','), pos: this.corner(pick[0], pick[1], pick[2]) };
   }
 
+  /** move the 3D car (and its obstacle box) to where it is; spin the wheels */
+  private place(car: Car, steer: number, dt: number): void {
+    car.holder.position.set(car.pos.x, this.groundAt(car.pos.x, car.pos.y), car.pos.y);
+    car.holder.rotation.y = car.heading;
+    for (const w of (car.body.userData.wheels ?? []) as WheelPart[]) {
+      w.spin.rotation.x += (car.speed * dt) / Math.max(0.05, w.radius);
+      if (w.steer) w.steer.rotation.y = steer;
+    }
+    car.box.x = car.pos.x;
+    car.box.y = car.pos.y;
+    car.box.rotation = -car.heading;
+  }
+
+  /** After a crash: drive on from where it is, or – knocked off its lane and nobody watching – back onto it. */
+  private recover(car: Car, me: Vec2): void {
+    if (car.hazard) car.hazard.visible = false;
+    const i = Math.floor(car.pos.x / ROAD_CELL);
+    const j = Math.floor(car.pos.y / ROAD_CELL);
+    const lane = this.lanePoint(car.cell, car.dir, 0);
+    const [dx, dy] = DIRS[car.dir];
+    const across = Math.abs((car.pos.x - lane.x) * dy - (car.pos.y - lane.y) * dx);
+    const off = !this.roads.has(key(i, j)) || across > 2 || Math.abs(wrap(Math.atan2(dx, dy) - car.heading)) > 1;
+    if (!off) return;
+    if (Math.hypot(me.x - car.pos.x, me.y - car.pos.y) < 18) {
+      car.crashed = 2; // still being looked at: wait a little longer
+      return;
+    }
+    car.pos = { ...lane };
+    car.heading = Math.atan2(dx, dy);
+    car.speed = 0;
+    car.target = this.lanePoint(car.cell, car.dir, 1);
+    this.physics?.place(car.id, lane.x, this.groundAt(lane.x, lane.y), lane.y, car.heading, 0);
+  }
+
   update(dt: number, walker: WalkController, onHonk: () => void): void {
     dt = Math.min(dt, 0.05);
+    this.time += dt;
     const me = walker.pos;
+    const phys = this.physics;
+    const st = this.state;
+    if (phys) {
+      // a mini-game took the traffic off the streets: no bodies either
+      const hidden = !this.group.visible;
+      if (hidden !== this.hidden) {
+        this.hidden = hidden;
+        for (const c of this.cars) phys.setEnabled(c.id, !hidden);
+      }
+      if (hidden) return;
+    }
     for (const car of this.cars) {
+      if (phys && phys.read(car.id, st)) {
+        car.pos.x = st.x;
+        car.pos.y = st.z;
+        car.heading = st.yaw;
+        car.speed = st.vx * Math.sin(st.yaw) + st.vz * Math.cos(st.yaw);
+      }
+      if (phys && car.crashed > 0) {
+        // hit: brakes on, hazard lights, then back to its lane
+        car.crashed -= dt;
+        phys.drive(car.id, null, this.groundAt(car.pos.x, car.pos.y));
+        if (car.hazard) car.hazard.visible = car.crashed > 0 && Math.sin(this.time * Math.PI * 3) > 0;
+        if (car.crashed <= 0) this.recover(car, me);
+        this.place(car, 0, dt);
+        continue;
+      }
       // arrived at the edge of the cell: move on to the next one and choose where to go
       if (Math.hypot(car.target.x - car.pos.x, car.target.y - car.pos.y) < 1.2) {
         const next: [number, number] = [car.cell[0] + DIRS[car.dir][0], car.cell[1] + DIRS[car.dir][1]];
@@ -220,18 +351,18 @@ export class Traffic {
       const targetSpeed = blocked ? 0 : cruise * (Math.abs(want) > 0.5 ? 0.5 : 1);
       car.speed += Math.max(-9 * dt, Math.min(2.5 * dt, targetSpeed - car.speed));
       const steer = Math.max(-0.5, Math.min(0.5, want));
-      car.heading += (car.speed / car.def.vehicle!.wheelbase) * Math.tan(steer) * dt * 1.6;
-      car.pos.x += Math.sin(car.heading) * car.speed * dt;
-      car.pos.y += Math.cos(car.heading) * car.speed * dt;
-      car.holder.position.set(car.pos.x, this.groundAt(car.pos.x, car.pos.y), car.pos.y);
-      car.holder.rotation.y = car.heading;
-      for (const w of (car.body.userData.wheels ?? []) as WheelPart[]) {
-        w.spin.rotation.x += (car.speed * dt) / Math.max(0.05, w.radius);
-        if (w.steer) w.steer.rotation.y = steer;
+      const yawRate = (car.speed / car.def.vehicle!.wheelbase) * Math.tan(steer) * 1.6;
+      if (phys) {
+        // the tyres push towards what the driver wants; the solver handles whoever is in the way
+        car.intent.speed = car.speed;
+        car.intent.yawRate = yawRate;
+        phys.drive(car.id, car.intent, this.groundAt(car.pos.x, car.pos.y));
+      } else {
+        car.heading += yawRate * dt;
+        car.pos.x += Math.sin(car.heading) * car.speed * dt;
+        car.pos.y += Math.cos(car.heading) * car.speed * dt;
       }
-      car.box.x = car.pos.x;
-      car.box.y = car.pos.y;
-      car.box.rotation = -car.heading;
+      this.place(car, steer, dt);
     }
 
     for (const w of this.walkers) {

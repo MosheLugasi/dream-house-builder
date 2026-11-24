@@ -888,6 +888,13 @@ export function makeTexture(
   return tex;
 }
 
+/** Follow the global anisotropy setting with a texture that was not made here (photographic sets). */
+export function trackTexture(tex: THREE.Texture): void {
+  tex.anisotropy = maxAnisotropy;
+  liveTextures.add(tex);
+  tex.addEventListener('dispose', () => liveTextures.delete(tex));
+}
+
 export interface SurfaceTextures {
   map: THREE.CanvasTexture;
   normalMap: THREE.CanvasTexture;

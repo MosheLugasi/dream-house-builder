@@ -130,7 +130,9 @@ varying vec3 vGrassTint;`,
           `vec2 grassRel = mod( aTuft.xy - uGrassCenter + ${(TILE / 2).toFixed(1)}, ${TILE.toFixed(1)} ) - ${(TILE / 2).toFixed(1)};
 vec2 grassXZ = uGrassCenter + grassRel;
 float grassD = length( grassRel );
-float grassKeep = step( aTuft.w, 1.0 / ( 1.0 + grassD * grassD * 0.012 ) );
+// thinned out with distance: a tuft shrinks away near its threshold instead of popping (walking, the
+// thresholds sweep across the lawn and the hard step made the grass crawl)
+float grassKeep = smoothstep( aTuft.w, aTuft.w + 0.1, 1.0 / ( 1.0 + grassD * grassD * 0.012 ) );
 vec4 grassM = texture2D( uGrassMask, ( grassXZ - uGrassBox.xy ) * uGrassBox.zw );
 float grassS = grassKeep * grassM.r * uGrassFade * ( 1.0 - smoothstep( ${(RADIUS * 0.72).toFixed(1)}, ${RADIUS.toFixed(1)}, grassD ) );
 float grassC = cos( aTuft.z );

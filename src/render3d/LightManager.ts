@@ -9,7 +9,25 @@ export interface LampSource {
   distance: number;
 }
 
+/**
+ * Lights have a size: three's point / spot light falloff 1 / max(d², 0.01) gives the lamp's own head,
+ * shade and pole – centimetres from the light – up to 100× the light's intensity. Those few pixels were
+ * the brightest of the frame by far, so bloom turned them into big halos that pulsed and blinked as
+ * sub-pixel motion showed or hid them (street lamps at night). A source radius of 25 cm,
+ * 1 / (d² + r²), keeps them sane and changes nothing a metre away (−6 %) or further.
+ */
+const FALLOFF = 'float distanceFalloff = 1.0 / max( pow( lightDistance, decayExponent ), 0.01 );';
+if (THREE.ShaderChunk.lights_pars_begin.includes(FALLOFF)) {
+  THREE.ShaderChunk.lights_pars_begin = THREE.ShaderChunk.lights_pars_begin.replace(
+    FALLOFF,
+    'float distanceFalloff = 1.0 / ( pow( lightDistance, decayExponent ) + 0.0625 );',
+  );
+}
+
 const POOL = 8;
+const STREET_LIFT = 0.15;
+/** brightness of the glow sprites */
+const GLOW = 2.4;
 /** lamps reaching further than this never cast shadows */
 const SHADOW_RANGE = 10;
 
@@ -118,10 +136,12 @@ export class LightManager {
       for (const s of on) {
         if (this.glows.has(s.id)) continue;
         const sprite = new THREE.Sprite(
-          new THREE.SpriteMaterial({ map: glowMap(), color: new THREE.Color(s.color).multiplyScalar(1.05), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+          // (bright enough to drive the bloom: the soft, steady sprite makes the lamp's halo, not the
+          // few pixels of the fixture next to the light)
+          new THREE.SpriteMaterial({ map: glowMap(), color: new THREE.Color(s.color).multiplyScalar(GLOW), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
         );
         sprite.position.copy(s.pos);
-        sprite.scale.setScalar(0.18 + Math.sqrt(s.intensity) * 0.024);
+        sprite.scale.setScalar((0.18 + Math.sqrt(s.intensity) * 0.024) * 1.7);
         this.group.add(sprite);
         this.glows.set(s.id, sprite);
       }
@@ -132,7 +152,12 @@ export class LightManager {
       on.sort((a, b) => score(a) - score(b));
       const wanted = on.slice(0, POOL);
       const scale = DAY_SCALE + (NIGHT_SCALE - DAY_SCALE) * night;
-      const strength = (src: LampSource) => src.intensity * scale * (src.distance > 15 ? 2 : 1);
+      // the farthest lamps of the pool fade out before they lose their light to a nearer one: walking down
+      // a street, lamps hand their light over smoothly instead of switching their pools of light on and
+      // off (which flickered)
+      const cutoff = on.length > POOL ? score(on[POOL]) : Infinity;
+      const fade = (src: LampSource) => (cutoff === Infinity ? 1 : Math.max(0, Math.min(1, (cutoff - score(src)) / (cutoff * 0.3))));
+      const strength = (src: LampSource) => src.intensity * scale * (src.distance > 15 ? 2 : 1) * fade(src);
       // the shadow-casting slots (if any) take the nearest lamps; the others take the rest. A lamp that
       // moves into a shadow slot cross-fades from its old slot.
       const casters = this.pool.slice(0, this.shadowSlots);
@@ -140,14 +165,17 @@ export class LightManager {
       const assign = (slots: Slot[], want: LampSource[]) => {
         const ids = new Set(want.map((w) => w.id));
         for (const slot of slots) slot.target = slot.source && ids.has(slot.source.id) ? strength(slot.source) : 0;
-        const held = new Set(slots.filter((sl) => sl.source && sl.target > 0).map((sl) => sl.source!.id));
+        const held = new Set(slots.filter((sl) => sl.source && ids.has(sl.source.id)).map((sl) => sl.source!.id));
         for (const src of want) {
-          if (held.has(src.id)) continue;
+          if (held.has(src.id) || strength(src) <= 0) continue;
           const free = slots.find((slot) => slot.light.intensity < 1e-3 && (slot.target === 0 || !slot.source));
           if (!free) break;
           free.source = src;
           free.target = strength(src);
           free.light.position.copy(src.pos);
+          // a street light sits a little up inside its head: the diffuser under the bulb faces away from
+          // it instead of being lit from centimetres away (a blown-out sliver that made the halo blink)
+          if (src.distance > 15) free.light.position.y += STREET_LIFT;
           free.light.color.set(src.color);
           free.light.distance = src.distance;
         }

@@ -1,10 +1,14 @@
-/** Cars and the minibus: lofted shells with a furnished cabin, built once and cloned per instance. */
+/**
+ * Cars and the minibus. Photographic glTF models (`_vehicleModels.ts`); the procedural lofted shells
+ * with a furnished cabin below are their stand-ins while the model loads and in Node.
+ */
 import * as THREE from 'three';
-import type { FurnitureDef, WheelPart } from '../types';
+import type { FurnitureDef } from '../types';
 import { D, INK_SOFT, Kit, LINE_THIN, M, lighten, mesh, sym, tint, type Ctx2D } from '../kit';
 import { slot } from './_parts';
 import { loftBody, zAtValue, type BodyGeo, type BodySpec } from './_vehicleBody';
-import { VM, carSeat, lens, memo, merge, mountWheel, plate, roadWheel, staticPart, steeringWheel, type WheelSpec } from './_vehicleParts';
+import { VM, carSeat, lens, memo, merge, plate, steeringWheel, type WheelSpec } from './_vehicleParts';
+import { frontCabin, modelCar, preloadCarModels, rearBench, seatFabric, type CarModel } from './_vehicleModels';
 
 type Colors = Record<string, string>;
 
@@ -34,18 +38,6 @@ function wingMirror(k: Kit, s: number, x: number, y: number, z: number, mat: THR
   g.rotation.y = Math.PI;
   g.castShadow = false;
   k.g.add(g);
-}
-
-/** Assemble the per-instance vehicle: cloned static template + four separately spinning wheels. */
-function buildCar(id: string, c: Colors, statics: () => THREE.Object3D, wheel: WheelSpec, wx: number, zf: number, zr: number, rimMat: THREE.Material): THREE.Group {
-  const root = new THREE.Group();
-  root.name = id;
-  root.add(staticPart(`${id}|${Object.values(c).join(',')}`, statics));
-  const wheels: WheelPart[] = [];
-  for (const s of [1, -1] as const) wheels.push(mountWheel(root, roadWheel(wheel, s, rimMat), wheel.r, s * wx, zf, true));
-  for (const s of [1, -1] as const) wheels.push(mountWheel(root, roadWheel(wheel, s, rimMat), wheel.r, s * wx, zr, false));
-  root.userData.wheels = wheels;
-  return root;
 }
 
 interface PlanOpts {
@@ -228,28 +220,46 @@ function compactStatic(c: Colors): THREE.Object3D {
   return k.g;
 }
 
+/** Photographic five-door compact hatchback (see public/assets/CREDITS.md). */
+const HATCH_SEAT = { hipX: 0.36, hipZ: -0.1, seatY: 0.47 };
+const HATCH: CarModel = {
+  file: 'hatch',
+  wheelX: 0.729,
+  zf: 1.169,
+  zr: -1.259,
+  radius: 0.297,
+  plates: { front: [0.613, 1.999], rear: [0.477, -1.887], w: 0.4, h: 0.088, text: '63-482-07' },
+  interior: (k, c) => {
+    const seat = seatFabric(c);
+    frontCabin(k, seat, { ...HATCH_SEAT, floor: 0.22, floorZ: [-1.62, 0.62], width: 1.42 });
+    rearBench(k, seat, 1.3, -0.92, 0.47, 0.22);
+  },
+};
+
 export const carCompact: FurnitureDef = {
   id: 'car-compact',
   name: 'מכונית קטנה',
   category: 'vehicle',
-  size: { w: 1.9, d: 3.7, h: 1.66 },
+  size: { w: 1.99, d: 4.01, h: 1.5 },
+  resize: false,
   colors: [slot('body', 'צבע הרכב', '#c8322c'), slot('seats', 'ריפוד', '#4a4d55')],
   noBake: true,
   vehicle: {
     kind: 'car',
     maxSpeed: 14,
     acceleration: 3,
-    wheelbase: 2.35,
+    wheelbase: HATCH.zf - HATCH.zr,
     maxSteer: 0.5,
-    radius: 1.0,
-    rider: { x: COMPACT.hipX, y: COMPACT.seatY, z: COMPACT.hipZ, pose: 'sit' },
+    radius: 1.05,
+    rider: { x: HATCH_SEAT.hipX, y: HATCH_SEAT.seatY, z: HATCH_SEAT.hipZ, pose: 'sit' },
     cameraDistance: 7,
     prompt: 'לנהוג במכונית',
   },
-  build: ({ colors: c }) => buildCar('car-compact', c, () => compactStatic(c), COMPACT_WHEEL, COMPACT.wx, COMPACT.zf, COMPACT.zr, VM.alloy()),
+  build: ({ colors: c }) =>
+    modelCar('car-compact', c, HATCH, { key: 'car-compact', statics: () => compactStatic(c), wheel: COMPACT_WHEEL, rimMat: VM.alloy() }, carCompact.size),
   draw2d: (ctx, c) =>
     sym(ctx, () => {
-      carPlan(ctx, c.body, 1.72, 3.7, { cowl: 0.98, roofF: 0.3, roofR: -1.4, tail: -1.76, zf: COMPACT.zf, zr: COMPACT.zr, wheelR: 0.29 });
+      carPlan(ctx, c.body, 1.84, 4.01, { cowl: 0.92, roofF: 0.4, roofR: -1.45, tail: -1.69, zf: HATCH.zf, zr: HATCH.zr, wheelR: HATCH.radius, rf: 0.36, rr: 0.22 });
     }),
 };
 
@@ -385,29 +395,47 @@ function familyStatic(c: Colors): THREE.Object3D {
   return k.g;
 }
 
+/** Photographic four-door family sedan (see public/assets/CREDITS.md). */
+const SEDAN_SEAT = { hipX: 0.39, hipZ: 0.26, seatY: 0.48 };
+const SEDAN: CarModel = {
+  file: 'sedan',
+  wheelX: 0.77,
+  zf: 1.343,
+  zr: -1.32,
+  radius: 0.315,
+  plates: { front: [0.638, 2.285], rear: [0.662, -2.175], w: 0.42, h: 0.092, text: '27-915-36' },
+  interior: (k, c) => {
+    const seat = seatFabric(c);
+    frontCabin(k, seat, { ...SEDAN_SEAT, floor: 0.23, floorZ: [-1.3, 1.0], width: 1.5 });
+    rearBench(k, seat, 1.4, -0.62, 0.48, 0.23);
+  },
+};
+
 export const carFamily: FurnitureDef = {
   id: 'car-family',
   name: 'מכונית משפחתית',
   category: 'vehicle',
-  size: { w: 2.1, d: 4.3, h: 1.69 },
+  size: { w: 2.07, d: 4.6, h: 1.47 },
+  resize: false,
   colors: [slot('body', 'צבע הרכב', '#2f66a0'), slot('seats', 'ריפוד', '#8a7a68')],
   noBake: true,
   vehicle: {
     kind: 'car',
     maxSpeed: 14,
     acceleration: 2.8,
-    wheelbase: 2.65,
+    wheelbase: SEDAN.zf - SEDAN.zr,
     maxSteer: 0.5,
-    radius: 1.15,
-    rider: { x: FAMILY.hipX, y: FAMILY.seatY, z: FAMILY.hipZ, pose: 'sit' },
+    radius: 1.2,
+    rider: { x: SEDAN_SEAT.hipX, y: SEDAN_SEAT.seatY, z: SEDAN_SEAT.hipZ, pose: 'sit' },
     cameraDistance: 7.5,
     prompt: 'לנהוג במכונית',
   },
-  build: ({ colors: c }) => buildCar('car-family', c, () => familyStatic(c), FAMILY_WHEEL, FAMILY.wx, FAMILY.zf, FAMILY.zr, VM.alloy()),
+  build: ({ colors: c }) =>
+    modelCar('car-family', c, SEDAN, { key: 'car-family', statics: () => familyStatic(c), wheel: FAMILY_WHEEL, rimMat: VM.alloy() }, carFamily.size),
   draw2d: (ctx, c) =>
     sym(ctx, () => {
-      carPlan(ctx, c.body, 1.88, 4.3, { cowl: 1.04, roofF: 0.44, roofR: -1.8, tail: -2.02, zf: FAMILY.zf, zr: FAMILY.zr, wheelR: 0.34, rf: 0.32, rr: 0.2 });
-      for (const s of [1, -1]) D.line(ctx, s * 0.6, -1.55, s * 0.6, 0.25, INK_SOFT, 0.025);
+      carPlan(ctx, c.body, 1.92, 4.6, { cowl: 1.28, roofF: 0.6, roofR: -0.8, tail: -1.3, zf: SEDAN.zf, zr: SEDAN.zr, wheelR: SEDAN.radius, rf: 0.34, rr: 0.24 });
+      D.line(ctx, -0.78, -1.75, 0.78, -1.75, INK_SOFT, LINE_THIN);
     }),
 };
 
@@ -564,27 +592,51 @@ function busStatic(c: Colors): THREE.Object3D {
   return k.g;
 }
 
+/** Photographic passenger van with side windows (see public/assets/CREDITS.md). */
+const VAN_SEAT = { hipX: 0.48, hipZ: 1.12, seatY: 0.98 };
+const VAN: CarModel = {
+  file: 'van',
+  wheelX: 0.907,
+  zf: 1.701,
+  zr: -1.699,
+  radius: 0.393,
+  plates: { front: [0.5, 2.84], rear: [0.81, -2.79], w: 0.46, h: 0.1, text: '84-206-51' },
+  interior: (k, c) => {
+    const seat = seatFabric(c);
+    const floor = 0.58;
+    frontCabin(k, seat, { ...VAN_SEAT, floor, floorZ: [-2.66, 2.0], width: 1.9, wheel: [0.75, 0.2, 0.34, 0.47, 0.42] });
+    // dashboard under the windshield
+    k.rbox(1.9, 0.3, 0.42, 0.06, VM.cabin('#2a2c30'), 0, 1.08, 1.86, 1);
+    for (const z of [0.3, -0.6, -1.5, -2.28]) rearBench(k, seat, 1.72, z, VAN_SEAT.seatY, floor);
+  },
+};
+
 export const minibus: FurnitureDef = {
   id: 'minibus',
   name: 'מיניבוס',
   category: 'vehicle',
-  size: { w: 2.52, d: 6.0, h: 2.64 },
-  colors: [slot('body', 'צבע הרכב', '#f2b21d'), slot('stripe', 'פס', '#26282c'), slot('seats', 'ריפוד', '#3f5f8a')],
+  size: { w: 2.6, d: 5.71, h: 2.3 },
+  resize: false,
+  colors: [slot('body', 'צבע הרכב', '#f2b21d'), slot('seats', 'ריפוד', '#3f5f8a')],
   noBake: true,
   vehicle: {
     kind: 'bus',
     maxSpeed: 11,
     acceleration: 2.2,
-    wheelbase: 3.6,
+    wheelbase: VAN.zf - VAN.zr,
     maxSteer: 0.5,
     radius: 1.5,
-    rider: { x: BUS.hipX, y: BUS.seatY, z: BUS.hipZ, pose: 'sit' },
+    rider: { x: VAN_SEAT.hipX, y: VAN_SEAT.seatY, z: VAN_SEAT.hipZ, pose: 'sit' },
     cameraDistance: 10,
     prompt: 'לנהוג במיניבוס',
   },
-  build: ({ colors: c }) => buildCar('minibus', c, () => busStatic(c), BUS_WHEEL, BUS.wx, BUS.zf, BUS.zr, M.paint('#e8e8e6', 0.5)),
+  build: ({ colors: c }) =>
+    modelCar('minibus', c, VAN, { key: 'minibus', statics: () => busStatic({ stripe: '#26282c', ...c }), wheel: BUS_WHEEL, rimMat: M.paint('#e8e8e6', 0.5) }, minibus.size),
   draw2d: (ctx, c) =>
     sym(ctx, () => {
+      // the drawing below was made for a 2.52 x 6.0 m bus
+      ctx.scale(2.6 / 2.52, 5.71 / 6.0);
+      c = { stripe: '#26282c', ...c };
       const f = tint(c.body, 0.25);
       for (const z of [BUS.zf, BUS.zr]) for (const s of [1, -1]) D.rr(ctx, s * 0.96, z, 0.16, 0.74, 0.04, '#3b3d42', null);
       D.box(ctx, -1.03, -3.0, 1.03, 3.0, 0.22, f);
@@ -619,3 +671,5 @@ export const minibus: FurnitureDef = {
       }
     }),
 };
+
+preloadCarModels(['hatch', 'sedan', 'van']);

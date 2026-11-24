@@ -15,14 +15,22 @@ export interface RenderPreset {
   pixelRatioCap: number;
   /** post-processing chain (AO, bloom, graded output, SMAA); off = render straight to the canvas */
   post: boolean;
+  /**
+   * multisample antialiasing of the scene render with post-processing on (0 = off). Off on every preset:
+   * N8AO reads one depth sample per pixel while the colour is the resolved average, which left dotted
+   * bright seams along edges and made edges flip back and forth while walking; SMAA alone was steadier.
+   */
+  msaa: number;
   /** N8AO quality mode */
   ao: 'Performance' | 'Low' | 'Medium' | 'High' | 'Ultra';
   /** AO at half resolution with depth-aware upsampling (looks the same here, ~10% cheaper overall) */
   aoHalfRes: boolean;
   /** frames averaged with sub-pixel jitter while the camera stands still (0 = off) */
   accumulate: number;
-  /** sun shadow map size */
+  /** sun shadow map size in the editor (the map covers up to 340 m there) */
   shadowMapSize: number;
+  /** … and walking (the map covers ±26 m around the walker: 2048 texels are 2.5 cm) */
+  walkShadowMapSize: number;
   /** walking: a tighter sun shadow map pushed ahead of the camera, with a smaller blur */
   sharpShadows: boolean;
   /** pool of area lights that bring daylight in through the nearest windows */
@@ -44,10 +52,12 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'low',
     pixelRatioCap: 1,
     post: false,
+    msaa: 0,
     ao: 'Low',
     aoHalfRes: true,
     accumulate: 0,
     shadowMapSize: 2048,
+    walkShadowMapSize: 1024,
     sharpShadows: false,
     windowLights: 0,
     indoorAmbient: false,
@@ -60,10 +70,12 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'high',
     pixelRatioCap: 1,
     post: true,
+    msaa: 0,
     ao: 'Medium',
     aoHalfRes: true,
     accumulate: 0,
     shadowMapSize: 4096,
+    walkShadowMapSize: 2048,
     sharpShadows: false,
     windowLights: 3,
     indoorAmbient: true,
@@ -76,10 +88,12 @@ export const PRESETS: Record<Quality, RenderPreset> = {
     quality: 'ultra',
     pixelRatioCap: 1.5,
     post: true,
+    msaa: 0,
     ao: 'High',
     aoHalfRes: false,
     accumulate: 16,
     shadowMapSize: 4096,
+    walkShadowMapSize: 4096,
     sharpShadows: true,
     windowLights: 6,
     indoorAmbient: true,

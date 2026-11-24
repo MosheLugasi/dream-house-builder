@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { DESIGN_CEILING, getFurniture, resolveColors } from '../catalog';
 import { placedObjectScale, placedSize } from '../catalog/placed';
 import type { FurnitureItem } from '../model/types';
+import { itemBatches } from './StaticBatches';
 
 /** Notified when placed items appear, move or disappear (interactive behaviours hook in here). */
 export interface ItemEvents {
@@ -27,6 +28,13 @@ export interface ItemEntry {
   item: FurnitureItem;
   holder: THREE.Group;
   key: string;
+}
+
+/** Items whose meshes may be drawn through the static batches (see StaticBatches.ts). */
+function batchableItem(catalogId: string): boolean {
+  const def = getFurniture(catalogId);
+  // (vehicles are driven and pets walk: always on their own; rides animate every frame)
+  return !!def && !def.vehicle && !def.pet && !def.ride;
 }
 
 export function makeItemHolder(item: Pick<FurnitureItem, 'catalogId' | 'colors' | 'size' | 'mirror'>, ctx: ItemContext): THREE.Group | null {
@@ -79,6 +87,7 @@ export class ItemLayer {
       if (!entry || entry.key !== key) {
         if (entry) {
           this.group.remove(entry.holder);
+          itemBatches.current?.remove(item.id);
           itemEvents.current?.remove(item.id);
         }
         const holder = makeItemHolder(item, ctx);
@@ -93,6 +102,7 @@ export class ItemLayer {
         entry.holder.position.set(item.x, item.elevation, item.y);
         entry.holder.rotation.y = -item.rotation;
         itemEvents.current?.add(entry);
+        if (batchableItem(item.catalogId)) itemBatches.current?.add(item.id, holder);
       }
       entry.item = item;
       entry.holder.position.set(item.x, item.elevation, item.y);
@@ -102,6 +112,7 @@ export class ItemLayer {
     for (const [id, entry] of this.entries) {
       if (!seen.has(id)) {
         this.group.remove(entry.holder);
+        itemBatches.current?.remove(id);
         this.entries.delete(id);
         itemEvents.current?.remove(id);
         changed = true;
@@ -113,6 +124,7 @@ export class ItemLayer {
   clear(): void {
     for (const [id, entry] of this.entries) {
       this.group.remove(entry.holder);
+      itemBatches.current?.remove(id);
       itemEvents.current?.remove(id);
     }
     this.entries.clear();

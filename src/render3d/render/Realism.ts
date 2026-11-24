@@ -6,7 +6,7 @@ import { setCeilingGlow } from '../buildArchitecture';
 import type { LightManager } from '../LightManager';
 import { Grass } from './Grass';
 import { IndoorAmbient } from './IndoorAmbient';
-import { RenderPipeline } from './Pipeline';
+import { BLOOM_KNEE, RenderPipeline } from './Pipeline';
 import { PRESETS, type RenderPreset } from './presets';
 import { WindowLights } from './WindowLights';
 
@@ -123,6 +123,10 @@ export class Realism {
 
     // daylight through the windows (only matters where ceilings are drawn)
     this.windows.setBuildings(f.project.buildings);
+    this.warmTimer -= dt;
+    // (new programs = materials not seen before: their other variant is compiled too)
+    if (f.walking && this.windows.size > 0 && this.warmTimer <= 0) this.prewarmWindows(this.renderer.info.programs?.length ?? 0);
+    else if (!f.walking) this.warmKey = null;
     const radiance = f.walking ? t.windowRadiance * atm.daylight * this.scene.environmentIntensity : 0;
     this.windows.update(dt, this.camera.position, radiance, atm.skyColor, f.walking && atm.daylight > 0.01);
 
@@ -139,6 +143,10 @@ export class Realism {
     this.adapt += (wantAdapt - this.adapt) * Math.min(1, dt * 1.5);
     this.renderer.toneMappingExposure = atm.exposure * this.adapt;
 
+    // the bloom threshold is set by the engine (time of day); its soft knee follows it
+    const bloom = this.pipeline.bloom;
+    if (bloom) (bloom.highPassUniforms as Record<string, THREE.IUniform<number>>).smoothWidth.value = bloom.threshold * BLOOM_KNEE;
+
     // grade: a touch of contrast and colour, warmer in the evening, cooler at night
     const out = this.pipeline.output;
     if (out) {
@@ -151,13 +159,47 @@ export class Realism {
       g.white.setRGB(1 + 0.03 * dusk - 0.04 * night, 1, 1 - 0.04 * dusk + 0.05 * night);
     }
 
-    // accumulation: long in the editor (nothing moves), short in walk mode (people, pets and cars do)
-    this.pipeline.maxAccumulate = f.walking ? Math.min(4, this.preset.accumulate) : this.preset.accumulate;
+    // accumulation: only in the editor. Walking, people, pets, cars and foliage move all the time: a short
+    // running average of jittered frames never converges there, it made every edge shimmer and left
+    // trails behind whatever moved
+    this.pipeline.maxAccumulate = f.walking ? 0 : this.preset.accumulate;
     if (atm.hours !== this.lastHours) {
       this.lastHours = atm.hours;
       this.pipeline.invalidate();
     }
   }
+
+  /**
+   * The window lights join and leave the scene (they cost every lit pixel while on): each switch needs
+   * other variants of the lit shaders, which compiled the first time a window came into reach – a stall
+   * of a second or more walking up to a house. Compile them in the background when walking starts and
+   * whenever new materials appeared (e.g. a house nearby got its furniture), without blocking a frame.
+   */
+  private prewarmWindows(key: unknown): void {
+    if (key === this.warmKey || this.warming) return;
+    this.warmKey = key;
+    this.warmTimer = 2;
+    const group = this.windows.group;
+    const was = group.visible;
+    group.visible = true;
+    try {
+      if (this.renderer.extensions.has('KHR_parallel_shader_compile')) {
+        this.warming = true;
+        this.renderer
+          .compileAsync(this.scene, this.camera)
+          .catch(() => undefined)
+          .finally(() => {
+            this.warming = false;
+          });
+      } else this.renderer.compile(this.scene, this.camera);
+    } catch {
+      this.warming = false;
+    }
+    group.visible = was;
+  }
+  private warmKey: unknown = null;
+  private warming = false;
+  private warmTimer = 0;
 
   /**
    * Where the sun's shadow map goes: a square of ±`range` m around `center`. Walking, ultra uses a

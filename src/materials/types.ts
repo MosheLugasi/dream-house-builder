@@ -3,7 +3,7 @@ import type * as THREE from 'three';
 /**
  * Surface finishes (floors, wall paints/wallpapers, exterior cladding, ground covers).
  *
- * All finishes are procedural (generated on a canvas at runtime, no network assets).
+ * Finishes are generated on a canvas at runtime; some also have a photographic texture set under public/assets/ (see `photo`).
  * Geometry UVs are expressed in METERS, so each texture must be set up with
  * RepeatWrapping and `repeat = 1 / tileSize` where tileSize is the real-world size (in meters)
  * covered by one copy of the texture.

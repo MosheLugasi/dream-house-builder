@@ -28,7 +28,15 @@ export class AccumulatePass extends Pass {
       vertexShader,
       fragmentShader:
         'uniform sampler2D tNew; uniform sampler2D tAcc; uniform float weight; varying vec2 vUv;\n' +
-        'void main() { gl_FragColor = mix( texture2D( tAcc, vUv ), texture2D( tNew, vUv ), weight ); }',
+        // (a fresh start must not read the old average at all: mix( NaN, x, 1.0 ) is still NaN, so one bad
+        // pixel used to stay on the screen until the next resize)
+        'void main() {\n' +
+        '  vec4 n = texture2D( tNew, vUv );\n' +
+        '  if ( weight >= 1.0 ) { gl_FragColor = n; return; }\n' +
+        '  vec4 a = texture2D( tAcc, vUv );\n' +
+        '  if ( any( isnan( a ) ) || any( isinf( a ) ) ) a = n;\n' +
+        '  gl_FragColor = mix( a, n, weight );\n' +
+        '}',
       depthTest: false,
       depthWrite: false,
     });

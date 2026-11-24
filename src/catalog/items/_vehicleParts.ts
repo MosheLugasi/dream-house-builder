@@ -81,11 +81,19 @@ function plateTexture(text: string): THREE.CanvasTexture | null {
 }
 
 export const VM = {
-  /** Automotive paint: coloured base under a glossy clear coat. */
+  /** Automotive paint: metallic base coat under a deep, sharp clear coat (reflects the sky / IBL). */
   paint(color: string): THREE.MeshPhysicalMaterial {
     return cachedMat(
       `paint|${color}`,
-      () => new THREE.MeshPhysicalMaterial({ color, roughness: 0.46, metalness: 0.2, clearcoat: 0.6, clearcoatRoughness: 0.1 }),
+      () =>
+        new THREE.MeshPhysicalMaterial({
+          color,
+          roughness: 0.38,
+          metalness: 0.18,
+          clearcoat: 1,
+          clearcoatRoughness: 0.03,
+          envMapIntensity: 1.2,
+        }),
     );
   },
   /** Glossy powder-coated tube / sheet metal (bike frames, tractor panels). */
@@ -146,6 +154,80 @@ export const VM = {
           clearcoatRoughness: 0.04,
         }),
     );
+  },
+  /**
+   * Head-lamp unit of the photographic models: chrome reflector behind a clear lens. Its glow is driven
+   * per frame by `lampsAt` (on after dusk).
+   */
+  headUnit(): THREE.MeshPhysicalMaterial {
+    return cachedMat(
+      'headUnit',
+      () =>
+        new THREE.MeshPhysicalMaterial({
+          color: '#dfe4e8',
+          emissive: '#fff1d2',
+          emissiveIntensity: 0.04,
+          roughness: 0.06,
+          metalness: 0.75,
+          clearcoat: 1,
+          clearcoatRoughness: 0.02,
+        }),
+    );
+  },
+  /** Red tail-lamp lens of the photographic models (cloned per car: it lights up when the car brakes). */
+  tailUnit(): THREE.MeshPhysicalMaterial {
+    return cachedMat(
+      'tailUnit',
+      () =>
+        new THREE.MeshPhysicalMaterial({
+          color: '#8e0d14',
+          emissive: '#ff1612',
+          emissiveIntensity: 0.08,
+          roughness: 0.1,
+          metalness: 0.1,
+          clearcoat: 1,
+          clearcoatRoughness: 0.03,
+        }),
+    );
+  },
+  /** Dark, reflective car glass: the cabin shows through, the sky reflects on it. */
+  carGlass(): THREE.MeshPhysicalMaterial {
+    return cachedMat(
+      'carGlass',
+      () =>
+        new THREE.MeshPhysicalMaterial({
+          color: '#1c2a31',
+          roughness: 0.02,
+          metalness: 0,
+          transparent: true,
+          opacity: 0.55,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+          envMapIntensity: 2,
+          specularIntensity: 1,
+          clearcoat: 1,
+          clearcoatRoughness: 0,
+        }),
+    );
+  },
+  /** Bright polished trim (grille bars, window surrounds, wheels of the photographic models). */
+  chrome(): THREE.MeshPhysicalMaterial {
+    return cachedMat('chrome', () => new THREE.MeshPhysicalMaterial({ color: '#e9ecef', roughness: 0.08, metalness: 1, envMapIntensity: 1.4 }));
+  },
+  /** Machined alloy wheel: bright metal with a lacquer coat. */
+  wheelAlloy(): THREE.MeshPhysicalMaterial {
+    return cachedMat(
+      'wheelAlloy',
+      () => new THREE.MeshPhysicalMaterial({ color: '#c3c8cd', roughness: 0.24, metalness: 1, clearcoat: 0.6, clearcoatRoughness: 0.08 }),
+    );
+  },
+  /** Textured black plastic of bumpers, mirror feet, grilles. */
+  plastic(): THREE.MeshStandardMaterial {
+    return cachedMat('plastic', () => new THREE.MeshStandardMaterial({ color: '#16171a', roughness: 0.58, metalness: 0 }));
+  },
+  /** Tyre rubber with a slight sheen. */
+  rubber(): THREE.MeshPhysicalMaterial {
+    return cachedMat('rubber', () => new THREE.MeshPhysicalMaterial({ color: '#1b1b1d', roughness: 0.82, metalness: 0, sheen: 0.25, sheenRoughness: 0.6, sheenColor: '#55585c' }));
   },
   amber(): THREE.MeshPhysicalMaterial {
     return cachedMat(

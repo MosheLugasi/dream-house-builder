@@ -6,6 +6,7 @@
  * footprint in x/z and by its BOTTOM in y (like furniture standing on a floor), unless noted.
  */
 import * as THREE from 'three';
+import { loadTexture } from '../assets/loader';
 import { addWind } from '../render3d/effects';
 import { getMaxAnisotropy } from '../materials/textureGen';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -989,6 +990,33 @@ function texRep(kind: TexKind, rx: number, ry: number): THREE.Texture | null {
   return t;
 }
 
+/**
+ * Photographic detail (neutral grey albedo + normal map, `public/assets/textures/kit/<set>/`, CC0 – see
+ * `public/assets/CREDITS.md`) that replaces a material's canvas texture once it has loaded in a browser.
+ * The material colour still tints it, so every colour slot keeps working; until then (and in Node) the
+ * procedural texture stays. One image per set is shared by all materials.
+ */
+function photoDetail(m: THREE.MeshStandardMaterial, set: string, rx: number, ry: number, normalScale: number, rotation = 0): void {
+  if (!hasDom) return;
+  Promise.all([loadTexture(`textures/kit/${set}/color.webp`, { srgb: true }), loadTexture(`textures/kit/${set}/normal.webp`)])
+    .then(([c, n]) => {
+      const own = (t: THREE.Texture) => {
+        const u = t.clone();
+        u.repeat.set(rx, ry);
+        u.center.set(0.5, 0.5);
+        u.rotation = rotation;
+        u.needsUpdate = true;
+        return u;
+      };
+      m.map = own(c);
+      m.normalMap = own(n);
+      m.normalScale.set(normalScale, normalScale);
+      m.bumpMap = null;
+      m.needsUpdate = true;
+    })
+    .catch(() => undefined);
+}
+
 function cached<T extends THREE.Material>(key: string, make: () => T): T {
   let m = matCache.get(key) as T | undefined;
   if (!m) {
@@ -1007,6 +1035,8 @@ export const M = {
       const m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0, map });
       m.userData.uvMeters = true;
       m.userData.grain = true;
+      // grain along U like the canvas texture (the photo's grain runs along V)
+      photoDetail(m, 'wood', 0.45, 0.75, 0.4, Math.PI / 2);
       return m;
     });
   },
@@ -1027,6 +1057,7 @@ export const M = {
         sheenRoughness: 0.55,
       });
       m.userData.uvMeters = true;
+      photoDetail(m, 'fabric', scale / 4, scale / 4, 0.7);
       return m;
     });
   },
@@ -1291,6 +1322,7 @@ export const M = {
       const map = texRep('marble', 1.2, 1.2);
       const m = new THREE.MeshPhysicalMaterial({ color, roughness: 0.18, metalness: 0, map, clearcoat: 0.6, clearcoatRoughness: 0.12 });
       m.userData.uvMeters = true;
+      photoDetail(m, 'marble', 0.6, 0.6, 0.25);
       return m;
     });
   },

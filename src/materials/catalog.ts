@@ -31,7 +31,41 @@ export interface FinishSpec extends FinishDef {
   swatchMeters?: number;
   /** strength of the fake lighting in the swatch (default 1) */
   swatchShade?: number;
+  /**
+   * Photographic PBR set (`public/assets/textures/<set>/{color,normal,rough}.webp`, CC0 – see
+   * `public/assets/CREDITS.md`) that replaces the generated textures once it has loaded in a browser.
+   * The generator stays the instant first version, the Node/test version and the swatch.
+   */
+  photo?: PhotoSet;
 }
+
+export interface PhotoSet {
+  set: string;
+  /** real-world size covered by one copy of the photo, meters */
+  tile: [number, number];
+  /** multiplies the photo's colour (neutral sets are tinted per finish); default white */
+  color?: string;
+  normalScale?: number;
+  /** multiplies the roughness map (default 1) */
+  roughness?: number;
+}
+
+/** finishes that switch to a photographic texture set when it is available */
+const PHOTOS: Record<string, PhotoSet> = {
+  asphalt: { set: 'asphalt', tile: [3, 3], normalScale: 0.9 },
+  grass: { set: 'grass', tile: [2.4, 2.4], normalScale: 0.8 },
+  sand: { set: 'sand', tile: [2.5, 2.5] },
+  gravel: { set: 'gravel', tile: [2.4, 2.4] },
+  pavers: { set: 'paving-stones', tile: [2, 2] },
+  'jerusalem-stone': { set: 'sandstone-blocks', tile: [2.4, 2.4] },
+  'brick-red': { set: 'brick-red', tile: [1.4, 1.4] },
+  'brick-white': { set: 'brick-white', tile: [1.3, 1.3] },
+  'stucco-white': { set: 'plaster', tile: [2, 2], color: '#f3efe8', normalScale: 0.8 },
+  'stucco-sand': { set: 'plaster', tile: [2, 2], color: '#e2cfab', normalScale: 0.8 },
+  'marble-white': { set: 'marble', tile: [1.6, 1.6], color: '#fbfaf8', roughness: 0.5 },
+  'porcelain-grey': { set: 'floor-tiles-large', tile: [1.8, 1.8] },
+  'terracotta-tiles': { set: 'floor-tiles-terracotta', tile: [1.5, 1.5] },
+};
 
 export const CATALOG: FinishSpec[] = [
   // ----------------------------------------------------------------------------- floors: wood
@@ -536,3 +570,8 @@ export const CATALOG: FinishSpec[] = [
     gen: ground.water,
   },
 ];
+
+for (const spec of CATALOG) {
+  const photo = PHOTOS[spec.id];
+  if (photo) spec.photo = photo;
+}

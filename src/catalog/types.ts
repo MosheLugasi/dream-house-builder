@@ -264,6 +264,26 @@ export interface RideRuntime {
  * A pet. `build` must return an UN-BAKED object with `object.userData.pet: PetRuntime`
  * (see render3d/Pet.ts) so that the game can animate it.
  */
+/** Walk-mode physics of an item; every field is optional (the rest is inferred). */
+export interface PhysicsSpec {
+  /**
+   * 'static' never moves (big furniture, trees); 'dynamic' is pushed, tips over and flies;
+   * 'anchored' stands fixed until hit hard enough, then topples (lamp posts, signs, bollards);
+   * 'none' has no collider at all.
+   */
+  body?: 'static' | 'dynamic' | 'anchored' | 'none';
+  /** kg */
+  mass?: number;
+  /** anchored items: impulse (N·s) that breaks them loose – a 1200 kg car at 4 m/s gives ≈ 6000 */
+  breakImpulse?: number;
+  /** bounciness 0..1 */
+  restitution?: number;
+  /** 0..1.5 */
+  friction?: number;
+  /** what it sounds / sparkles like when hit */
+  material?: 'metal' | 'wood' | 'plastic' | 'stone' | 'soft' | 'glass';
+}
+
 export interface PetSpec {
   kind: 'dog' | 'cat';
   /** walking / running speed, m/s */
@@ -314,6 +334,11 @@ export interface FurnitureDef {
   /** what pressing E next to the item can switch on / off */
   ride?: RideSpec;
   pet?: PetSpec;
+  /**
+   * Rigid-body behaviour in walk mode (crashes, pushing). Optional: without it the physics infers a
+   * sensible body from the category, size and kind of the item (see `src/physics/profile.ts`).
+   */
+  physics?: PhysicsSpec;
   /**
    * true = hand out a freshly built, un-merged object on every `build` call (needed when parts move
    * or when the geometry depends on more than the colors). Default: baked + cached per color set.
