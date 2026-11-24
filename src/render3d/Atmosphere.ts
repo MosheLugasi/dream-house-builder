@@ -234,7 +234,9 @@ export class Atmosphere {
     this.envUniforms.sunDir.value.copy(this.lightDir);
     this.envUniforms.glow.value = day + dusk * 0.8 + night * 0.05;
     // (tuned for the Neutral tone curve, which keeps the darks of the night brighter than ACES did)
-    this.exposure = 0.82 + 0.1 * dusk + 0.05 * night;
+    // (a little more at night since the lamps no longer blow their fixtures into a bloom haze that
+    // brightened the whole frame)
+    this.exposure = 0.82 + 0.1 * dusk + 0.2 * night;
     this.renderer.toneMappingExposure = this.exposure;
     this.daylight = smooth(-4, 30, elev);
     const z = this.envUniforms.zenith.value;

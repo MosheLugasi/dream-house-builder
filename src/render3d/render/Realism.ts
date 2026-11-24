@@ -46,7 +46,7 @@ export class Realism {
     /** exposure multiplier inside by day (the eye adapts to the darker room) */
     indoorExposure: 2,
     /** … and by night (a lamp-lit room) */
-    indoorExposureNight: 2,
+    indoorExposureNight: 2.3,
     /** the ceilings' fake bounce light in walk mode by day / by night (1 = as in the editor) */
     ceilingDay: 0.35,
     ceilingNight: 0.8,
